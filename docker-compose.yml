@@ -1,0 +1,69 @@
+services:
+  cpputest-generator:
+    build: .
+    container_name: cpputest-generator
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./c_projects:/app/c_projects
+      - ./test_examples:/app/test_examples
+      - ./generated_tests:/app/generated_tests
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434/api}
+      - EMBED_MODEL=${EMBED_MODEL:-all-minilm:latest}
+      - GEN_MODEL=${GEN_MODEL:-codellama:latest}
+      - C_PROJECT_DIR=${C_PROJECT_DIR:-/app/c_projects}
+      - TEST_EXAMPLES_DIR=${TEST_EXAMPLES_DIR:-/app/test_examples}
+      - OUTPUT_DIR=${OUTPUT_DIR:-/app/generated_tests}
+      - MAX_FUNCTIONS_PER_CHUNK=${MAX_FUNCTIONS_PER_CHUNK:-10}
+      - TOP_K=${TOP_K:-3}
+      - BATCH_SIZE=${BATCH_SIZE:-5}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-180}
+      - HOST=${HOST:-0.0.0.0}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - cpputest-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - OLLAMA_GPU_LAYERS=20
+      - OLLAMA_FLASH_ATTENTION=true
+      - OLLAMA_GPU_OVERHEAD=1000
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 10s
+      timeout: 2s
+      retries: 1
+      start_period: 5s
+    networks:
+      - cpputest-network
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  cpputest-network:
+    driver: bridge
