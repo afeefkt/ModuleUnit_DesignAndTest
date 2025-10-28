@@ -182,30 +182,54 @@ def analyze_c_file_simple(file_path: Path) -> List[FunctionInfo]:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
         
-        # Regex to find function definitions
-        # Pattern: return_type function_name(parameters) {
-        pattern = r'(\w+(?:\s*\*)?)\s+(\w+)\s*\(([^)]*)\)\s*\{'
+        # Remove comments to avoid false matches
+        # Remove single-line comments
+        content = re.sub(r'//.*?\n', '\n', content)
+        # Remove multi-line comments
+        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
         
-        for match in re.finditer(pattern, content):
+        # Improved regex to find function definitions
+        # Matches: return_type function_name(parameters) { ... }
+        # Also handles pointers and multiple spaces
+        pattern = r'([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\*)*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*\{'
+        
+        matches = list(re.finditer(pattern, content))
+        logger.debug(f"Found {len(matches)} potential functions in {file_path.name}")
+        
+        for match in matches:
             return_type = match.group(1).strip()
             func_name = match.group(2).strip()
             params_str = match.group(3).strip()
             
-            # Skip if it looks like a control structure
-            if return_type in ['if', 'while', 'for', 'switch']:
+            # Skip if it looks like a control structure or macro
+            control_keywords = ['if', 'while', 'for', 'switch', 'do', 'else', 'return']
+            if return_type in control_keywords or func_name in control_keywords:
+                continue
+            
+            # Skip common macros
+            if func_name.isupper():  # Likely a macro
                 continue
             
             # Parse parameters
             parameters = []
-            if params_str and params_str != 'void':
+            if params_str and params_str != 'void' and params_str.strip():
                 for param in params_str.split(','):
                     param = param.strip()
-                    if param:
-                        parts = param.rsplit(None, 1)
-                        if len(parts) == 2:
+                    if param and param != 'void':
+                        # Handle complex parameter types
+                        parts = re.split(r'\s+', param)
+                        if len(parts) >= 2:
+                            param_name = parts[-1].strip('*')
+                            param_type = ' '.join(parts[:-1])
+                            parameters.append({
+                                'type': param_type,
+                                'name': param_name
+                            })
+                        elif len(parts) == 1:
+                            # Just a type, no name
                             parameters.append({
                                 'type': parts[0],
-                                'name': parts[1]
+                                'name': 'unnamed'
                             })
             
             # Get line number
@@ -227,19 +251,35 @@ def analyze_c_file_simple(file_path: Path) -> List[FunctionInfo]:
             
             source_code = content[match.start():end]
             
-            functions.append(FunctionInfo(
+            # Calculate complexity
+            complexity = (
+                source_code.count('if') + 
+                source_code.count('else') +
+                source_code.count('for') + 
+                source_code.count('while') + 
+                source_code.count('switch') +
+                source_code.count('case')
+            )
+            
+            func_info = FunctionInfo(
                 name=func_name,
                 return_type=return_type,
                 parameters=parameters,
                 file_path=str(file_path),
                 line_number=line_num,
-                source_code=source_code,
-                complexity_score=source_code.count('if') + source_code.count('for') + 
-                               source_code.count('while') + source_code.count('switch')
-            ))
+                source_code=source_code[:1000],  # Limit to first 1000 chars
+                complexity_score=complexity
+            )
+            
+            functions.append(func_info)
+            logger.debug(f"  Extracted: {return_type} {func_name}(...) at line {line_num}")
     
     except Exception as e:
         logger.error(f"Error analyzing {file_path}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    return functions
     
     return functions
 
@@ -475,10 +515,26 @@ async def generate_tests_for_project(project_path: Path, function_name: Optional
     
     # Analyze project
     logger.info(f"Analyzing project: {project_path}")
+    
+    # Ensure path is absolute if it starts with /app
+    if not project_path.is_absolute():
+        project_path = Path.cwd() / project_path
+    
+    logger.info(f"Resolved path: {project_path}")
+    logger.info(f"Path exists: {project_path.exists()}")
+    
+    if not project_path.exists():
+        raise ValueError(f"Project path does not exist: {project_path}")
+    
     functions = analyze_c_project(project_path)
     
+    logger.info(f"Found {len(functions)} functions")
+    
     if not functions:
-        raise ValueError("No functions found in project")
+        # List what files were found
+        c_files = list(project_path.rglob("*.c")) + list(project_path.rglob("*.h"))
+        logger.warning(f"No functions extracted. C/H files found: {[f.name for f in c_files]}")
+        raise ValueError(f"No functions found in project. Found {len(c_files)} C/H files but couldn't extract functions.")
     
     # Filter by function name if specified
     if function_name:
@@ -599,22 +655,119 @@ async def health_check():
         "examples_count": len(test_examples_metadata.get("texts", []))
     }
 
+@app.get("/debug/list-projects")
+async def list_projects():
+    """Debug endpoint to list available projects"""
+    projects = []
+    
+    logger.info(f"Listing projects in: {config.C_PROJECT_DIR}")
+    
+    if config.C_PROJECT_DIR.exists():
+        for item in config.C_PROJECT_DIR.iterdir():
+            if item.is_dir():
+                c_files = list(item.rglob("*.c")) + list(item.rglob("*.h"))
+                projects.append({
+                    "name": item.name,
+                    "path": str(item),
+                    "c_files_count": len(c_files),
+                    "files": [f.name for f in c_files[:10]]  # First 10 files
+                })
+    
+    return {
+        "c_project_dir": str(config.C_PROJECT_DIR),
+        "c_project_dir_absolute": str(config.C_PROJECT_DIR.absolute()),
+        "exists": config.C_PROJECT_DIR.exists(),
+        "projects": projects,
+        "cwd": str(Path.cwd())
+    }
+
+@app.get("/debug/test-parse")
+async def test_parse(file_path: str = Query(...)):
+    """Debug endpoint to test parsing a specific file"""
+    path = Path(file_path)
+    
+    logger.info(f"Testing parse for: {file_path}")
+    logger.info(f"Resolved to: {path}")
+    logger.info(f"Exists: {path.exists()}")
+    
+    if not path.exists():
+        return {
+            "error": "File not found", 
+            "path": str(path),
+            "absolute": str(path.absolute()),
+            "cwd": str(Path.cwd())
+        }
+    
+    try:
+        functions = analyze_c_file_simple(path)
+        
+        # Also show raw content sample
+        with open(path, 'r', errors='ignore') as f:
+            content = f.read()
+        
+        return {
+            "file": str(path),
+            "functions_found": len(functions),
+            "functions": [
+                {
+                    "name": f.name,
+                    "return_type": f.return_type,
+                    "params": f.parameters,
+                    "line": f.line_number
+                }
+                for f in functions
+            ],
+            "file_size": len(content),
+            "first_500_chars": content[:500],
+            "line_count": content.count('\n')
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.get("/analyze-project", response_model=ProjectAnalysisResponse)
 async def analyze_project_endpoint(project_path: str = Query(...)):
     """Analyze a C project"""
     path = Path(project_path)
     
+    logger.info(f"Analyzing project: {project_path}")
+    logger.info(f"Resolved to: {path}")
+    logger.info(f"Absolute path: {path.absolute()}")
+    logger.info(f"Exists: {path.exists()}")
+    
     if not path.exists():
-        raise HTTPException(status_code=404, detail="Project path not found")
+        # Try to find it relative to C_PROJECT_DIR
+        alt_path = config.C_PROJECT_DIR / Path(project_path).name
+        if alt_path.exists():
+            path = alt_path
+            logger.info(f"Using alternative path: {path}")
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Project path not found: {path}. Also tried: {alt_path}"
+            )
     
     functions = analyze_c_project(path)
+    
+    logger.info(f"Analysis complete: found {len(functions)} functions")
     
     # Build project structure
     c_files = list(path.rglob("*.c")) + list(path.rglob("*.h"))
     
+    total_lines = 0
+    for f in c_files:
+        try:
+            with open(f, 'r', errors='ignore') as file:
+                total_lines += len(file.readlines())
+        except:
+            pass
+    
     structure = {
         "files": [str(f.relative_to(path)) for f in c_files],
-        "total_lines": sum(len(open(f, 'r', errors='ignore').readlines()) for f in c_files)
+        "total_lines": total_lines
     }
     
     return ProjectAnalysisResponse(
@@ -632,10 +785,37 @@ async def generate_tests_endpoint(request: GenerateTestRequest):
     if not request.project_path:
         raise HTTPException(status_code=400, detail="project_path is required")
     
-    project_path = Path(request.project_path)
+    # Handle the path properly - convert relative to absolute if needed
+    project_path_str = request.project_path
+    
+    # Remove leading/trailing whitespace
+    project_path_str = project_path_str.strip()
+    
+    # If path starts with /app, use it as is, otherwise treat as relative
+    if project_path_str.startswith('/app/'):
+        project_path = Path(project_path_str)
+    elif project_path_str.startswith('./'):
+        project_path = Path(project_path_str)
+    else:
+        # Assume it's relative to current working directory
+        project_path = Path(project_path_str)
+    
+    logger.info(f"Request path: {request.project_path}")
+    logger.info(f"Resolved path: {project_path}")
+    logger.info(f"Absolute path: {project_path.absolute()}")
+    logger.info(f"Path exists: {project_path.exists()}")
     
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail="Project path not found")
+        # Try alternative paths
+        alt_path = config.C_PROJECT_DIR / project_path.name
+        if alt_path.exists():
+            project_path = alt_path
+            logger.info(f"Using alternative path: {project_path}")
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Project path not found: {project_path}. Also tried: {alt_path}"
+            )
     
     try:
         result = await generate_tests_for_project(
@@ -942,6 +1122,9 @@ async def home():
         </div>
 
         <script>
+            let lastAnalyzedPath = '';
+            let analyzedFunctions = [];
+            
             async function analyzeProject() {
                 const path = document.getElementById('analyze-path').value.trim();
                 if (!path) {
@@ -949,32 +1132,50 @@ async def home():
                     return;
                 }
                 
+                lastAnalyzedPath = path;
                 document.getElementById('analyze-loading').classList.add('show');
                 document.getElementById('analyze-result').classList.remove('show');
                 
                 try {
                     const res = await fetch(`/analyze-project?project_path=${encodeURIComponent(path)}`);
-                    if (!res.ok) throw new Error(await res.text());
+                    if (!res.ok) {
+                        const error = await res.json();
+                        throw new Error(error.detail || 'Analysis failed');
+                    }
                     
                     const data = await res.json();
+                    analyzedFunctions = data.functions;
+                    
+                    // IMPORTANT: Auto-fill the generate path with the SAME path used for analysis
+                    document.getElementById('generate-path').value = path;
+                    console.log('Auto-filled generate path:', path);
                     
                     let html = `
-                        <h3>Analysis Complete</h3>
+                        <h3>✅ Analysis Complete</h3>
                         <p><strong>Files:</strong> ${data.total_files}</p>
                         <p><strong>Functions Found:</strong> ${data.total_functions}</p>
-                        <h4>Functions:</h4>
+                        <p><strong>Total Lines:</strong> ${data.project_structure.total_lines}</p>
+                        <h4>Files in project:</h4>
+                        <div style="max-height: 150px; overflow-y: auto; background: white; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+                            ${data.project_structure.files.map(f => `<div>📄 ${f}</div>`).join('')}
+                        </div>
+                        <h4>Functions detected:</h4>
                         <div class="function-list">
                     `;
                     
-                    data.functions.forEach(func => {
-                        const params = func.parameters.map(p => `${p.type} ${p.name}`).join(', ');
-                        html += `
-                            <div class="function-item">
-                                <strong>${func.return_type} ${func.name}(${params})</strong><br>
-                                <small>File: ${func.file_path} | Line: ${func.line_number} | Complexity: ${func.complexity_score}</small>
-                            </div>
-                        `;
-                    });
+                    if (data.functions.length === 0) {
+                        html += '<p style="color: #dc3545;">⚠️ No functions found. Check if files contain valid C function definitions.</p>';
+                    } else {
+                        data.functions.forEach(func => {
+                            const params = func.parameters.map(p => `${p.type} ${p.name}`).join(', ');
+                            html += `
+                                <div class="function-item">
+                                    <strong>${func.return_type} ${func.name}(${params || 'void'})</strong><br>
+                                    <small>📁 ${func.file_path.split('/').pop()} | Line: ${func.line_number} | Complexity: ${func.complexity_score}</small>
+                                </div>
+                            `;
+                        });
+                    }
                     
                     html += '</div>';
                     
@@ -983,6 +1184,7 @@ async def home():
                     
                 } catch (err) {
                     alert('Error: ' + err.message);
+                    console.error(err);
                 } finally {
                     document.getElementById('analyze-loading').classList.remove('show');
                 }
@@ -993,7 +1195,21 @@ async def home():
                 const funcName = document.getElementById('function-name').value.trim();
                 
                 if (!path) {
-                    alert('Please enter a project path');
+                    alert('Please enter a project path (or analyze first)');
+                    return;
+                }
+                
+                // Use the last analyzed path if generate-path is empty
+                const projectPath = path || lastAnalyzedPath;
+                
+                if (!projectPath) {
+                    alert('Please analyze a project first or enter a project path');
+                    return;
+                }
+                
+                console.log('Generating tests for path:', projectPath);
+                
+                if (!confirm(`Generate CppUTest cases for ${funcName || 'ALL functions'}?\n\nProject: ${projectPath}\n\nThis may take several minutes...`)) {
                     return;
                 }
                 
@@ -1005,18 +1221,24 @@ async def home():
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            project_path: path,
+                            project_path: projectPath,
                             function_name: funcName || null,
                             generate_all: !funcName
                         })
                     });
                     
-                    if (!res.ok) throw new Error(await res.text());
+                    console.log('Response status:', res.status);
+                    
+                    if (!res.ok) {
+                        const error = await res.json();
+                        console.error('Error response:', error);
+                        throw new Error(error.detail || 'Generation failed');
+                    }
                     
                     const data = await res.json();
                     
                     let html = `
-                        <h3>✅ Generation Complete</h3>
+                        <h3>✅ Generation Complete!</h3>
                         <p><strong>Functions Analyzed:</strong> ${data.functions_analyzed}</p>
                         <p><strong>Tests Generated:</strong> ${data.tests_generated}</p>
                         <p><strong>Output Directory:</strong> <code>${data.output_directory}</code></p>
@@ -1025,7 +1247,7 @@ async def home():
                     
                     if (data.failed_functions.length > 0) {
                         html += `
-                            <h4>⚠️ Failed Functions:</h4>
+                            <h4>⚠️ Failed Functions (${data.failed_functions.length}):</h4>
                             <ul>
                                 ${data.failed_functions.map(f => `<li>${f}</li>`).join('')}
                             </ul>
@@ -1033,11 +1255,11 @@ async def home():
                     }
                     
                     html += `
-                        <h4>Next Steps:</h4>
+                        <h4>📋 Next Steps:</h4>
                         <ol>
-                            <li>Navigate to: <code>${data.output_directory}</code></li>
-                            <li>Review generated test files</li>
-                            <li>Run: <code>make && make test</code></li>
+                            <li>Review generated tests in: <code>${data.output_directory}</code></li>
+                            <li>Build tests: <code>cd ${data.output_directory} && make</code></li>
+                            <li>Run tests: <code>./run_tests</code></li>
                         </ol>
                     `;
                     
@@ -1046,6 +1268,7 @@ async def home():
                     
                 } catch (err) {
                     alert('Error: ' + err.message);
+                    console.error(err);
                 } finally {
                     document.getElementById('generate-loading').classList.remove('show');
                 }
@@ -1066,6 +1289,18 @@ async def home():
                     
                 } catch (err) {
                     alert('Error: ' + err.message);
+                }
+            }
+            
+            async function listProjects() {
+                try {
+                    const res = await fetch('/debug/list-projects');
+                    const data = await res.json();
+                    
+                    console.log('Available projects:', data);
+                    alert(`Found ${data.projects.length} projects. Check console for details.`);
+                } catch (err) {
+                    console.error(err);
                 }
             }
         </script>
