@@ -44,19 +44,16 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
-    runtime: nvidia
+    # CPU-only configuration (safe for all systems)
+    # GPU settings via environment variables (Ollama auto-detects GPU)
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - OLLAMA_GPU_LAYERS=20
-      - OLLAMA_FLASH_ATTENTION=true
-      - OLLAMA_GPU_OVERHEAD=1000
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
-      interval: 10s
-      timeout: 2s
-      retries: 1
-      start_period: 5s
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - cpputest-network
 

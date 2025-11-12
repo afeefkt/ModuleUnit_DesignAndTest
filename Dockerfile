@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     git \
     make \
     cmake \
+    jq \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 

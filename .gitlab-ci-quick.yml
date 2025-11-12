@@ -55,28 +55,17 @@ test:smoke:
   stage: quick-test
   image: docker:24.0.5
   services:
-    - name: docker:24.0.5-dind
-    - name: your-ollama-image:latest
-      alias: ollama
-  variables:
-    DOCKER_DRIVER: overlay2
+    - docker:24.0.5-dind
   before_script:
     - apk add --no-cache curl jq bash
     - mkdir -p c_projects/test test_examples generated_tests logs
     # Create minimal test file
     - echo 'int add(int a, int b) { return a + b; }' > c_projects/test/test.c
   script:
+    - echo "Starting services (CPU mode)..."
     - docker compose up -d
-    - echo "Waiting for Ollama..."
-    - |
-      for i in {1..30}; do
-        if curl -sf http://ollama:11434/api/health > /dev/null 2>&1; then
-          echo "✓ Ollama ready after ${i}0 seconds"
-          break
-        fi
-        sleep 10
-      done
-    - echo "Waiting for CppUTest Generator..."
+    
+    - echo "Waiting for health check..."
     - |
       for i in {1..20}; do
         if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
@@ -85,10 +74,27 @@ test:smoke:
         fi
         sleep 10
       done
-    - RESULT=$(curl -sf "http://localhost:8000/analyze-project?project_path=/app/c_projects/test")
-    - FUNCS=$(echo "$RESULT" | jq -r '.total_functions')
-    - echo "Found $FUNCS function(s)"
-    - test "$FUNCS" -gt 0
+    
+    - echo "Testing health endpoint..."
+    - curl -f http://localhost:8000/health | jq -r '.status'
+    
+    - echo "Testing analysis..."
+    - |
+      RESULT=$(curl -sf "http://localhost:8000/analyze-project?project_path=/app/c_projects/test")
+      FUNCS=$(echo "$RESULT" | jq -r '.total_functions')
+      echo "Found $FUNCS function(s)"
+      if [ "$FUNCS" -gt 0 ]; then
+        echo "✓ Analysis test passed"
+      else
+        echo "✗ Analysis failed"
+        exit 1
+      fi
+    
+    - echo "✓ All smoke tests passed!"
   after_script:
     - docker compose logs --tail=50 cpputest-generator || true
     - docker compose down -v
+  timeout: 10m
+  only:
+    - merge_requests
+    - main
