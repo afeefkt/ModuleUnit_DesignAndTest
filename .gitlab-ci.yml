@@ -5,6 +5,11 @@ stages:
   - validate
   - test
 
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
 # Build test
 validate:build:
   stage: validate
@@ -47,13 +52,16 @@ test:health:
     - apk add --no-cache curl jq
   script:
     - docker build -t cpputest-test .
-    - docker run -d --name test-service -p 8000:8000 cpputest-test
+    - docker run -d --name test-service --network host cpputest-test
+    - echo "Waiting for service..."
     - sleep 30
-    - curl -f http://localhost:8000/health
+    - echo "Testing health endpoint..."
+    - docker exec test-service curl -f http://localhost:8000/health
     - echo "Service is healthy"
   after_script:
     - docker logs test-service || true
     - docker stop test-service || true
+    - docker rm test-service || true
   only:
     - merge_requests
     - main
@@ -65,23 +73,28 @@ test:api:
   services:
     - docker:24.0.5-dind
   before_script:
-    - apk add --no-cache curl jq
+    - apk add --no-cache curl jq bash
     - mkdir -p c_projects/test
     - echo 'int add(int a, int b) { return a + b; }' > c_projects/test/math.c
+    - echo 'int subtract(int a, int b) { return a - b; }' >> c_projects/test/math.c
   script:
     - docker build -t cpputest-test .
-    - docker run -d --name api-test -p 8000:8000 -v $(pwd)/c_projects:/app/c_projects cpputest-test
+    - docker run -d --name api-test --network host -v $(pwd)/c_projects:/app/c_projects cpputest-test
+    - echo "Waiting for service..."
     - sleep 30
-    - curl -f http://localhost:8000/health
-    - RESULT=$(curl -s "http://localhost:8000/analyze-project?project_path=/app/c_projects/test")
-    - echo "$RESULT"
+    - echo "Testing health endpoint..."
+    - docker exec api-test curl -f http://localhost:8000/health
+    - echo "Testing analyze-project endpoint..."
+    - RESULT=$(docker exec api-test curl -s "http://localhost:8000/analyze-project?project_path=/app/c_projects/test")
+    - echo "API Response - $RESULT"
     - FUNCS=$(echo "$RESULT" | jq -r '.total_functions // 0')
     - echo "Found $FUNCS functions"
-    - test "$FUNCS" -gt 0
+    - test "$FUNCS" -ge 1
     - echo "API test passed"
   after_script:
     - docker logs api-test || true
     - docker stop api-test || true
+    - docker rm api-test || true
   only:
     - merge_requests
     - main
