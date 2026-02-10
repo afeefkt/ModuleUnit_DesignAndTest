@@ -16,6 +16,7 @@ Automatic CppUTest case generation for C projects using CodeLlama and RAG (Retri
 - 📤 **Project Upload** - Upload C projects as ZIP files via web UI
 - 📊 **Generation History** - SQLite database tracks all test generations
 - 🎨 **Modern UI** - Clean HTML + Tailwind CSS interface
+- 📈 **Coverage Reports** - LCOV, HTML coverage, JUnit XML, branch coverage ✨ **NEW!**
 
 ## Architecture v2.0
 
@@ -154,6 +155,44 @@ docker exec ollama ollama pull all-minilm:latest
 curl http://localhost:8000/health
 ```
 
+## Management Scripts
+
+Two scripts handle all operations:
+
+### `setup.sh` - One-Time Setup
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+Auto-detects GPU, pulls models, creates example project, starts services.
+
+### `manage.sh` - Daily Operations
+```bash
+chmod +x manage.sh
+
+./manage.sh start       # Start all services
+./manage.sh stop        # Stop all services
+./manage.sh restart     # Restart everything
+./manage.sh status      # Check service health
+./manage.sh test        # Test API endpoints
+./manage.sh logs        # View all logs
+./manage.sh logs backend  # View specific service
+./manage.sh cleanup     # Clean old test files
+./manage.sh help        # Show all commands
+```
+
+**Typical workflow:**
+```bash
+# First time
+./setup.sh
+
+# Daily use
+./manage.sh start      # Morning
+./manage.sh status     # Check health
+./manage.sh logs       # Debug issues
+./manage.sh stop       # Evening
+```
+
 ## Usage
 
 ### Via Web Interface (Easiest)
@@ -264,21 +303,44 @@ c_projects/my_project/
 
 ## Building and Running Generated Tests
 
+### Via Web Interface (Recommended ✨ NEW!)
+
+After generating tests:
+
+1. **Build & Run Tests** - Click the "Build & Run Tests" button
+2. **View Reports** - After completion, you'll see **5 buttons**:
+   - **📄 View Report** - Test results HTML
+   - **📊 View Coverage** - HTML coverage report with color-coded lines ✨
+   - **📥 LCOV** - Download `coverage.info` for CI/CD ✨
+   - **📥 JUnit XML** - Download `test-results.xml` for CI/CD ✨
+   - **📥 Test Report** - Download test results HTML
+
+**Coverage Metrics** automatically generated:
+- **Line Coverage** - % of code lines executed
+- **Function Coverage** - % of functions called
+- **Branch Coverage** - % of decision paths tested
+
+See **[COVERAGE_DOCUMENTATION.md](COVERAGE_DOCUMENTATION.md)** for complete guide.
+
+### Manual Build (Alternative)
+
 ```bash
 # Navigate to generated tests directory
 cd generated_tests/tests_20260208_153000/
 
-# Install CppUTest (if not already installed)
-# Ubuntu/Debian:
-sudo apt-get install cpputest
+# Build and run with coverage
+make coverage
 
-# macOS:
-brew install cpputest
+# View coverage reports
+# - coverage_html/index.html (HTML report)
+# - coverage.info (LCOV data)
+# - test-results.xml (JUnit XML)
 
-# Build tests
+# Just run tests without coverage
+make test
+
+# Or traditional build
 make
-
-# Run tests
 ./run_tests
 ```
 
@@ -386,6 +448,14 @@ The project includes a GitLab CI pipeline (`.gitlab-ci.yml`) with:
 
 All tests run in ~5 minutes without requiring Ollama models.
 
+**Coverage Integration:**
+Generated tests include coverage reports in standard formats:
+- **LCOV** (`coverage.info`) - Upload to Codecov, Coveralls, SonarQube
+- **JUnit XML** (`test-results.xml`) - Integrate with Jenkins, GitLab CI, GitHub Actions
+- **HTML Reports** - Publish as build artifacts
+
+See **[COVERAGE_DOCUMENTATION.md](COVERAGE_DOCUMENTATION.md)** for CI/CD integration examples.
+
 ## Development
 
 ### Running Locally Without Docker
@@ -436,8 +506,19 @@ Contributions welcome! Areas for improvement:
 - **CppUTest** — C/C++ unit testing framework
 - **Tailwind CSS** — UI styling
 
+## Documentation
+
+- **[README.md](README.md)** (this file) - Main project documentation
+- **[COVERAGE_DOCUMENTATION.md](COVERAGE_DOCUMENTATION.md)** - Comprehensive coverage reporting guide (37KB)
+  - Coverage report formats (LCOV, HTML, JUnit XML)
+  - CI/CD integration examples (GitLab, GitHub Actions, Jenkins, SonarQube)
+  - Troubleshooting and best practices
+  - Technical reference
+- **[GITLAB_CI.md](GITLAB_CI.md)** - GitLab CI/CD pipeline setup
+
 ## Version History
 
+- **v2.1** (2026-02-10) — **Coverage reports**: LCOV, HTML, JUnit XML, branch coverage, CI/CD ready
 - **v2.0** (2026-02) — Full-stack restructure: separate frontend, backend API, SQLite database, project upload, generation history
 - **v1.0** (2025-11) — Initial release: monolithic FastAPI app with embedded HTML, basic RAG
 

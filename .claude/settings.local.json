@@ -18,7 +18,9 @@
       "Bash(docker-compose down:*)",
       "Bash(./manage.sh:*)",
       "Bash(start sample-test-report.html)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(for:*)",
+      "Bash(du:*)"
     ]
   }
 }
