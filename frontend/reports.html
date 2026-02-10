@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Reports - CppUTest Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-gray-100">
+    <!-- Project Context Banner -->
+    <div id="project-banner" class="hidden"></div>
+
+    <!-- Navigation -->
+    <nav class="bg-gray-50 shadow-md border-b-2 border-gray-300">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-6">
+                    <h1 class="text-2xl font-bold text-gray-900">🧪 CppUTest Generator</h1>
+                    <div class="flex gap-4">
+                        <a href="index.html" class="text-gray-700 hover:text-gray-900 transition">Dashboard</a>
+                        <a href="analyze.html" class="text-gray-700 hover:text-gray-900 transition">Analyze</a>
+                        <a href="generate.html" class="text-gray-700 hover:text-gray-900 transition">Generate</a>
+                        <a href="reports.html" class="text-gray-900 font-bold border-b-2 border-gray-900">Reports</a>
+                        <a href="history.html" class="text-gray-700 hover:text-gray-900 transition">History</a>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="status-indicator" class="flex items-center gap-2">
+                        <div class="w-3 h-3 bg-gray-500 rounded-full"></div>
+                        <span class="text-sm text-gray-700">Checking...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mx-auto px-6 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6 border border-gray-300">
+            <h2 class="text-3xl font-bold text-gray-900 mb-2">📊 Test Reports</h2>
+            <p class="text-gray-700">View and download HTML test reports generated from test runs</p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="bg-white rounded-lg shadow-md p-12 text-center border border-gray-200">
+            <div class="spinner mx-auto mb-4"></div>
+            <p class="text-gray-600">Loading reports...</p>
+        </div>
+
+        <!-- Reports List -->
+        <div id="reports-container" class="hidden space-y-4">
+            <!-- Reports will be inserted here -->
+        </div>
+
+        <!-- No Reports -->
+        <div id="no-reports" class="hidden bg-white rounded-lg shadow-md p-12 text-center border border-gray-200">
+            <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <h3 class="text-xl font-bold text-gray-700 mb-2">No Reports Available</h3>
+            <p class="text-gray-600 mb-4">Reports are automatically generated when you run tests</p>
+            <a href="generate.html" class="inline-block px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition">
+                Generate Tests
+            </a>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/shared.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/reports.js"></script>
+</body>
+</html>

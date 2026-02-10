@@ -236,16 +236,16 @@ int main(int argc, char** argv)
 
 
 def create_makefile(output_dir: Path):
-    """Create Makefile for building generated tests"""
-    makefile_content = """# Auto-generated Makefile for CppUTest
+    """Create Makefile for building generated tests with coverage support"""
+    makefile_content = """# Auto-generated Makefile for CppUTest with Coverage
 
 CPPUTEST_HOME = /usr/local
 
-# Compiler flags
-CXXFLAGS += -Wall -Wextra -g -std=c++11
+# Compiler flags with coverage enabled
+CXXFLAGS += -Wall -Wextra -g -std=c++11 --coverage -fprofile-arcs -ftest-coverage
 CXXFLAGS += -I$(CPPUTEST_HOME)/include
-CFLAGS += -Wall -Wextra -g -std=c99
-LDFLAGS += -L$(CPPUTEST_HOME)/lib -lCppUTest -lCppUTestExt
+CFLAGS += -Wall -Wextra -g -std=c99 --coverage -fprofile-arcs -ftest-coverage
+LDFLAGS += -L$(CPPUTEST_HOME)/lib -lCppUTest -lCppUTestExt --coverage
 
 # Source files
 TEST_SRC = $(wildcard Test_*.cpp) AllTests.cpp
@@ -254,6 +254,11 @@ TEST_OBJS = $(TEST_SRC:.cpp=.o)
 C_OBJS = $(C_SRC:.c=.o)
 ALL_OBJS = $(TEST_OBJS) $(C_OBJS)
 TEST_TARGET = run_tests
+
+# Coverage files
+GCOV_FILES = $(wildcard *.gcda *.gcno *.gcov)
+COVERAGE_INFO = coverage.info
+COVERAGE_HTML_DIR = coverage_html
 
 all: $(TEST_TARGET)
 
@@ -266,17 +271,39 @@ $(TEST_TARGET): $(ALL_OBJS)
 %.o: %.c
 \t$(CC) $(CFLAGS) -c $< -o $@
 
-clean:
-\trm -f $(ALL_OBJS) $(TEST_TARGET)
-
+# Run tests with JUnit XML output (- prefix allows failures, still generates coverage)
 test: $(TEST_TARGET)
-\t./$(TEST_TARGET)
+\t-./$(TEST_TARGET) -ojunit -k cpputest
+\t@echo "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?><testsuites>" > test-results.xml
+\t@for f in cpputest_cpputest_*.xml; do \\
+\t\tif [ -f "$$f" ]; then \\
+\t\t\tsed -n '/<testsuite/,/<\\/testsuite>/p' "$$f" >> test-results.xml; \\
+\t\tfi; \\
+\tdone
+\t@echo "</testsuites>" >> test-results.xml
+\t@echo "JUnit XML files merged into test-results.xml"
 
-.PHONY: all clean test
+# Generate coverage reports
+coverage: test
+\t@echo "Generating coverage reports..."
+\t-lcov --capture --directory . --output-file $(COVERAGE_INFO) --rc lcov_branch_coverage=1 2>&1 | grep -v "ignoring data for external file" || true
+\t-lcov --remove $(COVERAGE_INFO) '/usr/*' '*/CppUTest/*' --output-file $(COVERAGE_INFO) --rc lcov_branch_coverage=1 2>&1 | grep -v "ignoring data for external file" || true
+\t-genhtml $(COVERAGE_INFO) --output-directory $(COVERAGE_HTML_DIR) --branch-coverage --legend --title "CppUTest Coverage Report" 2>&1 | tail -5 || true
+\t@if [ -f $(COVERAGE_INFO) ]; then echo "Coverage reports generated successfully"; fi
+\t@echo "HTML coverage: $(COVERAGE_HTML_DIR)/index.html"
+\t@echo "LCOV file: $(COVERAGE_INFO)"
+
+# Clean all build artifacts including coverage files
+clean:
+\trm -f $(ALL_OBJS) $(TEST_TARGET) $(GCOV_FILES) $(COVERAGE_INFO)
+\trm -rf $(COVERAGE_HTML_DIR)
+\trm -f test-results.xml
+
+.PHONY: all clean test coverage
 """
 
     makefile_path = output_dir / "Makefile"
     with open(makefile_path, 'w') as f:
         f.write(makefile_content)
 
-    logger.info(f"Created Makefile: {makefile_path}")
+    logger.info(f"Created Makefile with coverage support: {makefile_path}")

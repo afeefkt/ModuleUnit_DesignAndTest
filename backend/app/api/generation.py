@@ -10,8 +10,10 @@ import logging
 from app.models import GenerateTestRequest, TestGenerationResponse, GenerationHistoryResponse
 from app.services.test_generator import generate_tests_for_project
 from app.services import rag_engine
+from app.services.report_generator import generate_html_report
 from app.config import config
 from app.database import get_db
+from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -126,4 +128,35 @@ async def rebuild_examples_index_endpoint():
             "examples_indexed": len(rag_engine.test_examples_metadata.get("texts", []))
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-test-report", response_class=HTMLResponse)
+async def generate_test_report_endpoint(request: dict):
+    """
+    Generate an HTML report from test execution results
+
+    Request body should contain:
+    - test_result: Dict with test execution results
+    - test_directory: Name of the test directory
+    - project_path: Optional source project path
+    """
+    try:
+        test_result = request.get("test_result")
+        test_directory = request.get("test_directory", "unknown")
+        project_path = request.get("project_path")
+
+        if not test_result:
+            raise HTTPException(status_code=400, detail="test_result is required")
+
+        html_content = generate_html_report(
+            test_result=test_result,
+            test_directory=test_directory,
+            project_path=project_path
+        )
+
+        return HTMLResponse(content=html_content, media_type="text/html")
+
+    except Exception as e:
+        logger.error(f"Error generating test report: {e}")
         raise HTTPException(status_code=500, detail=str(e))

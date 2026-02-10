@@ -2,8 +2,8 @@
 
 /* Spinner animation */
 .spinner {
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #7c3aed;
+    border: 3px solid #e5e7eb;
+    border-top: 3px solid #6b7280;
     border-radius: 50%;
     width: 36px;
     height: 36px;
@@ -48,9 +48,9 @@ code {
     animation: slideUp 0.3s ease-out;
 }
 
-.toast.success { background: #059669; }
-.toast.error { background: #dc2626; }
-.toast.info { background: #2563eb; }
+.toast.success { background: #6b7d5c; }
+.toast.error { background: #8b5a5a; }
+.toast.info { background: #6b7280; }
 
 @keyframes slideUp {
     from { opacity: 0; transform: translateY(12px); }
@@ -59,7 +59,7 @@ code {
 
 /* Active nav link */
 nav a.active {
-    background: #7c3aed;
+    background: #6b7280;
     color: white;
 }
 
@@ -91,12 +91,12 @@ nav a.active {
 }
 
 .step.active .step-number {
-    background: #7c3aed;
+    background: #6b7280;
     color: white;
 }
 
 .step.complete .step-number {
-    background: #059669;
+    background: #6b7d5c;
     color: white;
 }
 
@@ -106,8 +106,8 @@ nav a.active {
 
 /* Project banner */
 #project-banner {
-    background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
-    border-left: 4px solid #3b82f6;
+    background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+    border-left: 4px solid #6b7280;
 }
 
 /* Card hover effect */

@@ -121,6 +121,52 @@ const api = {
         const res = await fetch(`${API_BASE}/test-directories`);
         if (!res.ok) throw new Error('Failed to list test directories');
         return res.json();
+    },
+
+    /** List all available test reports */
+    async listReports() {
+        const res = await fetch(`${API_BASE}/list-reports`);
+        if (!res.ok) throw new Error('Failed to load reports');
+        return res.json();
+    },
+
+    /** Generate HTML test report and download it */
+    async downloadTestReport(testResult, testDirectory, projectPath = null) {
+        const res = await fetch(`${API_BASE}/generate-test-report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                test_result: testResult,
+                test_directory: testDirectory,
+                project_path: projectPath
+            })
+        });
+        if (!res.ok) {
+            let errorMsg = 'Failed to generate report';
+            try {
+                const err = await res.json();
+                errorMsg = err.detail || errorMsg;
+            } catch {
+                errorMsg = `${errorMsg} (HTTP ${res.status})`;
+            }
+            throw new Error(errorMsg);
+        }
+
+        // Get HTML content
+        const htmlContent = await res.text();
+
+        // Create a blob and download
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cpputest-report-${testDirectory}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        return { success: true };
     }
 };
 

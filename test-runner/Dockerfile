@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-# Install build tools and CppUTest
+# Install build tools, coverage tools, and CppUTest dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     g++ \
@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y \
     cmake \
     git \
     curl \
+    lcov \
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install CppUTest from source (latest version)

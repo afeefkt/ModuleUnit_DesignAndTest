@@ -3,6 +3,8 @@
  */
 
 let currentOutputDir = null;
+let lastTestResult = null;  // Store last test result for report generation
+let lastTestDirectory = null;  // Store test directory name
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Load projects into dropdown
@@ -140,8 +142,13 @@ async function runGeneratedTests() {
 
         const data = await api.runTests(dirName);
 
+        // Store test result for report generation
+        lastTestResult = data;
+        lastTestDirectory = dirName;
+
         // Clear progress messages and show actual output
         const testSection = document.getElementById('test-output-section');
+        const reportButtons = document.getElementById('report-buttons');
 
         if (data.status === 'build_failed') {
             titleEl.innerHTML = `
@@ -158,6 +165,7 @@ async function runGeneratedTests() {
             buildOut.textContent += (data.build_error || 'No error details');
 
             testSection.classList.add('hidden');
+            reportButtons.classList.remove('hidden');  // Show download button even for build failures
             showToast('Build failed - check output for details', 'error');
         } else {
             buildOut.textContent = '=== BUILD OUTPUT ===\n\n';
@@ -176,10 +184,10 @@ async function runGeneratedTests() {
                     <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    ✅ All Tests Passed!
+                    ✅ All Tests Passed! Report saved to: ${dirName}/test-report.html
                 `;
                 titleEl.className = 'text-lg font-bold mb-4 flex items-center gap-2 text-green-700';
-                showToast('All tests passed!', 'success');
+                showToast('All tests passed! HTML report generated.', 'success');
             } else {
                 titleEl.innerHTML = `
                     <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,6 +199,30 @@ async function runGeneratedTests() {
                 showToast(`Tests completed with failures (exit code: ${data.exit_code || 'N/A'})`, 'error');
             }
             testSection.classList.remove('hidden');
+            reportButtons.classList.remove('hidden');  // Show download button
+        }
+
+        // Show/hide coverage buttons based on availability
+        const viewCoverageBtn = document.getElementById('view-coverage-btn');
+        const downloadLcovBtn = document.getElementById('download-lcov-btn');
+        const downloadJunitBtn = document.getElementById('download-junit-btn');
+
+        if (data.html_coverage_available) {
+            viewCoverageBtn.classList.remove('hidden');
+        } else {
+            viewCoverageBtn.classList.add('hidden');
+        }
+
+        if (data.coverage_available) {
+            downloadLcovBtn.classList.remove('hidden');
+        } else {
+            downloadLcovBtn.classList.add('hidden');
+        }
+
+        if (data.junit_xml_available) {
+            downloadJunitBtn.classList.remove('hidden');
+        } else {
+            downloadJunitBtn.classList.add('hidden');
         }
 
         // Scroll to results
@@ -267,3 +299,118 @@ async function runGeneratedTests() {
         runningEl.classList.add('hidden');
     }
 }
+
+// Handle report buttons (view and download)
+document.addEventListener('DOMContentLoaded', () => {
+    const viewBtn = document.getElementById('view-report-btn');
+    const downloadBtn = document.getElementById('download-report-btn');
+    const viewCoverageBtn = document.getElementById('view-coverage-btn');
+    const downloadLcovBtn = document.getElementById('download-lcov-btn');
+    const downloadJunitBtn = document.getElementById('download-junit-btn');
+
+    // View report button
+    viewBtn.addEventListener('click', async () => {
+        if (!lastTestDirectory) {
+            showToast('No test report available', 'error');
+            return;
+        }
+
+        // Open report in new tab
+        const url = `/api/test-report/${encodeURIComponent(lastTestDirectory)}`;
+        window.open(url, '_blank');
+        showToast('Opening report in new tab...', 'success');
+    });
+
+    // View coverage button
+    viewCoverageBtn.addEventListener('click', async () => {
+        if (!lastTestDirectory) {
+            showToast('No coverage report available', 'error');
+            return;
+        }
+
+        // Open coverage report in new tab
+        const url = `/api/coverage-html/${encodeURIComponent(lastTestDirectory)}/index.html`;
+        window.open(url, '_blank');
+        showToast('Opening coverage report in new tab...', 'success');
+    });
+
+    // Download LCOV button
+    downloadLcovBtn.addEventListener('click', async () => {
+        if (!lastTestDirectory) {
+            showToast('No LCOV file available', 'error');
+            return;
+        }
+
+        try {
+            const url = `/api/coverage-lcov/${encodeURIComponent(lastTestDirectory)}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `coverage-${lastTestDirectory}.info`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast('LCOV file downloaded!', 'success');
+        } catch (err) {
+            console.error('Download error:', err);
+            showToast('Failed to download LCOV file', 'error');
+        }
+    });
+
+    // Download JUnit XML button
+    downloadJunitBtn.addEventListener('click', async () => {
+        if (!lastTestDirectory) {
+            showToast('No JUnit XML available', 'error');
+            return;
+        }
+
+        try {
+            const url = `/api/junit-xml/${encodeURIComponent(lastTestDirectory)}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `junit-${lastTestDirectory}.xml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast('JUnit XML downloaded!', 'success');
+        } catch (err) {
+            console.error('Download error:', err);
+            showToast('Failed to download JUnit XML', 'error');
+        }
+    });
+
+    // Download report button
+    downloadBtn.addEventListener('click', async () => {
+        if (!lastTestDirectory) {
+            showToast('No test report available', 'error');
+            return;
+        }
+
+        try {
+            // Fetch the report HTML
+            const url = `/api/test-report/${encodeURIComponent(lastTestDirectory)}`;
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch report');
+            }
+
+            const htmlContent = await response.text();
+
+            // Create blob and download
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `cpputest-report-${lastTestDirectory}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+
+            showToast('Report downloaded successfully!', 'success');
+        } catch (err) {
+            console.error('Download report error:', err);
+            showToast('Failed to download report: ' + (err.message || 'Unknown error'), 'error');
+        }
+    });
+});

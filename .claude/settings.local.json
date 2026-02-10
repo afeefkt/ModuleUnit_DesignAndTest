@@ -15,7 +15,10 @@
       "Bash(docker exec:*)",
       "Bash(jq:*)",
       "Bash(nvidia-smi:*)",
-      "Bash(docker-compose down:*)"
+      "Bash(docker-compose down:*)",
+      "Bash(./manage.sh:*)",
+      "Bash(start sample-test-report.html)",
+      "Bash(docker ps:*)"
     ]
   }
 }
