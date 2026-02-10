@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker build:*)",
+      "Bash(python:*)",
+      "Bash(for f in js/*.js)",
+      "Bash(do echo \"Checking $f...\")",
+      "Bash(node --check:*)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(docker-compose ps:*)",
+      "Bash(curl:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker exec:*)",
+      "Bash(jq:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(./manage.sh:*)",
+      "Bash(start sample-test-report.html)",
+      "Bash(docker ps:*)"
+    ]
+  }
+}

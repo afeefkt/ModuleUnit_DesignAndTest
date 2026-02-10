@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CppUTest Generator - Analyze Project</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+
+        <!-- Header -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6 border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">CppUTest Generator</h1>
+                    <p class="text-gray-600 mt-1">AI-powered unit test generation with RAG</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="index.html" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">
+                        🏠 Home
+                    </a>
+                    <a href="reports.html" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">
+                        📊 Reports
+                    </a>
+                    <a href="history.html" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">
+                        📜 History
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Project Banner -->
+        <div id="project-banner" class="bg-gray-200 rounded-xl p-4 mb-6 hidden border border-gray-300"></div>
+
+        <!-- Workflow Steps -->
+        <div class="bg-white rounded-xl shadow-xl p-6 mb-6">
+            <div class="step-indicator">
+                <div class="step active">
+                    <div class="step-number">1</div>
+                    <span class="font-semibold text-gray-700">Analyze Project</span>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <span class="text-gray-500">Generate Tests</span>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <span class="text-gray-500">Run & Verify</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Project Selection -->
+        <div class="bg-gray-50 rounded-xl shadow-md p-6 mb-6 card-hover border border-gray-300">
+            <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                </svg>
+                Select Project to Analyze
+            </h2>
+
+            <div class="space-y-4">
+                <!-- Project Selector Dropdown -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-800 mb-2">Choose from existing projects</label>
+                    <select id="project-selector"
+                            class="w-full border border-gray-400 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none bg-white">
+                        <option value="">Loading projects...</option>
+                    </select>
+                </div>
+
+                <!-- Manual Path Input (hidden by default) -->
+                <div id="manual-path-section" class="hidden">
+                    <label class="block text-sm font-medium text-gray-800 mb-2">Or enter path manually</label>
+                    <input type="text" id="project-path-manual"
+                           placeholder="/app/c_projects/your_project"
+                           class="w-full border border-gray-400 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none bg-white">
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-3">
+                    <button onclick="analyzeProject()" id="analyze-btn"
+                            class="flex-1 bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-900 font-medium transition shadow-md">
+                        🔍 Analyze Project
+                    </button>
+                    <button onclick="showManualInput()" id="manual-btn"
+                            class="px-4 py-3 bg-gray-300 hover:bg-gray-400 rounded-lg text-sm font-medium transition text-gray-800">
+                        ✏️ Manual Path
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="bg-white rounded-xl shadow-xl p-8 mb-6 text-center hidden">
+            <div class="spinner mb-3"></div>
+            <p class="text-gray-700 font-medium">Analyzing project...</p>
+            <p class="text-gray-400 text-sm mt-1">Parsing C files and extracting functions</p>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden space-y-6">
+
+            <!-- Summary Stats -->
+            <div class="bg-white rounded-xl shadow-md p-6 fade-in border border-gray-300">
+                <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    Analysis Summary
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-gray-200 rounded-lg p-4 text-center stat-card border-2 border-gray-400">
+                        <div id="stat-files" class="text-3xl font-bold text-gray-900 mb-1">0</div>
+                        <div class="text-sm text-gray-700 font-medium">C/H Files</div>
+                    </div>
+                    <div class="bg-gray-300 rounded-lg p-4 text-center stat-card border-2 border-gray-500">
+                        <div id="stat-functions" class="text-3xl font-bold text-gray-900 mb-1">0</div>
+                        <div class="text-sm text-gray-700 font-medium">Functions Found</div>
+                    </div>
+                    <div class="bg-gray-400 rounded-lg p-4 text-center stat-card border-2 border-gray-600">
+                        <div id="stat-lines" class="text-3xl font-bold text-gray-900 mb-1">0</div>
+                        <div class="text-sm text-gray-700 font-medium">Total Lines</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File List -->
+            <div class="bg-white rounded-xl shadow-xl p-6 fade-in">
+                <h3 class="text-md font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    Project Files
+                </h3>
+                <div id="file-list" class="max-h-40 overflow-y-auto bg-gray-50 rounded-lg p-3 text-sm font-mono"></div>
+            </div>
+
+            <!-- Function List -->
+            <div class="bg-white rounded-xl shadow-md p-6 fade-in border border-gray-300">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-md font-bold text-gray-900 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                        </svg>
+                        Detected Functions
+                    </h3>
+                    <a href="generate.html" data-nav-generate id="generate-link"
+                       class="bg-gray-700 text-white px-6 py-2 rounded-lg hover:bg-gray-800 text-sm font-medium transition shadow-md flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Generate Tests →
+                    </a>
+                </div>
+                <div id="function-list" class="space-y-2 max-h-96 overflow-y-auto"></div>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6 hidden">
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                    <h3 class="text-red-700 font-bold mb-1">Analysis Failed</h3>
+                    <p id="error-msg" class="text-red-600 text-sm"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/shared.js"></script>
+    <script src="/js/analyze.js"></script>
+</body>
+</html>
