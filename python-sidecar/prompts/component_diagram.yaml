@@ -1,0 +1,123 @@
+# Prompt Template: Component/Package Diagram Generation
+# Version: 1.0
+# Generates AUTOSAR SWC composition and port connectivity diagrams
+
+name: "AUTOSAR Component Diagram Generator"
+version: "1.0"
+diagram_type: "component"
+
+metadata:
+  author: "MUD Tool Team"
+  domain: "AUTOSAR"
+  description: "Generates component diagrams showing SWC composition and port connectivity"
+
+system_prompt: |
+  You are an expert AUTOSAR software architect. Generate UML component diagrams
+  showing the high-level architecture of AUTOSAR Software Components.
+
+  AUTOSAR COMPONENT CONTEXT:
+  - Components represent Application SWCs in the AUTOSAR architecture
+  - Ports define the communication interface:
+    * P-Port (Provided, PP_): Sends data or offers service
+    * R-Port (Required, RP_): Receives data or consumes service
+  - Connectors link P-Ports to R-Ports via shared interfaces:
+    * Sender-Receiver Interface (IF_SR_*): Async data exchange
+    * Client-Server Interface (IF_CS_*): Sync operation calls
+  - Stereotypes: <<ApplicationSWC>>, <<SensorActuatorSWC>>, <<ServiceSWC>>, <<CompositionSWC>>
+
+  NAMING CONVENTIONS:
+  - Component names: {{ swc_naming_regex }}
+  - Port names: {{ port_naming_regex }}
+  - Interface names: IF_SR_Name or IF_CS_Name
+
+  OUTPUT RULES:
+  1. Every component must have at least one port
+  2. P-Ports and R-Ports must use matching interface references
+  3. Connectors must link a P-Port to an R-Port (not P-to-P or R-to-R)
+  4. Every component must trace to requirements
+  5. Use correct stereotypes based on component role
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+user_prompt: |
+  Generate an AUTOSAR component diagram from these requirements:
+
+  REQUIREMENTS:
+  {{ requirements }}
+
+  {% if existing_swcs %}
+  EXISTING SWCs: {{ existing_swcs | join(', ') }}
+  {% endif %}
+
+  Generate a JSON component diagram showing SWCs, ports, and connectors.
+  Output only valid JSON.
+
+output_schema: |
+  {
+    "diagram_type": "component",
+    "name": "string",
+    "source_requirements": ["REQ-ID"],
+    "components": [
+      {
+        "id": "comp_1", "name": "SWC_Name", "stereotype": "ApplicationSWC",
+        "ports": [
+          {"id": "p_1", "name": "PP_DataOut", "direction": "provided",
+           "interface_ref": "IF_SR_SensorData", "interface_type": "sender_receiver"}
+        ],
+        "trace_reqs": ["REQ-ID"], "confidence": 0.9
+      }
+    ],
+    "connectors": [
+      {"id": "c_1", "source_component": "comp_1", "source_port": "p_1",
+       "target_component": "comp_2", "target_port": "p_2",
+       "interface_ref": "IF_SR_SensorData"}
+    ],
+    "provenance": {"ai_model": "model", "prompt_version": "cmp-v1.0", "confidence": 0.88}
+  }
+
+few_shot_examples:
+  - input: |
+      [REQ-ARCH-0100] (interface) Sensor Data Flow
+        Description: SWC_SensorFusion shall provide fused sensor data to
+        SWC_VehicleControl and SWC_SafetyMonitor via SR interface.
+      [REQ-ARCH-0101] (interface) Safety Monitor Input
+        Description: SWC_SafetyMonitor shall receive fused sensor data and
+        provide safety status to SWC_VehicleControl via CS interface.
+    output: |
+      {
+        "diagram_type": "component",
+        "name": "SensorDataFlow_Architecture",
+        "source_requirements": ["REQ-ARCH-0100", "REQ-ARCH-0101"],
+        "components": [
+          {
+            "id": "comp_1", "name": "SWC_SensorFusion", "stereotype": "ApplicationSWC",
+            "ports": [
+              {"id": "p_1", "name": "PP_FusedData", "direction": "provided", "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver"}
+            ],
+            "trace_reqs": ["REQ-ARCH-0100"], "confidence": 0.93
+          },
+          {
+            "id": "comp_2", "name": "SWC_VehicleControl", "stereotype": "ApplicationSWC",
+            "ports": [
+              {"id": "p_2", "name": "RP_FusedData", "direction": "required", "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver"},
+              {"id": "p_3", "name": "RP_SafetyStatus", "direction": "required", "interface_ref": "IF_CS_SafetyCheck", "interface_type": "client_server"}
+            ],
+            "trace_reqs": ["REQ-ARCH-0100", "REQ-ARCH-0101"], "confidence": 0.90
+          },
+          {
+            "id": "comp_3", "name": "SWC_SafetyMonitor", "stereotype": "ApplicationSWC",
+            "ports": [
+              {"id": "p_4", "name": "RP_FusedData", "direction": "required", "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver"},
+              {"id": "p_5", "name": "PP_SafetyStatus", "direction": "provided", "interface_ref": "IF_CS_SafetyCheck", "interface_type": "client_server"}
+            ],
+            "trace_reqs": ["REQ-ARCH-0101"], "confidence": 0.88
+          }
+        ],
+        "connectors": [
+          {"id": "c_1", "source_component": "comp_1", "source_port": "p_1", "target_component": "comp_2", "target_port": "p_2", "interface_ref": "IF_SR_FusedSensor"},
+          {"id": "c_2", "source_component": "comp_1", "source_port": "p_1", "target_component": "comp_3", "target_port": "p_4", "interface_ref": "IF_SR_FusedSensor"},
+          {"id": "c_3", "source_component": "comp_3", "source_port": "p_5", "target_component": "comp_2", "target_port": "p_3", "interface_ref": "IF_CS_SafetyCheck"}
+        ],
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "cmp-v1.0", "confidence": 0.90}
+      }

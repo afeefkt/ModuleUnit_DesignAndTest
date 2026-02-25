@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MUD Tool — AUTOSAR Module & Unit Design</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    /* Dark header, clean body */
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f8fafc;
+    }
+
+    .sidebar {
+      min-width: 260px;
+      max-width: 260px;
+    }
+
+    .mermaid svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .tab-btn.active {
+      border-bottom: 2px solid #3b82f6;
+      color: #3b82f6;
+      font-weight: 600;
+    }
+
+    .req-item:hover {
+      background: #eff6ff;
+    }
+
+    .req-item.selected {
+      background: #dbeafe;
+      border-left: 3px solid #3b82f6;
+    }
+
+    pre.mmd-source {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .spinner {
+      display: none;
+    }
+
+    .spinner.active {
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .spin {
+      animation: spin 1s linear infinite;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 999px;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    }
+
+    select,
+    input[type=file] {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    select:focus,
+    input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px #bfdbfe;
+    }
+
+    button.primary {
+      background: #3b82f6;
+      color: white;
+      border-radius: 7px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button.primary:hover {
+      background: #2563eb;
+    }
+
+    button.primary:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: white;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button.secondary:hover {
+      background: #f9fafb;
+    }
+
+    .status-bar {
+      font-size: 12px;
+    }
+
+    .coverage-bar {
+      height: 8px;
+      border-radius: 4px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }
+
+    .coverage-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: #22c55e;
+      transition: width 0.5s;
+    }
+
+    .issue-error {
+      border-left: 3px solid #ef4444;
+      background: #fef2f2;
+    }
+
+    .issue-warning {
+      border-left: 3px solid #f59e0b;
+      background: #fffbeb;
+    }
+
+    .issue-info {
+      border-left: 3px solid #3b82f6;
+      background: #eff6ff;
+    }
+
+    /* ── Pipeline stage progress badges ────────────────── */
+    .pipeline-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: .03em;
+      white-space: nowrap;
+    }
+
+    .stage-draft {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .stage-critique {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .stage-refine {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    #pipelineProgress {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-top: 4px;
+      min-height: 0;
+    }
+
+    /* ── Diagram grid ──────────────────────────────────── */
+    .diagram-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 22px;
+      padding: 20px;
+      align-items: start;
+    }
+
+    .diagram-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .07);
+      overflow: hidden;
+      transition: box-shadow .15s;
+    }
+
+    .diagram-card:hover {
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+    }
+
+    .diagram-card.focused {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px #bfdbfe;
+    }
+
+    .diagram-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .diagram-card-body {
+      padding: 16px;
+      overflow-x: auto;
+    }
+
+    .diagram-card-body .mermaid svg {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .type-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: .04em;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .type-seq {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .type-sm {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .type-class {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .type-comp {
+      background: #f3e8ff;
+      color: #6b21a8;
+    }
+
+    .type-activity {
+      background: #fce7f3;
+      color: #9d174d;
+    }
+
+    .diagram-card-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e293b;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-src-btn {
+      font-size: 11px;
+      color: #6b7280;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .card-src-btn:hover {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .mmd-render-error {
+      color: #ef4444;
+      font-size: 12px;
+      padding: 12px;
+      background: #fef2f2;
+      border-radius: 8px;
+    }
+
+    /* Summary bar pills */
+    #diagramTabs.summary-bar {
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 6px 12px;
+      align-items: center;
+    }
+
+    /* Settings Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .45);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.hidden {
+      display: none;
+    }
+
+    .modal-box {
+      background: white;
+      border-radius: 14px;
+      width: 600px;
+      max-width: 95vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+    }
+
+    .backend-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .backend-card:hover {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+
+    .backend-card.selected {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .backend-card .icon {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .backend-card .label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-top: 4px;
+    }
+
+    .backend-card .sublabel {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+
+    .field-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .field-group input,
+    .field-group select {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 13px;
+      outline: none;
+      background: white;
+    }
+
+    .field-group input:focus,
+    .field-group select:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px #bfdbfe;
+    }
+
+    .test-ok {
+      color: #16a34a;
+      font-size: 12px;
+    }
+
+    .test-fail {
+      color: #dc2626;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col">
+
+  <!-- ══════════════════════ HEADER ══════════════════════ -->
+  <header class="bg-slate-900 text-white px-6 py-3 flex items-center gap-4 shadow-lg">
+    <div class="flex items-center gap-2">
+      <svg class="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9
+           M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+      </svg>
+      <span class="font-bold text-lg tracking-tight">MUD Tool</span>
+      <span class="text-slate-400 text-sm">AUTOSAR Module &amp; Unit Design</span>
+    </div>
+    <div class="ml-auto flex items-center gap-3">
+      <span id="backendBadge" class="badge bg-slate-700 text-slate-300">AI: —</span>
+      <span id="healthDot" class="w-2 h-2 rounded-full bg-gray-500" title="Server health"></span>
+      <a href="/docs" target="_blank" class="text-slate-400 hover:text-white text-xs">API Docs ↗</a>
+      <button id="btnOpenSettings" title="AI Backend Settings"
+        class="text-slate-400 hover:text-white transition-colors ml-1" onclick="openSettings()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0
+             002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0
+             001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0
+             00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0
+             00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0
+             00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0
+             00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0
+             001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07
+             2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ══════════════════════ SETTINGS MODAL ══════════════════════ -->
+  <div id="settingsModal" class="modal-overlay hidden" onclick="closeSettingsIfBackdrop(event)">
+    <div class="modal-box">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div>
+          <h2 class="font-bold text-slate-800 text-base">⚙️ AI Backend Settings</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Changes apply instantly — no server restart needed</p>
+        </div>
+        <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+      </div>
+
+      <!-- Backend cards -->
+      <div class="px-6 pt-5">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          Select AI Backend
+        </p>
+        <div class="grid grid-cols-3 gap-2 mb-5" id="backendCards">
+
+          <div class="backend-card" data-backend="anthropic" onclick="selectBackend('anthropic')">
+            <div class="icon">🤖</div>
+            <div class="label">Claude</div>
+            <div class="sublabel">Anthropic API</div>
+          </div>
+
+          <div class="backend-card" data-backend="ollama" onclick="selectBackend('ollama')">
+            <div class="icon">🦙</div>
+            <div class="label">Ollama</div>
+            <div class="sublabel">Local · Free</div>
+          </div>
+
+          <div class="backend-card" data-backend="localai" onclick="selectBackend('localai')">
+            <div class="icon">🏠</div>
+            <div class="label">LocalAI</div>
+            <div class="sublabel">Docker · Local</div>
+          </div>
+
+          <div class="backend-card" data-backend="lmstudio" onclick="selectBackend('lmstudio')">
+            <div class="icon">🔷</div>
+            <div class="label">LM Studio</div>
+            <div class="sublabel">GUI App · Local</div>
+          </div>
+
+          <div class="backend-card" data-backend="openai" onclick="selectBackend('openai')">
+            <div class="icon">💚</div>
+            <div class="label">OpenAI</div>
+            <div class="sublabel">GPT-4o API</div>
+          </div>
+
+          <div class="backend-card" data-backend="openai_compatible" onclick="selectBackend('openai_compatible')">
+            <div class="icon">🔌</div>
+            <div class="label">Custom API</div>
+            <div class="sublabel">Any compatible</div>
+          </div>
+
+        </div>
+
+        <!-- Dynamic fields -->
+        <div id="settingsFields" class="space-y-3 pb-2">
+
+          <!-- Server URL (shown for all except anthropic) -->
+          <div class="field-group" id="fieldUrl">
+            <label>Server URL</label>
+            <input type="text" id="cfgUrl" placeholder="http://localhost:11434/v1" />
+            <p id="urlHint" class="text-xs text-slate-400 mt-1"></p>
+          </div>
+
+          <!-- Model name -->
+          <div class="field-group" id="fieldModel">
+            <label>Model Name</label>
+            <input type="text" id="cfgModel" placeholder="mistral" />
+            <p id="modelHint" class="text-xs text-slate-400 mt-1"></p>
+          </div>
+
+          <!-- API Key -->
+          <div class="field-group" id="fieldKey">
+            <label id="keyLabel">API Key</label>
+            <div class="relative">
+              <input type="password" id="cfgKey" placeholder="sk-ant-..." class="pr-10" />
+              <button onclick="toggleKeyVisibility()"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">
+                👁
+              </button>
+            </div>
+            <p id="keyHint" class="text-xs text-slate-400 mt-1"></p>
+          </div>
+
+          <!-- Tuning -->
+          <div class="grid grid-cols-2 gap-3">
+            <div class="field-group">
+              <label>Confidence Threshold</label>
+              <input type="number" id="cfgConfidence" step="0.05" min="0.1" max="1.0" placeholder="0.4" />
+              <p class="text-xs text-slate-400 mt-1">0.4 local · 0.6 cloud</p>
+            </div>
+            <div class="field-group">
+              <label>Max Retries</label>
+              <input type="number" id="cfgRetries" min="1" max="20" placeholder="5" />
+              <p class="text-xs text-slate-400 mt-1">More retries = slower but safer</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Test + Apply row -->
+        <div class="flex items-center gap-3 py-4 border-t border-slate-100 mt-2">
+          <button class="secondary text-xs px-4 py-2" id="btnTestConn" onclick="testConnection()">
+            🔌 Test Connection
+          </button>
+          <span id="testResult" class="text-xs"></span>
+          <div class="ml-auto flex gap-2">
+            <button class="secondary text-xs px-4 py-2" onclick="closeSettings()">Cancel</button>
+            <button class="primary text-xs px-5 py-2" id="btnApplySettings" onclick="applySettings()">
+              Apply &amp; Switch
+            </button>
+          </div>
+        </div>
+
+      </div><!-- end modal body -->
+    </div>
+  </div>
+
+  <!-- ══════════════════════ MAIN LAYOUT ══════════════════════ -->
+  <div class="flex flex-1 overflow-hidden" style="height:calc(100vh - 54px)">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar bg-white border-r border-slate-100 flex flex-col overflow-hidden">
+      <div class="p-4 border-b border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          1 · Import Requirements
+        </p>
+
+        <!-- File upload -->
+        <label class="block mb-2">
+          <span class="text-xs text-slate-600">Upload file (.csv .xlsx .txt .md)</span>
+          <input type="file" id="reqFile" accept=".csv,.xlsx,.txt,.md" class="mt-1 w-full text-xs" />
+        </label>
+        <button class="primary w-full mb-2" id="btnImport">Import</button>
+
+        <!-- OR paste text -->
+        <details class="mt-1">
+          <summary class="text-xs text-blue-500 cursor-pointer hover:underline">or paste text…</summary>
+          <textarea id="reqText" rows="5" placeholder="REQ-001 | Functional | Description..." class="mt-2 w-full border border-slate-200 rounded text-xs p-2 font-mono resize-none
+                         focus:outline-none focus:border-blue-400"></textarea>
+          <div class="flex gap-1 mt-1">
+            <select id="reqTextFmt" class="flex-1 text-xs">
+              <option value="txt">TXT (pipe)</option>
+              <option value="csv">CSV</option>
+              <option value="md">Markdown</option>
+            </select>
+            <button class="primary text-xs px-3" id="btnImportText">Go</button>
+          </div>
+        </details>
+      </div>
+
+      <!-- Requirements list -->
+      <div class="flex-1 overflow-y-auto">
+        <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-white z-10
+                  border-b border-slate-50">
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Requirements
+          </span>
+          <span id="reqCount" class="badge bg-slate-100 text-slate-600">0</span>
+        </div>
+        <div id="reqList" class="text-xs">
+          <p class="text-slate-400 p-4 text-center">No requirements loaded</p>
+        </div>
+      </div>
+
+      <!-- Generate button -->
+      <div class="p-4 border-t border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          2 · Generate Diagrams
+        </p>
+        <!-- Pipeline mode selector -->
+        <div class="flex items-center gap-2 mb-2">
+          <label class="text-xs text-slate-500 whitespace-nowrap" for="pipelineMode">Pipeline:</label>
+          <select id="pipelineMode" class="flex-1 text-xs">
+            <option value="single_pass">1-pass · fast (~3-5 min)</option>
+            <option value="multi_pass">Self-review · multi-pass (~8-12 min)</option>
+            <option value="two_model_fast">Dual AI · fast (~12 min)</option>
+            <option value="two_model" selected>Dual AI · generator+reviewer · best (~15 min)</option>
+          </select>
+        </div>
+        <!-- Stage progress chips — shown during multi-stage runs -->
+        <div id="pipelineProgress"></div>
+
+        <div class="flex flex-wrap gap-1 mb-2" id="diagramTypeToggles">
+          <label class="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" value="sequence" checked class="diag-type" /> Sequence
+          </label>
+          <label class="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" value="state_machine" checked class="diag-type" /> State Machine
+          </label>
+          <label class="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" value="class" checked class="diag-type" /> Class
+          </label>
+          <label class="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" value="component" class="diag-type" /> Component
+          </label>
+          <label class="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" value="activity" checked class="diag-type" /> Activity/Flow
+          </label>
+        </div>
+        <div class="flex gap-2">
+          <button class="primary flex-1" id="btnGenerate" disabled>
+            <span id="genLabel">Generate</span>
+            <svg id="genSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </button>
+          <button class="secondary px-3 text-base" id="btnClear" title="Clear results — keeps requirements loaded"
+            disabled>↺</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── CENTER: DIAGRAMS ── -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <!-- Diagram tabs -->
+      <div id="diagramTabs" class="flex border-b border-slate-200 bg-white px-4 pt-2 gap-1 text-sm text-slate-500">
+        <p class="py-2 text-slate-400 text-xs">Generate diagrams to see them here</p>
+      </div>
+
+      <!-- Diagram canvas -->
+      <div id="diagramCanvas" class="flex-1 overflow-auto p-6">
+        <!-- Empty state -->
+        <div id="emptyState" class="flex flex-col items-center justify-center h-full text-slate-400">
+          <svg class="w-16 h-16 mb-4 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke-width="1.5" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h8M8 8h5M8 16h3" />
+          </svg>
+          <p class="font-medium">No diagrams yet</p>
+          <p class="text-sm mt-1">Import requirements and click Generate</p>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="status-bar bg-slate-50 border-t border-slate-200 px-4 py-1.5
+                flex items-center gap-4 text-slate-500">
+        <span id="statusMsg">Ready</span>
+        <span id="validationSummary" class="ml-auto hidden"></span>
+      </div>
+    </main>
+
+    <!-- ── RIGHT PANEL ── -->
+    <aside class="w-72 bg-white border-l border-slate-100 flex flex-col overflow-hidden">
+
+      <!-- Validation panel -->
+      <div class="p-4 border-b border-slate-100">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Validation
+          </p>
+          <span id="issueCount" class="badge bg-slate-100 text-slate-600 hidden">0</span>
+        </div>
+        <div id="issueList" class="space-y-1 max-h-48 overflow-y-auto text-xs">
+          <p class="text-slate-400">Run generation to see validation results</p>
+        </div>
+      </div>
+
+      <!-- Traceability coverage -->
+      <div class="p-4 border-b border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          Traceability Coverage
+        </p>
+        <div class="coverage-bar mb-1">
+          <div id="coverageFill" class="coverage-fill" style="width:0%"></div>
+        </div>
+        <p id="coverageText" class="text-xs text-slate-500">—</p>
+        <div id="uncoveredList" class="mt-2 text-xs text-red-500"></div>
+      </div>
+
+      <!-- Export -->
+      <div class="p-4 border-b border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          3 · Export
+        </p>
+        <div class="space-y-1.5">
+          <button class="secondary w-full text-left text-xs" id="btnExportMermaid" disabled>
+            📄 Mermaid .mmd files
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportDrawio" disabled>
+            🔷 draw.io .drawio files
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportPlantuml" disabled>
+            🌿 PlantUML .puml files
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportXmi" disabled>
+            📦 XMI (UML 2.x) for Modelio
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportSvg" disabled>
+            🖼️ SVG images via Kroki.io
+          </button>
+        </div>
+        <label class="flex items-center gap-2 mt-2 text-xs text-slate-500">
+          <span>Output directory:</span>
+          <input type="text" id="exportDir" value="output/web" class="flex-1 text-xs border-b border-slate-200 outline-none
+                      focus:border-blue-400 bg-transparent" />
+        </label>
+      </div>
+
+      <!-- Source toggle -->
+      <div class="p-4 flex-1 overflow-y-auto">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Mermaid Source
+          </p>
+          <button class="text-xs text-blue-500 hover:underline" id="btnToggleSource">
+            Show
+          </button>
+        </div>
+        <pre id="mmdSource" class="mmd-source text-xs"></pre>
+        <div id="copyFeedback" class="text-xs text-green-500 hidden mt-1">
+          ✓ Copied to clipboard
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- end main layout -->
+
+  <!-- ══════════════════════ TOAST ══════════════════════ -->
+  <div id="toast" class="fixed bottom-4 right-4 bg-slate-800 text-white text-sm px-4 py-2.5
+            rounded-lg shadow-lg hidden z-50 max-w-sm">
+  </div>
+
+  <script>
+    // ════════════════════════════════════════════════════════
+    //  MUD Tool Web UI — main.js (inline)
+    // ════════════════════════════════════════════════════════
+
+    const API = '/api/v1';
+    mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
+    // ── State ───────────────────────────────────────────────
+    let state = {
+      requirements: null,     // RequirementSet from last import
+      generationResult: null, // GenerationResult from last generate
+      diagrams: {},           // { key: mermaid_text }
+      activeTab: null,
+      validationReport: null,
+    };
+
+    // ── Helpers ─────────────────────────────────────────────
+    function toast(msg, isError = false) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = el.className
+        .replace('bg-slate-800', '').replace('bg-red-700', '').trim();
+      el.classList.add(isError ? 'bg-red-700' : 'bg-slate-800');
+      el.classList.remove('hidden');
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.classList.add('hidden'), 4000);
+    }
+
+    function setStatus(msg) {
+      document.getElementById('statusMsg').textContent = msg;
+    }
+
+    function setGenerating(active) {
+      const btn = document.getElementById('btnGenerate');
+      const lbl = document.getElementById('genLabel');
+      const spinner = document.getElementById('genSpinner');
+      btn.disabled = active || !state.requirements;
+      lbl.textContent = active ? 'Generating…' : 'Generate';
+      spinner.classList.toggle('active', active);
+    }
+
+    // ── Health check ────────────────────────────────────────
+    async function checkHealth() {
+      try {
+        const r = await fetch(`${API}/health`);
+        const d = await r.json();
+        document.getElementById('healthDot').className =
+          'w-2 h-2 rounded-full ' + (d.status === 'ok' ? 'bg-green-400' : 'bg-yellow-400');
+        const backend = d.backends || {};
+        const names = Object.keys(backend).filter(k => backend[k]);
+        document.getElementById('backendBadge').textContent =
+          'AI: ' + (names.length ? names.join('+') : 'none');
+      } catch {
+        document.getElementById('healthDot').className = 'w-2 h-2 rounded-full bg-red-500';
+        document.getElementById('backendBadge').textContent = 'AI: offline';
+      }
+    }
+
+    // ── Import ───────────────────────────────────────────────
+    document.getElementById('btnImport').addEventListener('click', async () => {
+      const file = document.getElementById('reqFile').files[0];
+      if (!file) { toast('Select a file first', true); return; }
+
+      setStatus('Importing…');
+      const fd = new FormData();
+      fd.append('file', file);
+
+      try {
+        const r = await fetch(`${API}/requirements/import`, { method: 'POST', body: fd });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        state.requirements = d.requirement_set;
+        renderReqList(d.requirement_set.requirements);
+        document.getElementById('btnGenerate').disabled = false;
+        toast(`Imported ${d.requirement_set.requirements.length} requirements`);
+        setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
+      } catch (e) {
+        toast('Import failed: ' + e.message, true);
+        setStatus('Import failed');
+      }
+    });
+
+    document.getElementById('btnImportText').addEventListener('click', async () => {
+      const text = document.getElementById('reqText').value.trim();
+      if (!text) { toast('Paste some requirements first', true); return; }
+
+      const fmt = document.getElementById('reqTextFmt').value;
+      const fd = new FormData();
+      fd.append('requirements_text', text);
+      fd.append('format', fmt);
+
+      setStatus('Importing…');
+      try {
+        const r = await fetch(`${API}/requirements/import/text`, { method: 'POST', body: fd });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        state.requirements = d.requirement_set;
+        renderReqList(d.requirement_set.requirements);
+        document.getElementById('btnGenerate').disabled = false;
+        toast(`Imported ${d.requirement_set.requirements.length} requirements`);
+        setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
+      } catch (e) {
+        toast('Import failed: ' + e.message, true);
+      }
+    });
+
+    function renderReqList(reqs) {
+      const list = document.getElementById('reqList');
+      document.getElementById('reqCount').textContent = reqs.length;
+
+      if (!reqs.length) {
+        list.innerHTML = '<p class="text-slate-400 p-4 text-center">No requirements</p>';
+        return;
+      }
+
+      list.innerHTML = reqs.map(r => `
+    <div class="req-item px-3 py-2 border-b border-slate-50 cursor-pointer" data-id="${r.req_id}">
+      <div class="flex items-center gap-1 mb-0.5">
+        <span class="font-mono text-blue-600 font-medium">${r.req_id}</span>
+        <span class="badge ${typeColor(r.req_type)}">${r.req_type || '?'}</span>
+        ${r.safety_level ? `<span class="badge bg-red-100 text-red-700">${r.safety_level}</span>` : ''}
+      </div>
+      <p class="text-slate-600 leading-tight line-clamp-2">${r.title || r.description || '—'}</p>
+    </div>
+  `).join('');
+    }
+
+    function typeColor(t) {
+      return ({
+        functional: 'bg-blue-100 text-blue-700',
+        interface: 'bg-purple-100 text-purple-700',
+        timing: 'bg-yellow-100 text-yellow-700',
+        safety: 'bg-red-100 text-red-700',
+        constraint: 'bg-gray-100 text-gray-600',
+      })[t] || 'bg-gray-100 text-gray-600';
+    }
+
+    // ── Generate ─────────────────────────────────────────────
+    document.getElementById('btnGenerate').addEventListener('click', async () => {
+      if (!state.requirements) return;
+      setGenerating(true);
+      const pipelineMode = document.getElementById('pipelineMode').value;
+      const modeLabels = {
+        single_pass: '1-pass',
+        multi_pass: 'self-review',
+        two_model_fast: 'dual AI (fast)',
+        two_model: 'dual AI (best)',
+      };
+      setStatus(`Generating diagrams via ${modeLabels[pipelineMode] || pipelineMode}…`);
+      document.getElementById('emptyState').classList.remove('hidden');
+      document.getElementById('diagramTabs').innerHTML =
+        `<p class="py-2 text-slate-400 text-xs animate-pulse">AI is generating diagrams…</p>`;
+      // Reset pipeline progress chips
+      const ppEl = document.getElementById('pipelineProgress');
+      if (ppEl) ppEl.innerHTML = '';
+
+      const selectedTypes = [...document.querySelectorAll('.diag-type:checked')]
+        .map(cb => cb.value);
+
+      const body = {
+        requirements: state.requirements,
+        diagram_types: selectedTypes,
+        apply_autosar_mapping: true,
+        pipeline_mode: pipelineMode,
+      };
+
+      try {
+        const r = await fetch(`${API}/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        state.generationResult = d.result;
+        state.validationReport = d.validation_report;
+
+        // Fetch inline Mermaid diagrams
+        const mr = await fetch(`${API}/export/mermaid/inline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result: d.result }),
+        });
+        if (!mr.ok) throw new Error('Failed to get Mermaid diagrams');
+        const md = await mr.json();
+        state.diagrams = md.diagrams || {};
+
+        // ── Show generation errors & warnings prominently ────────────
+        const genErrContainer = document.getElementById('genErrors');
+        if (genErrContainer) genErrContainer.remove();   // clear previous
+
+        const genErrors  = (d.result.errors   || []);
+        const genWarnings = (d.result.warnings || []);
+        if (genErrors.length > 0 || genWarnings.length > 0) {
+          let bannerHtml = '';
+          genErrors.forEach(e => {
+            bannerHtml += `<div class="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-xs mb-2">
+              <span class="font-semibold">&#x26D4; Generation Error:</span> ${escapeHtml(e)}
+            </div>`;
+          });
+          genWarnings.forEach(w => {
+            bannerHtml += `<div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-yellow-700 text-xs mb-2">
+              <span class="font-semibold">&#x26A0; Warning:</span> ${escapeHtml(w)}
+            </div>`;
+          });
+          const canvas = document.getElementById('diagramCanvas');
+          canvas.insertAdjacentHTML('afterbegin',
+            `<div id="genErrors" class="px-4 pt-4">${bannerHtml}</div>`);
+        }
+
+        // Warn visibly when AI returned 0 diagrams (model timeout, malformed JSON, etc.)
+        if (Object.keys(state.diagrams).length === 0 && genErrors.length === 0) {
+          toast('AI generated 0 diagrams — check model status and server logs', true);
+          setStatus('0 diagrams — try 1-pass mode or check Ollama is running');
+        }
+
+        renderAllDiagrams();
+        renderValidation(d.validation_report);
+        loadCoverage();
+        enableExportButtons();
+        document.getElementById('btnClear').disabled = false;
+
+        // Show pipeline summary in status bar
+        if (d.pipeline_summary) {
+          const refined = Object.values(d.pipeline_summary.diagrams || {})
+            .filter(s => s.was_refined).length;
+          const modeLabel = modeLabels[d.pipeline_summary.mode] || d.pipeline_summary.mode;
+          const refinedNote = refined > 0 ? ` · ${refined} diagram(s) refined` : '';
+          setStatus(`Generated ${d.result.diagrams.length} diagram(s) via ${modeLabel}${refinedNote}`);
+          toast(`Generated ${d.result.diagrams.length} diagrams (${modeLabel})${refinedNote}`);
+          // Show stage badges
+          if (ppEl) {
+            Object.entries(d.pipeline_summary.diagrams || {}).forEach(([dt, info]) => {
+              info.stages?.forEach(s => {
+                if (s.skipped) return;
+                const cls = { draft: 'stage-draft', critique: 'stage-critique', refinement: 'stage-refine' }[s.stage] || '';
+                ppEl.insertAdjacentHTML('beforeend',
+                  `<span class="pipeline-badge ${cls}" title="${s.model} · ${s.duration_ms}ms">${s.stage}: ${dt}</span>`);
+              });
+            });
+          }
+        } else {
+          setStatus(`Generated ${d.result.diagrams.length} diagram(s)`);
+          toast(`Generated ${d.result.diagrams.length} diagrams successfully`);
+        }
+      } catch (e) {
+        toast('Generation failed: ' + e.message, true);
+        setStatus('Generation failed — check API key in .env');
+        document.getElementById('diagramTabs').innerHTML =
+          '<p class="py-2 text-red-400 text-xs px-4">Generation failed</p>';
+      } finally {
+        setGenerating(false);
+      }
+    });
+
+    // ── Diagram type helpers ─────────────────────────────────
+    function typeBadgeClass(key) {
+      if (key.startsWith('sequence_')) return 'type-seq';
+      if (key.startsWith('state_machine_')) return 'type-sm';
+      if (key.startsWith('class_')) return 'type-class';
+      if (key.startsWith('component_')) return 'type-comp';
+      if (key.startsWith('activity_')) return 'type-activity';
+      return 'bg-slate-100 text-slate-600';
+    }
+    function diagTypeName(key) {
+      if (key.startsWith('sequence_')) return 'Sequence';
+      if (key.startsWith('state_machine_')) return 'State Machine';
+      if (key.startsWith('class_')) return 'Class';
+      if (key.startsWith('component_')) return 'Component';
+      if (key.startsWith('activity_')) return 'Activity';
+      return key.split('_')[0];
+    }
+    function diagDisplayName(key) {
+      return key
+        .replace(/^(sequence|state_machine|class|component|activity)_/, '')
+        .replace(/_/g, ' ');
+    }
+    // kept for any legacy callers
+    function formatTabName(key) {
+      return diagTypeName(key) + ': ' + diagDisplayName(key);
+    }
+
+    // ── Grid renderer — shows ALL diagrams at once ───────────
+    function renderAllDiagrams() {
+      const entries = Object.entries(state.diagrams);
+      if (!entries.length) return;
+
+      // Summary pill bar
+      const tabsEl = document.getElementById('diagramTabs');
+      tabsEl.className = 'flex border-b border-slate-200 bg-white px-4 pt-2 gap-1 text-sm text-slate-500 summary-bar';
+      tabsEl.innerHTML = entries.map(([key]) =>
+        `<span class="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-full border border-slate-200 text-xs">
+       <span class="type-badge ${typeBadgeClass(key)}">${diagTypeName(key)}</span>
+       <span class="text-slate-600">${diagDisplayName(key)}</span>
+     </span>`
+      ).join('');
+
+      // Build grid cards with hierarchy
+      const canvas = document.getElementById('diagramCanvas');
+      document.getElementById('emptyState').classList.add('hidden');
+      const oldGrid = canvas.querySelector('.diagram-grid');
+      if (oldGrid) oldGrid.remove();
+
+      // Separate parents and children
+      const parents = entries.filter(([key]) => !key.includes('__fn__'));
+      const children = entries.filter(([key]) => key.includes('__fn__'));
+
+      const getCardHtml = (key, mmdText, isChild = false) => {
+        const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+        const lines = mmdText.split('\n').filter(l => l.trim()).length;
+        const minH = Math.max(200, Math.min(lines * 30, 700));
+        const childClass = isChild ? 'ml-12 border-l-4 border-l-blue-100 mt-[-10px] mb-4' : 'mb-6';
+        const childBadge = isChild ? '<span class="badge bg-blue-100 text-blue-600 ml-1">Sub-function</span>' : '';
+
+        return `
+      <div class="diagram-card ${childClass}" data-key="${key}" id="card_${safeId}" onclick="focusCard('${key}')">
+        <div class="diagram-card-header">
+          <span class="type-badge ${typeBadgeClass(key)}">${diagTypeName(key)}</span>
+          <span class="diagram-card-name" title="${diagDisplayName(key)}">${diagDisplayName(key)}${childBadge}</span>
+          <button class="card-src-btn"
+                  onclick="event.stopPropagation();toggleCardSource('${key}')">⟨/⟩</button>
+        </div>
+        <div class="diagram-card-body" style="min-height:${minH}px">
+          <div class="mermaid" id="${safeId}">${escapeHtml(mmdText)}</div>
+        </div>
+        <pre class="mmd-source" id="src_${safeId}"
+             style="display:none;margin:0;border-radius:0;font-size:11px;max-height:300px;overflow-y:auto"
+             >${escapeHtml(mmdText)}</pre>
+      </div>`;
+      };
+
+      let gridHtml = `<div class="diagram-grid">`;
+      parents.forEach(([pKey, pMmd]) => {
+        gridHtml += getCardHtml(pKey, pMmd);
+        // Find children for this parent
+        const pPrefix = pKey + '__fn__';
+        const pChildren = children.filter(([cKey]) => cKey.startsWith(pPrefix));
+        pChildren.forEach(([cKey, cMmd]) => {
+          gridHtml += getCardHtml(cKey, cMmd, true);
+        });
+      });
+      // Also render any orphans or other types
+      entries.forEach(([key, mmd]) => {
+        if (!key.includes('__fn__') && !parents.find(([pk]) => pk === key)) {
+          gridHtml += getCardHtml(key, mmd);
+        }
+      });
+      gridHtml += `</div>`;
+
+      canvas.insertAdjacentHTML('beforeend', gridHtml);
+
+      // Render each mermaid diagram asynchronously
+      entries.forEach(([key, mmdText]) => {
+        const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+        const el = document.getElementById(safeId);
+        if (!el) return;
+        mermaid.run({ nodes: [el] }).catch(e => {
+          el.innerHTML =
+            `<div class="mmd-render-error">⚠ Render error: ${e.message}<br>
+           <span style="color:#64748b">Source is valid</span></div>
+         <pre style="margin-top:8px;font-size:11px;background:#0f172a;color:#86efac;
+                     padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap"
+              >${escapeHtml(mmdText)}</pre>`;
+        });
+      });
+
+      if (entries.length) {
+        state.activeTab = entries[0][0];
+        document.getElementById('mmdSource').textContent = entries[0][1];
+      }
+    }
+
+    // Click a card → highlight it + update source panel
+    function focusCard(key) {
+      state.activeTab = key;
+      document.querySelectorAll('.diagram-card').forEach(c => c.classList.remove('focused'));
+      const card = document.querySelector(`.diagram-card[data-key="${key}"]`);
+      if (card) card.classList.add('focused');
+      document.getElementById('mmdSource').textContent = state.diagrams[key] || '';
+    }
+
+    // Toggle per-card raw source
+    function toggleCardSource(key) {
+      const safeId = 'src_r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+      const src = document.getElementById(safeId);
+      if (!src) return;
+      src.style.display = src.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ── Toggle Mermaid Source ────────────────────────────────
+    document.getElementById('btnToggleSource').addEventListener('click', () => {
+      const pre = document.getElementById('mmdSource');
+      const btn = document.getElementById('btnToggleSource');
+      const visible = pre.style.display !== 'none';
+      pre.style.display = visible ? 'none' : 'block';
+      btn.textContent = visible ? 'Show' : 'Hide';
+
+      if (!visible && state.activeTab && state.diagrams[state.activeTab]) {
+        // Copy to clipboard
+        navigator.clipboard?.writeText(state.diagrams[state.activeTab]).then(() => {
+          const fb = document.getElementById('copyFeedback');
+          fb.classList.remove('hidden');
+          setTimeout(() => fb.classList.add('hidden'), 2000);
+        });
+      }
+    });
+
+    // ── Validation ───────────────────────────────────────────
+    function renderValidation(report) {
+      if (!report) return;
+      const issues = report.issues || [];
+      const el = document.getElementById('issueList');
+      const countBadge = document.getElementById('issueCount');
+      const summaryEl = document.getElementById('validationSummary');
+
+      countBadge.textContent = issues.length;
+      countBadge.classList.remove('hidden');
+
+      const errors = issues.filter(i => i.severity === 'error').length;
+      const warnings = issues.filter(i => i.severity === 'warning').length;
+
+      summaryEl.textContent = `${errors}E ${warnings}W ${issues.length - errors - warnings}I`;
+      summaryEl.className = 'ml-auto text-xs font-mono ' +
+        (errors > 0 ? 'text-red-500' : warnings > 0 ? 'text-yellow-500' : 'text-green-500');
+      summaryEl.classList.remove('hidden');
+
+      if (!issues.length) {
+        el.innerHTML = '<p class="text-green-500 text-xs">✓ No issues found</p>';
+        return;
+      }
+
+      el.innerHTML = issues.slice(0, 20).map(issue => `
+    <div class="issue-${issue.severity} rounded p-1.5 text-xs">
+      <div class="font-mono text-slate-500">${issue.rule_id}</div>
+      <div class="text-slate-700 leading-tight">${issue.message}</div>
+    </div>
+  `).join('');
+
+      if (issues.length > 20) {
+        el.innerHTML += `<p class="text-slate-400 text-xs mt-1 text-center">
+      …and ${issues.length - 20} more</p>`;
+      }
+    }
+
+    // ── Coverage ─────────────────────────────────────────────
+    async function loadCoverage() {
+      if (!state.requirements) return;
+      const ids = state.requirements.requirements.map(r => r.req_id).join(',');
+      try {
+        const r = await fetch(`${API}/traceability?requirement_ids=${encodeURIComponent(ids)}`);
+        const d = await r.json();
+        if (d.coverage) {
+          const pct = d.coverage.coverage_percentage || 0;
+          document.getElementById('coverageFill').style.width = pct + '%';
+          document.getElementById('coverageText').textContent =
+            `${pct}% (${d.coverage.covered_requirements}/${d.coverage.total_requirements} requirements)`;
+          if (d.coverage.uncovered_ids?.length) {
+            document.getElementById('uncoveredList').textContent =
+              'Uncovered: ' + d.coverage.uncovered_ids.slice(0, 5).join(', ');
+          }
+        }
+      } catch { /* coverage is optional */ }
+    }
+
+    // ── Export ───────────────────────────────────────────────
+    function enableExportButtons() {
+      ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml',
+        'btnExportXmi', 'btnExportSvg'].forEach(id => {
+          document.getElementById(id).disabled = false;
+        });
+    }
+
+    // ── Clear Results ─────────────────────────────────────────
+    function clearResults() {
+      state.generationResult = null;
+      state.diagrams = {};
+      state.activeTab = null;
+      state.validationReport = null;
+
+      // Diagram area: remove grid + error banners, restore empty state
+      const canvas = document.getElementById('diagramCanvas');
+      const oldGrid = canvas.querySelector('.diagram-grid');
+      if (oldGrid) oldGrid.remove();
+      const oldErrs = document.getElementById('genErrors');
+      if (oldErrs) oldErrs.remove();
+      document.getElementById('emptyState').classList.remove('hidden');
+
+      // Tabs bar
+      const tabsEl = document.getElementById('diagramTabs');
+      tabsEl.className = tabsEl.className.replace(' summary-bar', '');
+      tabsEl.innerHTML = '<p class="py-2 text-slate-400 text-xs">Generate diagrams to see them here</p>';
+
+      // Validation panel
+      document.getElementById('issueList').innerHTML =
+        '<p class="text-slate-400">Run generation to see validation results</p>';
+      document.getElementById('issueCount').classList.add('hidden');
+      document.getElementById('validationSummary').classList.add('hidden');
+
+      // Coverage
+      document.getElementById('coverageFill').style.width = '0%';
+      document.getElementById('coverageText').textContent = '—';
+      document.getElementById('uncoveredList').textContent = '';
+
+      // Pipeline progress chips
+      const ppEl = document.getElementById('pipelineProgress');
+      if (ppEl) ppEl.innerHTML = '';
+
+      // Disable export buttons
+      ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml', 'btnExportXmi', 'btnExportSvg']
+        .forEach(id => { document.getElementById(id).disabled = true; });
+
+      // Source panel
+      document.getElementById('mmdSource').textContent = '';
+
+      // Status bar + disable clear button itself
+      setStatus('Ready');
+      document.getElementById('btnClear').disabled = true;
+    }
+
+    document.getElementById('btnClear').addEventListener('click', clearResults);
+
+    async function doExport(format) {
+      if (!state.generationResult) return;
+      const dir = document.getElementById('exportDir').value || 'output/web';
+      const body = {
+        result: state.generationResult,
+        output_path: dir,
+        model_name: 'MUD_WebUI_Export',
+        format: format,
+      };
+      setStatus(`Exporting as ${format}…`);
+      try {
+        const r = await fetch(`${API}/export`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        const count = d.paths?.length || (d.path ? 1 : 0);
+        toast(`Exported ${count} file(s) to ${dir}/`);
+        setStatus(`Exported to ${dir}/`);
+      } catch (e) {
+        toast('Export failed: ' + e.message, true);
+        setStatus('Export failed');
+      }
+    }
+
+    document.getElementById('btnExportMermaid').addEventListener('click', () => doExport('mermaid'));
+    document.getElementById('btnExportDrawio').addEventListener('click', () => doExport('drawio'));
+    document.getElementById('btnExportPlantuml').addEventListener('click', () => doExport('plantuml'));
+    document.getElementById('btnExportXmi').addEventListener('click', () => doExport('xmi'));
+    document.getElementById('btnExportSvg').addEventListener('click', async () => {
+      if (!state.generationResult) return;
+      const dir = document.getElementById('exportDir').value || 'output/web';
+      setStatus('Rendering SVGs via Kroki.io…');
+      try {
+        const r = await fetch(`${API}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result: state.generationResult, output_path: dir, format: 'svg' }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        toast(`Rendered ${d.paths?.length || 0} SVG(s) to ${dir}/`);
+        setStatus(`SVGs rendered to ${dir}/`);
+      } catch (e) {
+        toast('SVG render failed: ' + e.message, true);
+        setStatus('SVG render failed');
+      }
+    });
+
+    // ── Init ─────────────────────────────────────────────────
+    checkHealth();
+    setInterval(checkHealth, 30000);
+
+    // ════════════════════════════════════════════════════════
+    //  SETTINGS MODAL
+    // ════════════════════════════════════════════════════════
+
+    const BACKEND_PRESETS = {
+      anthropic: {
+        url: '', model: 'claude-sonnet-4-5-20250514',
+        keyPlaceholder: 'sk-ant-xxxxxxxxxxxxxxxx',
+        keyHint: 'Get yours at console.anthropic.com',
+        keyLabel: 'Anthropic API Key',
+        urlHint: '', modelHint: 'claude-sonnet-4-5-20250514 · claude-haiku-4-5 · claude-opus-4-5',
+        showUrl: false, keyRequired: true, confidence: 0.6, retries: 3,
+      },
+      ollama: {
+        url: 'http://localhost:11434/v1', model: 'mistral',
+        keyPlaceholder: 'ollama (leave as-is)',
+        keyHint: 'No real key needed — Ollama is free & local',
+        keyLabel: 'API Key (dummy)',
+        urlHint: 'Default Ollama port. Run: ollama pull mistral',
+        modelHint: 'mistral · llama3.1 · phi3:medium · codellama:13b · gemma2',
+        showUrl: true, keyRequired: false, confidence: 0.4, retries: 5,
+      },
+      localai: {
+        url: 'http://localhost:8080/v1', model: 'mistral-7b-instruct',
+        keyPlaceholder: 'localai (leave as-is)',
+        keyHint: 'No real key needed for LocalAI',
+        keyLabel: 'API Key (dummy)',
+        urlHint: 'Default LocalAI Docker port. docker run localai/localai',
+        modelHint: 'Must match the model name you loaded into LocalAI',
+        showUrl: true, keyRequired: false, confidence: 0.4, retries: 5,
+      },
+      lmstudio: {
+        url: 'http://localhost:1234/v1', model: 'local-model',
+        keyPlaceholder: 'lmstudio (leave as-is)',
+        keyHint: 'No real key needed for LM Studio',
+        keyLabel: 'API Key (dummy)',
+        urlHint: 'Start the Local Server in LM Studio first (port 1234 default)',
+        modelHint: 'Check the LM Studio server tab for the exact model identifier',
+        showUrl: true, keyRequired: false, confidence: 0.4, retries: 5,
+      },
+      openai: {
+        url: 'https://api.openai.com/v1', model: 'gpt-4o',
+        keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
+        keyHint: 'Get yours at platform.openai.com',
+        keyLabel: 'OpenAI API Key',
+        urlHint: '', modelHint: 'gpt-4o · gpt-4o-mini · gpt-4-turbo · gpt-3.5-turbo',
+        showUrl: false, keyRequired: true, confidence: 0.6, retries: 3,
+      },
+      openai_compatible: {
+        url: 'http://localhost:8000/v1', model: 'my-model',
+        keyPlaceholder: 'your-api-key',
+        keyHint: 'Together.ai · Groq · Mistral AI · Fireworks · Perplexity · etc.',
+        keyLabel: 'API Key',
+        urlHint: 'Full base URL of your OpenAI-compatible endpoint',
+        modelHint: 'Exact model ID as required by your provider',
+        showUrl: true, keyRequired: false, confidence: 0.4, retries: 5,
+      },
+    };
+
+    let activeBackend = 'ollama';
+
+    function openSettings() {
+      document.getElementById('settingsModal').classList.remove('hidden');
+      loadCurrentConfig();
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.add('hidden');
+      document.getElementById('testResult').textContent = '';
+    }
+
+    function closeSettingsIfBackdrop(e) {
+      if (e.target === document.getElementById('settingsModal')) closeSettings();
+    }
+
+    async function loadCurrentConfig() {
+      try {
+        const r = await fetch(`${API}/config`);
+        const d = await r.json();
+        let bt = 'ollama';
+        if (d.cloud_provider === 'anthropic') {
+          bt = 'anthropic';
+        } else {
+          const url = d.openai_base_url || '';
+          if (url.includes('11434')) bt = 'ollama';
+          else if (url.includes('8080')) bt = 'localai';
+          else if (url.includes('1234')) bt = 'lmstudio';
+          else if (url.includes('openai.com')) bt = 'openai';
+          else bt = 'openai_compatible';
+        }
+        selectBackend(bt);
+        if (d.cloud_provider === 'anthropic') {
+          document.getElementById('cfgModel').value = d.anthropic_model || '';
+        } else {
+          if (d.openai_base_url) document.getElementById('cfgUrl').value = d.openai_base_url;
+          if (d.openai_model) document.getElementById('cfgModel').value = d.openai_model;
+        }
+        if (d.confidence_threshold) document.getElementById('cfgConfidence').value = d.confidence_threshold;
+        if (d.max_retries) document.getElementById('cfgRetries').value = d.max_retries;
+      } catch { /* show defaults */ }
+    }
+
+    function selectBackend(bt) {
+      activeBackend = bt;
+      document.querySelectorAll('.backend-card').forEach(c =>
+        c.classList.toggle('selected', c.dataset.backend === bt)
+      );
+      const p = BACKEND_PRESETS[bt];
+      if (!p) return;
+
+      document.getElementById('fieldUrl').style.display = p.showUrl ? '' : 'none';
+      if (p.showUrl) {
+        document.getElementById('cfgUrl').placeholder = p.url;
+        document.getElementById('cfgUrl').value = p.url;
+        document.getElementById('urlHint').textContent = p.urlHint;
+      }
+
+      document.getElementById('cfgModel').placeholder = p.model;
+      document.getElementById('cfgModel').value = p.model;
+      document.getElementById('modelHint').textContent = p.modelHint;
+
+      document.getElementById('cfgKey').placeholder = p.keyPlaceholder;
+      document.getElementById('cfgKey').value = '';
+      document.getElementById('keyLabel').textContent = p.keyLabel;
+      document.getElementById('keyHint').textContent = p.keyHint;
+
+      document.getElementById('cfgConfidence').value = p.confidence;
+      document.getElementById('cfgRetries').value = p.retries;
+      document.getElementById('testResult').textContent = '';
+    }
+
+    function toggleKeyVisibility() {
+      const inp = document.getElementById('cfgKey');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    async function testConnection() {
+      const btn = document.getElementById('btnTestConn');
+      const result = document.getElementById('testResult');
+      btn.disabled = true;
+      btn.textContent = '⏳ Testing…';
+      result.textContent = '';
+
+      const ok = await _applyConfig(true);
+      if (!ok) { btn.disabled = false; btn.textContent = '🔌 Test Connection'; return; }
+
+      try {
+        const r = await fetch(`${API}/config/test`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          result.textContent = `✓ Connected! ${d.latency_ms}ms`;
+          result.className = 'text-xs test-ok';
+        } else {
+          result.textContent = `✗ ${d.error || 'No response'}`;
+          result.className = 'text-xs test-fail';
+        }
+      } catch (e) {
+        result.textContent = `✗ ${e.message}`;
+        result.className = 'text-xs test-fail';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔌 Test Connection';
+      }
+    }
+
+    async function applySettings() {
+      const ok = await _applyConfig(false);
+      if (ok) {
+        closeSettings();
+        await checkHealth();
+        toast('AI backend switched successfully!');
+      }
+    }
+
+    async function _applyConfig(silent) {
+      const btn = document.getElementById('btnApplySettings');
+      btn.disabled = true;
+      btn.textContent = 'Applying…';
+
+      const p = BACKEND_PRESETS[activeBackend] || {};
+      const body = {
+        backend_type: activeBackend,
+        model: document.getElementById('cfgModel').value.trim() || p.model || null,
+        api_key: document.getElementById('cfgKey').value.trim() || null,
+        base_url: document.getElementById('cfgUrl').value.trim() || null,
+        confidence_threshold: parseFloat(document.getElementById('cfgConfidence').value) || null,
+        max_retries: parseInt(document.getElementById('cfgRetries').value) || null,
+      };
+
+      try {
+        const r = await fetch(`${API}/config/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          if (!silent) toast('Config failed: ' + (await r.text()), true);
+          return false;
+        }
+        return true;
+      } catch (e) {
+        if (!silent) toast('Config failed: ' + e.message, true);
+        return false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Apply & Switch';
+      }
+    }
+  </script>
+</body>
+
+</html>

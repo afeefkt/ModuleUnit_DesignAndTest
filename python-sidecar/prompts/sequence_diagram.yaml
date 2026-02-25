@@ -1,0 +1,160 @@
+# Prompt Template: Sequence Diagram Generation
+# Version: 1.0
+# Generates AUTOSAR sequence diagrams from architecture requirements
+
+name: "AUTOSAR Sequence Diagram Generator"
+version: "1.0"
+diagram_type: "sequence"
+
+metadata:
+  author: "MUD Tool Team"
+  domain: "AUTOSAR"
+  description: "Generates sequence diagrams showing interaction flows between AUTOSAR SWCs/Runnables"
+
+system_prompt: |
+  You are an expert AUTOSAR software architect specializing in Module and Unit Design (MUD).
+  Your task is to generate UML sequence diagrams from architecture requirements.
+
+  AUTOSAR DOMAIN CONTEXT:
+  - Application SWCs (Software Components) communicate through the RTE (Runtime Environment)
+  - Runnables are the executable entities within SWCs, triggered by the RTE
+  - Communication patterns:
+    * Sender-Receiver (SR): Asynchronous data exchange via Rte_Write/Rte_Read
+    * Client-Server (CS): Synchronous operation invocation via Rte_Call/Rte_Result
+  - Port types:
+    * P-Port (Provided): Sends data or offers services
+    * R-Port (Required): Receives data or consumes services
+  - RTE API calls for sequence messages:
+    * Rte_Read(RP_name, &data): Read from R-Port (SR)
+    * Rte_Write(PP_name, &data): Write to P-Port (SR)
+    * Rte_Call(RP_name, args...): Call via R-Port (CS)
+    * Rte_Result(RP_name, &result): Get result from R-Port (CS)
+    * Rte_IRead/Rte_IWrite: Implicit read/write variants
+    * Rte_Send/Rte_Receive: Queued communication
+
+  NAMING CONVENTIONS:
+  - SWC names: {{ swc_naming_regex }} (e.g., SWC_SensorFusion)
+  - Runnable names: {{ runnable_naming_regex }} (e.g., RE_FuseSensorData)
+  - P-Ports: {{ port_naming_regex }} starting with PP_ (e.g., PP_FusedData)
+  - R-Ports: {{ port_naming_regex }} starting with RP_ (e.g., RP_RawSensorInput)
+
+  OUTPUT FORMAT:
+  You MUST output a valid JSON object with this exact structure:
+  {{ output_schema }}
+
+  IMPORTANT RULES:
+  1. Every lifeline must represent an AUTOSAR SWC with its primary runnable
+  2. Every message must map to an RTE API call with correct port and data element
+  3. Read operations (Rte_Read) go FROM R-Ports; Write operations (Rte_Write) go TO P-Ports
+  4. Every message must trace back to a source requirement ID
+  5. Assign confidence scores: 0.9+ for directly derivable, 0.7-0.9 for inferred, <0.7 for speculative
+  6. Use combined fragments (alt, loop, opt) for conditional behavior
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+user_prompt: |
+  Generate an AUTOSAR sequence diagram from these architecture requirements:
+
+  REQUIREMENTS:
+  {{ requirements }}
+
+  {% if module_context %}
+  MODULE CONTEXT: {{ module_context }}
+  {% endif %}
+
+  {% if existing_swcs %}
+  EXISTING SWCs IN SYSTEM: {{ existing_swcs | join(', ') }}
+  {% endif %}
+
+  Generate a JSON sequence diagram showing the interaction flows between AUTOSAR SWCs.
+  Include lifelines for each SWC involved, messages for RTE calls, and trace every element
+  to its source requirement ID.
+
+  Output only valid JSON - no markdown, no explanation.
+
+output_schema: |
+  {
+    "diagram_type": "sequence",
+    "name": "string - descriptive diagram name",
+    "description": "string - brief description of the interaction",
+    "source_requirements": ["REQ-ID-1", "REQ-ID-2"],
+    "lifelines": [
+      {
+        "id": "ll_1",
+        "name": "SWC_Name",
+        "type": "ApplicationSWC",
+        "runnable": "RE_RunnableName",
+        "trace_reqs": ["REQ-ID"]
+      }
+    ],
+    "messages": [
+      {
+        "id": "msg_1",
+        "from": "ll_1",
+        "to": "ll_2",
+        "label": "Rte_Write(PP_Data, DE_Output)",
+        "rte_call": "Rte_Write",
+        "port": "PP_Data",
+        "element": "DE_Output",
+        "is_return": false,
+        "is_async": false,
+        "sequence_number": 1,
+        "trace_req": "REQ-ID",
+        "confidence": 0.9
+      }
+    ],
+    "fragments": [],
+    "provenance": {
+      "ai_model": "model-name",
+      "prompt_version": "seq-v1.0",
+      "confidence": 0.85
+    }
+  }
+
+few_shot_examples:
+  - input: |
+      [REQ-ARCH-0142] (functional) Sensor Fusion Data Distribution
+        Description: The SWC_SensorFusion shall distribute fused sensor data to
+        SWC_VehicleControl via Sender-Receiver interface with 10ms cycle.
+      [REQ-ARCH-0143] (interface) Vehicle Control Data Reception
+        Description: SWC_VehicleControl shall receive fused sensor data from
+        SWC_SensorFusion and process it in its cyclic runnable.
+    output: |
+      {
+        "diagram_type": "sequence",
+        "name": "SensorFusion_DataDistribution",
+        "source_requirements": ["REQ-ARCH-0142", "REQ-ARCH-0143"],
+        "lifelines": [
+          {"id": "ll_1", "name": "SWC_SensorFusion", "type": "ApplicationSWC", "runnable": "RE_FuseSensorData", "trace_reqs": ["REQ-ARCH-0142"]},
+          {"id": "ll_2", "name": "SWC_VehicleControl", "type": "ApplicationSWC", "runnable": "RE_ProcessSensorData", "trace_reqs": ["REQ-ARCH-0143"]}
+        ],
+        "messages": [
+          {"id": "msg_1", "from": "ll_1", "to": "ll_2", "rte_call": "Rte_Write", "port": "PP_FusedData", "element": "DE_FusedSensorOutput", "trace_req": "REQ-ARCH-0142", "confidence": 0.92},
+          {"id": "msg_2", "from": "ll_2", "to": "ll_2", "rte_call": "Rte_Read", "port": "RP_FusedData", "element": "DE_FusedSensorOutput", "trace_req": "REQ-ARCH-0143", "confidence": 0.90}
+        ],
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "seq-v1.0", "confidence": 0.91}
+      }
+
+  - input: |
+      [REQ-ARCH-0200] (functional) Diagnostic Service Request
+        Description: SWC_Diagnostics shall provide a client-server interface for
+        reading DTC (Diagnostic Trouble Code) information from SWC_FaultManager.
+      [REQ-ARCH-0201] (interface) Fault Manager DTC Response
+        Description: SWC_FaultManager shall respond to DTC read requests with
+        the current fault status and occurrence counter.
+    output: |
+      {
+        "diagram_type": "sequence",
+        "name": "DiagnosticDTC_ReadFlow",
+        "source_requirements": ["REQ-ARCH-0200", "REQ-ARCH-0201"],
+        "lifelines": [
+          {"id": "ll_1", "name": "SWC_Diagnostics", "type": "ApplicationSWC", "runnable": "RE_HandleDiagRequest", "trace_reqs": ["REQ-ARCH-0200"]},
+          {"id": "ll_2", "name": "SWC_FaultManager", "type": "ApplicationSWC", "runnable": "RE_ProvideDtcInfo", "trace_reqs": ["REQ-ARCH-0201"]}
+        ],
+        "messages": [
+          {"id": "msg_1", "from": "ll_1", "to": "ll_2", "rte_call": "Rte_Call", "port": "RP_DtcService", "element": "OP_ReadDtcInfo", "trace_req": "REQ-ARCH-0200", "confidence": 0.88},
+          {"id": "msg_2", "from": "ll_2", "to": "ll_1", "rte_call": "Rte_Result", "port": "PP_DtcService", "element": "OP_ReadDtcInfo", "is_return": true, "trace_req": "REQ-ARCH-0201", "confidence": 0.87}
+        ],
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "seq-v1.0", "confidence": 0.88}
+      }

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c:*)",
+      "Bash(dir:*)",
+      "Bash(java:*)",
+      "WebFetch(domain:github.com)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(\"D:/AI_Learnigns/MUD/python-sidecar/.venv/Scripts/pip.exe\" install -e \"D:/AI_Learnigns/MUD/python-sidecar/\" --quiet)",
+      "Bash(py:*)",
+      "Bash(py -3.12:*)",
+      "Bash(py -3.10:*)",
+      "Bash(\"D:/AI_Learnigns/MUD/python-sidecar/.venv/Scripts/pip.exe\" install:*)",
+      "Bash(\"D:/AI_Learnigns/MUD/python-sidecar/.venv/Scripts/pip.exe\" install fastapi \"uvicorn[standard]\" pydantic pydantic-settings openpyxl anthropic httpx python-multipart pyyaml aiosqlite lxml jinja2 -q)",
+      "Bash(\"D:/AI_Learnigns/MUD/python-sidecar/.venv/Scripts/python.exe\" -c \"import mudtool; print\\(''mudtool OK, version:'', mudtool.__version__\\)\")",
+      "Bash(powershell -Command:*)",
+      "Bash(powershell.exe -Command \"Get-Process | Where-Object { \\(Get-NetTCPConnection -OwningProcess $_Id -LocalPort 8042 -ErrorAction SilentlyContinue\\) } | Stop-Process -Force\")",
+      "Bash(powershell.exe -Command \"netstat -ano | findstr '':8042''\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 9660 -Force\")",
+      "Bash(powershell.exe -Command \"netstat -ano | findstr '':8042 ''\")",
+      "Bash(powershell.exe -Command \"netstat -ano | findstr ''LISTEN'' | findstr '':8042''\")",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(curl:*)",
+      "Read(//d/AI_Learnigns/MUD/**)",
+      "Bash(find:*)"
+    ]
+  }
+}

@@ -1,0 +1,112 @@
+# Prompt Template: Class/Module Diagram Generation
+# Version: 1.0
+# Generates AUTOSAR SWC internal structure diagrams
+
+name: "AUTOSAR Class/Module Diagram Generator"
+version: "1.0"
+diagram_type: "class"
+
+metadata:
+  author: "MUD Tool Team"
+  domain: "AUTOSAR"
+  description: "Generates class diagrams representing SWC internal structure with runnables and data"
+
+system_prompt: |
+  You are an expert AUTOSAR software architect. Generate UML class diagrams
+  representing the internal structure of AUTOSAR Software Components (SWCs).
+
+  AUTOSAR CLASS MAPPING:
+  - Each class represents an Application SWC
+  - Attributes represent internal data (Inter-Runnable Variables, calibration parameters)
+  - Operations represent Runnables with trigger types:
+    * init: Executed once at startup
+    * cyclic: Periodic execution (specify period_ms)
+    * on_data_reception: Triggered when data arrives on an R-Port
+    * on_mode_switch: Triggered on mode change
+  - Associations represent port connections between SWCs
+  - Stereotypes: <<ApplicationSWC>>, <<SensorActuatorSWC>>, <<ServiceSWC>>
+
+  NAMING CONVENTIONS:
+  - SWC/Class names: {{ swc_naming_regex }}
+  - Runnable/Operation names: {{ runnable_naming_regex }}
+  - Attributes: camelCase with type prefix (e.g., fusedSensorData: FusedDataType)
+
+  OUTPUT RULES:
+  1. Each SWC must have at least one runnable (operation)
+  2. Cyclic runnables must specify period_ms > 0
+  3. Init runnables must have trigger_type "init"
+  4. All elements must trace to requirement IDs
+  5. Include data type definitions where requirements specify them
+  6. Associations should indicate port connectivity (label with interface name)
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+user_prompt: |
+  Generate AUTOSAR class/module diagrams from these requirements:
+
+  REQUIREMENTS:
+  {{ requirements }}
+
+  {% if module_context %}
+  MODULE CONTEXT: {{ module_context }}
+  {% endif %}
+
+  Generate a JSON class diagram showing SWC structure, runnables, and data types.
+  Output only valid JSON.
+
+output_schema: |
+  {
+    "diagram_type": "class",
+    "name": "string",
+    "source_requirements": ["REQ-ID"],
+    "classes": [
+      {
+        "id": "cls_1", "name": "SWC_Name", "stereotype": "ApplicationSWC",
+        "attributes": [{"name": "attrName", "data_type": "uint16", "visibility": "private"}],
+        "operations": [{"name": "RE_Runnable", "trigger_type": "cyclic", "period_ms": 10,
+                        "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ID"]}],
+        "trace_reqs": ["REQ-ID"], "confidence": 0.9
+      }
+    ],
+    "associations": [
+      {"id": "a_1", "source": "cls_1", "target": "cls_2",
+       "association_type": "dependency", "label": "IF_SR_SensorData"}
+    ],
+    "provenance": {"ai_model": "model", "prompt_version": "cls-v1.0", "confidence": 0.85}
+  }
+
+few_shot_examples:
+  - input: |
+      [REQ-ARCH-0142] (functional) Sensor Fusion Processing
+        Description: SWC_SensorFusion shall fuse radar and camera data every 10ms
+        and output combined sensor data via Sender-Receiver interface.
+      [REQ-ARCH-0144] (interface) Sensor Fusion Internal Data
+        Description: SWC_SensorFusion shall maintain internal fusion state including
+        confidence level (float32) and fusion counter (uint32).
+    output: |
+      {
+        "diagram_type": "class",
+        "name": "SWC_SensorFusion_Design",
+        "source_requirements": ["REQ-ARCH-0142", "REQ-ARCH-0144"],
+        "classes": [
+          {
+            "id": "cls_1", "name": "SWC_SensorFusion", "stereotype": "ApplicationSWC",
+            "attributes": [
+              {"name": "fusionConfidence", "data_type": "float32", "visibility": "private", "description": "Current fusion confidence level"},
+              {"name": "fusionCounter", "data_type": "uint32", "visibility": "private", "description": "Fusion cycle counter"}
+            ],
+            "operations": [
+              {"name": "RE_InitFusion", "trigger_type": "init", "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ARCH-0142"], "description": "Initialize fusion algorithm"},
+              {"name": "RE_FuseSensorData", "trigger_type": "cyclic", "period_ms": 10, "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ARCH-0142"], "description": "Main fusion processing"}
+            ],
+            "trace_reqs": ["REQ-ARCH-0142", "REQ-ARCH-0144"],
+            "confidence": 0.92
+          }
+        ],
+        "associations": [],
+        "data_types": [
+          {"name": "FusedSensorOutput", "category": "record", "fields": ["radarRange: float32", "cameraClass: uint8", "confidence: float32"]}
+        ],
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "cls-v1.0", "confidence": 0.92}
+      }

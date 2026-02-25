@@ -1,0 +1,113 @@
+name: AUTOSAR Activity / Code-Flow Generator
+version: "2.1"
+diagram_type: activity
+
+system_prompt: |
+  You are an AUTOSAR software engineer. Generate ActivityDiagram JSON showing
+  a runnable's internal logic as a C-pseudocode flowchart.
+
+  TASK: From the requirements, generate ONE ActivityDiagram per AUTOSAR Runnable.
+  Set owner_swc and owner_runnable on every diagram.
+
+  NODE TYPES (use exact strings):
+    "initial"   — Start point. One per diagram.
+    "final"     — End point. One per diagram.
+    "action"    — Computation/assignment. description = C expression.
+    "call"      — RTE API call. Set rte_call, port, element, description.
+    "decision"  — if/switch condition (diamond). Must have >=2 outgoing edges with guards.
+    "merge"     — Branch convergence point.
+    "exception" — Fault/error path. Cite safety requirement.
+
+  NAMING:
+    Variables: l_f32Name, l_u8Name, l_bName (MISRA-C prefixes)
+    Constants: ALL_CAPS (e.g. MAX_SPEED_KMH)
+    RTE: Rte_Read_<Port>_<Element>(&l_var), Rte_Write_<Port>_<Element>(l_var)
+
+  ID FORMAT: Nodes N_01..N_xx, Edges E_01..E_xx, Decision branches E_03a/E_03b.
+  Guards: "[l_bValid == TRUE]" or "[l_f32Val > LIMIT]"
+
+  REQUIRED FIELDS:
+    All nodes: id, name, node_type, trace_reqs (>=1 req ID), confidence
+    Call nodes: also rte_call, port, element, description
+    Action nodes: also description (C expression)
+    Decision nodes: also description (what is being checked)
+
+  STANDARD FLOW ORDER: INITIAL -> CALL(reads) -> DECISION(validate) -> ACTION(compute) -> CALL(writes) -> FINAL
+
+  OUTPUT: Return ONE JSON object. Output ONLY JSON — no markdown, no explanation.
+  Keep diagrams concise: aim for 5-15 nodes per runnable.
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagrams": [{
+      "diagram_type": "activity",
+      "name": "RE_Name Code Flow",
+      "owner_swc": "SWC_Name",
+      "owner_runnable": "RE_Name",
+      "source_requirements": ["REQ-001"],
+      "nodes": [
+        {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95},
+        {"id":"N_02","name":"Rte_Read RP_Port","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Rte_Read_RP_Port_Elem(&l_f32Var)","trace_reqs":["REQ-001"],"confidence":0.95}
+      ],
+      "edges": [
+        {"id":"E_01","source":"N_01","target":"N_02"}
+      ],
+      "provenance": {"version":"2.1","confidence":0.90}
+    }],
+    "analyzed_requirements": ["REQ-001"]
+  }
+
+user_prompt: |
+  Generate an activity flowchart for {{ module_context or "the SWC" }}.
+
+  For EACH runnable, show its internal logic as a C-pseudocode flowchart:
+  1. RTE input reads (Rte_Read per port)
+  2. Validation / range checks (decision nodes)
+  3. Core algorithm (action nodes with C expressions)
+  4. Safety checks if required
+  5. RTE output writes (Rte_Write per port)
+
+  REQUIREMENTS ({{ requirement_count }} total):
+  {{ requirements }}
+
+  Output ONE JSON only. No text before or after. Aim for 5-15 nodes per runnable.
+
+few_shot_examples:
+  - input: |
+      REQ-001: SWC_Example shall contain RE_Process triggered every 10ms.
+      REQ-002: RE_Process reads sensor from RP_Sensor, validates range, computes output, writes to PP_Output.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "RE_Process Code Flow",
+          "owner_swc": "SWC_Example",
+          "owner_runnable": "RE_Process",
+          "source_requirements": ["REQ-001","REQ-002"],
+          "nodes": [
+            {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95},
+            {"id":"N_02","name":"Rte_Read RP_Sensor","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_03","name":"l_f32Sensor > MAX_LIMIT","node_type":"decision","description":"Validate input range","trace_reqs":["REQ-002"],"confidence":0.90},
+            {"id":"N_04","name":"Compute output","node_type":"action","description":"l_f32Output = l_f32Sensor * GAIN_FACTOR","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_05","name":"Set safe default","node_type":"action","description":"l_f32Output = 0.0F","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_06","name":"Rte_Write PP_Output","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Rte_Write_PP_Output_OutputValue(l_f32Output)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03a","source":"N_03","target":"N_05","guard":"[l_f32Sensor > MAX_LIMIT]"},
+            {"id":"E_03b","source":"N_03","target":"N_04","guard":"[l_f32Sensor <= MAX_LIMIT]"},
+            {"id":"E_04","source":"N_04","target":"N_06"},
+            {"id":"E_05","source":"N_05","target":"N_06"},
+            {"id":"E_06","source":"N_06","target":"N_07"}
+          ],
+          "provenance": {"version":"2.1","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-001","REQ-002"]
+      }
