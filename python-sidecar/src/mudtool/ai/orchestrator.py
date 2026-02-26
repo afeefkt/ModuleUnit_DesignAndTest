@@ -369,6 +369,16 @@ Output valid JSON with this structure:
                 d_data["provenance"]["generation_time_ms"] = response.latency_ms
                 d_data["provenance"]["prompt_hash"] = prompt_hash
 
+                # Patch sub_diagram provenance before validation so Pydantic
+                # doesn't reject them for missing required fields.
+                for sub_d in d_data.get("sub_diagrams", []):
+                    if isinstance(sub_d, dict):
+                        sub_d.setdefault("provenance", {})
+                        sub_d["provenance"].setdefault("ai_model", response.model)
+                        sub_d["provenance"].setdefault("prompt_version", prompt_hash)
+                        sub_d["provenance"].setdefault("backend", backend_name)
+                        sub_d["provenance"].setdefault("confidence", 0.7)
+
                 diagram = diagram_model.model_validate(d_data)
 
                 # Local models often omit trace_req / trace_reqs fields.

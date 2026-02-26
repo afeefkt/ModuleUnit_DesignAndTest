@@ -366,19 +366,31 @@ class MermaidExporter:
                 .replace("|", " PIPE ")   # lone pipe → word form (Mermaid is not an HTML parser)
                 .replace("&&", " AND ")   # C logical-and (sanitize for safety)
             )
+            # Auto-wrap long pseudocode labels at ~60 chars for readability
+            if len(safe) > 60 and "<br/>" not in safe:
+                mid = len(safe) // 2
+                for i in range(mid, min(mid + 15, len(safe))):
+                    if safe[i] in (',', ' '):
+                        safe = safe[:i + 1] + "<br/>" + safe[i + 1:]
+                        break
             return f'"{safe}"'
 
         def _guard(g: str) -> str:
             """Sanitize a guard string for use in Mermaid -->|guard| edge labels.
 
             The pipe character | terminates the guard prematurely, so C logical-or
-            (||) must be replaced with a word form.
+            (||) must be replaced with a word form.  Parentheses and angle brackets
+            also confuse the Mermaid edge-label parser, so replace them with
+            readable equivalents.
             """
             g = g.strip()
             if g.startswith("[") and g.endswith("]"):
                 g = g[1:-1]
-            # Replace all pipe chars (|| and lone |) and && with readable words
+            # Replace chars that break Mermaid edge-label parsing
             g = g.replace("||", " OR ").replace("|", " OR ").replace("&&", " AND ")
+            g = g.replace("(", "&#40;").replace(")", "&#41;")
+            g = g.replace(">", "&gt;").replace("<", "&lt;")
+            g = g.replace('"', "'")
             return g.strip()
 
         # Emit nodes — traces go on a %% comment line BEFORE the node (never inline)
@@ -405,20 +417,18 @@ class MermaidExporter:
                 lines.append(f"    {nid}{{{_q(node.name)}}}")
 
             elif node.node_type == ActivityNodeType.CALL:
-                # RTE call: show as "RTE: Rte_Read(RP_Port, Element)"
-                parts = []
-                if node.rte_call:
-                    parts.append(node.rte_call)
-                if node.port:
-                    parts.append(node.port)
-                if node.element:
-                    parts.append(node.element)
-                if len(parts) > 1:
-                    call_label = f"RTE: {parts[0]}({', '.join(parts[1:])})"
-                elif parts:
-                    call_label = f"RTE: {parts[0]}"
+                # Prefer node.name if it already contains a C-style call
+                if "(" in node.name and ")" in node.name:
+                    call_label = node.name
                 else:
-                    call_label = f"RTE: {node.name}"
+                    # Legacy fallback: construct from rte_call/port/element
+                    parts = [p for p in [node.rte_call, node.port, node.element] if p]
+                    if len(parts) > 1:
+                        call_label = f"RTE: {parts[0]}({', '.join(parts[1:])})"
+                    elif parts:
+                        call_label = f"RTE: {parts[0]}"
+                    else:
+                        call_label = f"RTE: {node.name}"
                 lines.append(f"    {nid}[{_q(call_label)}]")
 
             elif node.node_type == ActivityNodeType.FUNCTION_CALL:

@@ -23,7 +23,8 @@
       "Bash(tasklist:*)",
       "Bash(curl:*)",
       "Read(//d/AI_Learnigns/MUD/**)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(taskkill:*)"
     ]
   }
 }

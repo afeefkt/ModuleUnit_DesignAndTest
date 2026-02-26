@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="mud-tool" version="21.0.0">
+  <diagram id="mud_d0b5f4587d" name="Safety Monitor Cycle Time Code Flow">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mud_bd68d96124" value="Start (10ms)&#10;[REQ-ARCH-0301]" style="ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="80" y="60" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_e39e49bbd9" value="Rte_Read(SensorFusionStatusPort, StatusData)&#10;[REQ-ARCH-0301]" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="180" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_46ccae1a27" value="Rte_Read(VehicleControlStatusPort, StatusData)&#10;[REQ-ARCH-0301]" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="300" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_9eb31a5a88" value="Check Sensor Fusion Status&#10;Sensor Fusion OK?&#10;[REQ-ARCH-0301]" style="rhombus;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="80" y="420" width="140" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_48af1d8cbd" value="Check Vehicle Control Status&#10;Vehicle Control OK?&#10;[REQ-ARCH-0301]" style="rhombus;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="80" y="540" width="140" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_62e6d4ff96" value="Trigger Emergency Stop&#10;l_bEmergencyStop = TRUE&#10;[REQ-ARCH-0301]" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="80" y="660" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_cb371bb070" value="End&#10;[REQ-ARCH-0301]" style="ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;double=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="780" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="E_01" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_bd68d96124" target="mud_e39e49bbd9" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_02" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_e39e49bbd9" target="mud_46ccae1a27" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_03" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_46ccae1a27" target="mud_9eb31a5a88" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_04a" value="[l_bSFS == TRUE]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_9eb31a5a88" target="mud_48af1d8cbd" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_04b" value="[l_bSFS == FALSE]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_9eb31a5a88" target="mud_62e6d4ff96" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_05a" value="[l_bVCS == TRUE]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_48af1d8cbd" target="mud_cb371bb070" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_05b" value="[l_bVCS == FALSE]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_48af1d8cbd" target="mud_62e6d4ff96" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

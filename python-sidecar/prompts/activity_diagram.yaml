@@ -1,5 +1,5 @@
 name: AUTOSAR Activity / Code-Flow Generator
-version: "2.1"
+version: "2.2"
 diagram_type: activity
 
 system_prompt: |
@@ -10,29 +10,44 @@ system_prompt: |
   Set owner_swc and owner_runnable on every diagram.
 
   NODE TYPES (use exact strings):
-    "initial"   — Start point. One per diagram.
-    "final"     — End point. One per diagram.
-    "action"    — Computation/assignment. description = C expression.
-    "call"      — RTE API call. Set rte_call, port, element, description.
-    "decision"  — if/switch condition (diamond). Must have >=2 outgoing edges with guards.
-    "merge"     — Branch convergence point.
-    "exception" — Fault/error path. Cite safety requirement.
+    "initial"       — name = "Start" or "Start (10ms)".
+    "final"         — name = "End".
+    "action"        — name = C expression (e.g. "l_f32Output = CalcAssist(l_f32Speed)")
+    "call"          — name = C call (e.g. "Rte_Read_RP_Speed_VehSpd(&l_f32Speed)")
+                      Also set: rte_call, port, element.
+    "function_call" — name = C call (e.g. "l_f32Torque = EPS_CalcAssist(l_f32Speed)")
+                      Set callee = "EPS_CalcAssist". Provide a sub_diagram if logic is non-trivial.
+    "decision"      — name = C condition (e.g. "l_f32Torque > MAX_TORQUE_NM")
+                      Must have >=2 outgoing edges with guards.
+    "merge"         — name = "merge" or short label.
+    "exception"     — name = fault description. Cite safety requirement.
 
-  NAMING:
-    Variables: l_f32Name, l_u8Name, l_bName (MISRA-C prefixes)
-    Constants: ALL_CAPS (e.g. MAX_SPEED_KMH)
-    RTE: Rte_Read_<Port>_<Element>(&l_var), Rte_Write_<Port>_<Element>(l_var)
+  CRITICAL: "name" IS the visible diagram label. Put C-pseudocode in "name".
+  Use "description" for English explanation only.
+
+  NAMING (in the name field):
+    Variables: l_f32Name, l_u8Name, l_bName (MISRA-C Hungarian)
+    Constants: ALL_CAPS (MAX_SPEED_KMH, GAIN_FACTOR)
+    RTE calls: Rte_Read_<Port>_<Element>(&l_var)
+    Function calls: l_result = FuncName(l_arg1, l_arg2)
 
   ID FORMAT: Nodes N_01..N_xx, Edges E_01..E_xx, Decision branches E_03a/E_03b.
   Guards: "[l_bValid == TRUE]" or "[l_f32Val > LIMIT]"
 
   REQUIRED FIELDS:
     All nodes: id, name, node_type, trace_reqs (>=1 req ID), confidence
-    Call nodes: also rte_call, port, element, description
-    Action nodes: also description (C expression)
-    Decision nodes: also description (what is being checked)
+    Call nodes: also rte_call, port, element, description (English)
+    Action nodes: also description (English summary)
+    Decision nodes: also description (what is being checked in English)
 
   STANDARD FLOW ORDER: INITIAL -> CALL(reads) -> DECISION(validate) -> ACTION(compute) -> CALL(writes) -> FINAL
+
+  SUB-DIAGRAMS (for static helper functions in the same module):
+    If the runnable calls a private function for complex logic, use a "function_call" node
+    in the parent and add a child flowchart in sub_diagrams[].
+    Child schema: { "diagram_type":"activity", "function_name":"FuncName",
+                    "parent_diagram":"RE_Name Code Flow", "nodes":[...], "edges":[...] }
+    Keep children small (3-8 nodes). Leave sub_diagrams:[] if no helpers needed.
 
   OUTPUT: Return ONE JSON object. Output ONLY JSON — no markdown, no explanation.
   Keep diagrams concise: aim for 5-15 nodes per runnable.
@@ -52,12 +67,13 @@ output_schema: |
       "source_requirements": ["REQ-001"],
       "nodes": [
         {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95},
-        {"id":"N_02","name":"Rte_Read RP_Port","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Rte_Read_RP_Port_Elem(&l_f32Var)","trace_reqs":["REQ-001"],"confidence":0.95}
+        {"id":"N_02","name":"Rte_Read_RP_Port_Elem(&l_f32Var)","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Read input from port","trace_reqs":["REQ-001"],"confidence":0.95}
       ],
       "edges": [
         {"id":"E_01","source":"N_01","target":"N_02"}
       ],
-      "provenance": {"version":"2.1","confidence":0.90}
+      "sub_diagrams": [],
+      "provenance": {"version":"2.2","confidence":0.90}
     }],
     "analyzed_requirements": ["REQ-001"]
   }
@@ -66,11 +82,12 @@ user_prompt: |
   Generate an activity flowchart for {{ module_context or "the SWC" }}.
 
   For EACH runnable, show its internal logic as a C-pseudocode flowchart:
-  1. RTE input reads (Rte_Read per port)
-  2. Validation / range checks (decision nodes)
-  3. Core algorithm (action nodes with C expressions)
+  1. RTE input reads (Rte_Read per port) — name = full C call signature
+  2. Validation / range checks (decision nodes) — name = C condition
+  3. Core algorithm (action nodes) — name = C assignment expression
   4. Safety checks if required
-  5. RTE output writes (Rte_Write per port)
+  5. RTE output writes (Rte_Write per port) — name = full C call signature
+  6. If a helper function is needed, use "function_call" node and optionally provide sub_diagrams
 
   REQUIREMENTS ({{ requirement_count }} total):
   {{ requirements }}
@@ -91,11 +108,11 @@ few_shot_examples:
           "source_requirements": ["REQ-001","REQ-002"],
           "nodes": [
             {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95},
-            {"id":"N_02","name":"Rte_Read RP_Sensor","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_02","name":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Read sensor input","trace_reqs":["REQ-002"],"confidence":0.95},
             {"id":"N_03","name":"l_f32Sensor > MAX_LIMIT","node_type":"decision","description":"Validate input range","trace_reqs":["REQ-002"],"confidence":0.90},
-            {"id":"N_04","name":"Compute output","node_type":"action","description":"l_f32Output = l_f32Sensor * GAIN_FACTOR","trace_reqs":["REQ-002"],"confidence":0.85},
-            {"id":"N_05","name":"Set safe default","node_type":"action","description":"l_f32Output = 0.0F","trace_reqs":["REQ-002"],"confidence":0.85},
-            {"id":"N_06","name":"Rte_Write PP_Output","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Rte_Write_PP_Output_OutputValue(l_f32Output)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_04","name":"l_f32Output = l_f32Sensor * GAIN_FACTOR","node_type":"action","description":"Compute output from sensor","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_05","name":"l_f32Output = 0.0F","node_type":"action","description":"Set safe default on range failure","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_06","name":"Rte_Write_PP_Output_OutputValue(l_f32Output)","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Write output to PP_Output","trace_reqs":["REQ-002"],"confidence":0.95},
             {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95}
           ],
           "edges": [
@@ -107,7 +124,8 @@ few_shot_examples:
             {"id":"E_05","source":"N_05","target":"N_06"},
             {"id":"E_06","source":"N_06","target":"N_07"}
           ],
-          "provenance": {"version":"2.1","confidence":0.90}
+          "sub_diagrams": [],
+          "provenance": {"version":"2.2","confidence":0.90}
         }],
         "analyzed_requirements": ["REQ-001","REQ-002"]
       }
