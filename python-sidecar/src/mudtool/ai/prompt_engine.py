@@ -37,6 +37,7 @@ class PromptTemplate:
         few_shot_examples: list[dict],
         output_schema_hint: str = "",
         metadata: Optional[dict] = None,
+        profile: str = "autosar",
     ):
         self.name = name
         self.version = version
@@ -46,6 +47,7 @@ class PromptTemplate:
         self.few_shot_examples = few_shot_examples
         self.output_schema_hint = output_schema_hint
         self.metadata = metadata or {}
+        self.profile = profile
 
     @property
     def version_tag(self) -> str:
@@ -70,7 +72,7 @@ class PromptEngine:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.prompts_dir = settings.get_prompts_dir()
-        self._templates: dict[DiagramType, PromptTemplate] = {}
+        self._templates: dict[tuple[DiagramType, str], PromptTemplate] = {}
         self._jinja_env = Environment(
             loader=FileSystemLoader(str(self.prompts_dir)),
             autoescape=False,
@@ -118,18 +120,30 @@ class PromptEngine:
             metadata=data.get("metadata", {}),
         )
 
-        self._templates[diagram_type] = template
-        logger.debug(f"Loaded template: {template.version_tag} from {path.name}")
+        profile = str(data.get("profile", "autosar"))
+        template.profile = profile
+        self._templates[(diagram_type, profile)] = template
+        logger.debug(
+            f"Loaded template: {template.version_tag} profile={profile} from {path.name}"
+        )
 
-    def get_template(self, diagram_type: DiagramType) -> Optional[PromptTemplate]:
+    def get_template(
+        self, diagram_type: DiagramType, profile: str = "autosar"
+    ) -> Optional[PromptTemplate]:
         """Get the prompt template for a specific diagram type."""
-        return self._templates.get(diagram_type)
+        return (
+            self._templates.get((diagram_type, profile))
+            or self._templates.get((diagram_type, "autosar"))
+            or self._templates.get((diagram_type, "default"))
+        )
 
     def render_system_prompt(
         self,
         diagram_type: DiagramType,
         naming_conventions: Optional[dict] = None,
         additional_context: Optional[str] = None,
+        profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
     ) -> str:
         """Render the system prompt for a diagram type.
 
@@ -141,9 +155,13 @@ class PromptEngine:
         Returns:
             Rendered system prompt string.
         """
-        template = self.get_template(diagram_type)
+        template = self.get_template(diagram_type, profile=profile)
         if not template:
-            return self._get_fallback_system_prompt(diagram_type)
+            return self._get_fallback_system_prompt(
+                diagram_type,
+                profile=profile,
+                activity_label_style=activity_label_style,
+            )
 
         jinja_template = Template(template.system_template)
 
@@ -162,6 +180,8 @@ class PromptEngine:
             swc_naming_regex=self.settings.swc_naming_regex,
             runnable_naming_regex=self.settings.runnable_naming_regex,
             port_naming_regex=self.settings.port_naming_regex,
+            profile=profile,
+            activity_label_style=activity_label_style,
         )
 
     def render_user_prompt(
@@ -170,6 +190,8 @@ class PromptEngine:
         requirements: list[Requirement],
         module_context: Optional[str] = None,
         existing_swcs: Optional[list[str]] = None,
+        profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
     ) -> str:
         """Render the user prompt with actual requirements.
 
@@ -182,7 +204,7 @@ class PromptEngine:
         Returns:
             Rendered user prompt string.
         """
-        template = self.get_template(diagram_type)
+        template = self.get_template(diagram_type, profile=profile)
 
         # Format requirements for the prompt
         reqs_text = self._format_requirements(requirements)
@@ -195,9 +217,16 @@ class PromptEngine:
                 module_context=module_context or "",
                 existing_swcs=existing_swcs or [],
                 requirement_count=len(requirements),
+                profile=profile,
+                activity_label_style=activity_label_style,
             )
 
-        return self._get_fallback_user_prompt(diagram_type, reqs_text)
+        return self._get_fallback_user_prompt(
+            diagram_type,
+            reqs_text,
+            profile=profile,
+            activity_label_style=activity_label_style,
+        )
 
     def _format_requirements(self, requirements: list[Requirement]) -> str:
         """Format requirements into a structured text block for the AI."""
@@ -221,8 +250,33 @@ class PromptEngine:
         combined = f"{system_prompt}\n---\n{user_prompt}"
         return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
-    def _get_fallback_system_prompt(self, diagram_type: DiagramType) -> str:
+    def _get_fallback_system_prompt(
+        self,
+        diagram_type: DiagramType,
+        profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
+    ) -> str:
         """Fallback system prompt when no template file is available."""
+        label_style_line = (
+            "- Activity node labels must be short pseudocode steps (not full call signatures)."
+            if activity_label_style == "pseudocode"
+            else "- Activity node labels may use explicit C call signatures."
+        )
+        if profile == "generic_c":
+            return f"""You are a software engineer and UML modeler.
+Your task is to generate {diagram_type.value} diagrams from C-project requirements.
+
+DOMAIN CONTEXT:
+- Use generic software/C-system terminology, not AUTOSAR-specific conventions.
+- Focus on pseudo-code level logic, control flow, interfaces, and module boundaries.
+- Keep output practical and implementation-oriented.
+{label_style_line if diagram_type == DiagramType.ACTIVITY else ""}
+
+OUTPUT FORMAT:
+You MUST output valid JSON conforming to the JSON-UML schema.
+Include provenance with confidence scores for each element.
+Every model element must trace back to at least one requirement ID."""
+
         return f"""You are an AUTOSAR software architecture expert and UML modeler.
 Your task is to generate {diagram_type.value} diagrams from architecture requirements.
 
@@ -233,6 +287,7 @@ DOMAIN CONTEXT:
 - Ports are either Provided (P-Port, sends/offers) or Required (R-Port, receives/consumes).
 - RTE API calls: Rte_Read, Rte_Write (SR), Rte_Call, Rte_Result (CS).
 - Runnables have triggers: Init, Cyclic (with period_ms), OnDataReception, OnModeSwitch.
+{label_style_line if diagram_type == DiagramType.ACTIVITY else ""}
 
 OUTPUT FORMAT:
 You MUST output valid JSON conforming to the JSON-UML schema.
@@ -254,13 +309,33 @@ Rate your confidence (0.0 to 1.0) for each generated element:
 - <0.5: Speculative, flag for mandatory review"""
 
     def _get_fallback_user_prompt(
-        self, diagram_type: DiagramType, requirements_text: str
+        self,
+        diagram_type: DiagramType,
+        requirements_text: str,
+        profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
     ) -> str:
         """Fallback user prompt when no template file is available."""
+        style_line = (
+            "Use short pseudocode-style node names (e.g., 'Read speed', 'Compute torque')."
+            if activity_label_style == "pseudocode"
+            else "Use explicit call-signature labels for activity nodes when helpful."
+        )
+        if profile == "generic_c":
+            return f"""Generate a {diagram_type.value} diagram from the following software requirements.
+
+REQUIREMENTS:
+{requirements_text}
+
+Output a valid JSON object conforming to the {diagram_type.value} schema.
+Focus on C-project pseudo-code level design and trace every element to requirement IDs.
+{style_line if diagram_type == DiagramType.ACTIVITY else ""}"""
+
         return f"""Generate an AUTOSAR {diagram_type.value} diagram from the following requirements.
 
 REQUIREMENTS:
 {requirements_text}
 
 Output a valid JSON object conforming to the {diagram_type.value} schema.
-Include source_requirements, provenance with confidence scores, and trace every element to requirement IDs."""
+Include source_requirements, provenance with confidence scores, and trace every element to requirement IDs.
+{style_line if diagram_type == DiagramType.ACTIVITY else ""}"""

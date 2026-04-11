@@ -208,6 +208,12 @@ class CloudBackend(BaseAIBackend):
         is_reasoning_model = any(kw in model_lower for kw in _REASONING_KEYWORDS)
         if self.settings.openai_enable_thinking or is_reasoning_model:
             payload["think"] = True    # Ollama extension: enables chain-of-thought reasoning
+
+        # Enable JSON mode for Ollama to force valid JSON output.
+        # This eliminates parse failures from markdown wrapping or explanatory text.
+        if self.settings.openai_json_mode and self._is_local_ollama():
+            payload["format"] = "json"
+
         if stop_sequences:
             payload["stop"] = stop_sequences
 

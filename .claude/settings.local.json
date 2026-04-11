@@ -24,7 +24,15 @@
       "Bash(curl:*)",
       "Read(//d/AI_Learnigns/MUD/**)",
       "Bash(find:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(wc -w /d/AI_Learnigns/MUD/python-sidecar/prompts/*.yaml)",
+      "Bash(python -m py_compile src/mudtool/ai/elaborator.py)",
+      "Bash(python -m py_compile src/mudtool/ai/orchestrator.py)",
+      "Bash(python -m py_compile src/mudtool/api/routes.py)",
+      "Bash(.venv/Scripts/python -c \"import ast; ast.parse\\(open\\(''src/mudtool/models/json_uml.py''\\).read\\(\\)\\); print\\(''json_uml.py: OK''\\)\")",
+      "Bash(.venv/Scripts/python -c \"import ast; ast.parse\\(open\\(''src/mudtool/ai/orchestrator.py''\\).read\\(\\)\\); print\\(''orchestrator.py: OK''\\)\")",
+      "Bash(.venv/Scripts/python -c \"import ast; ast.parse\\(open\\(''src/mudtool/ai/elaborator.py''\\).read\\(\\)\\); print\\(''elaborator.py: OK''\\)\")",
+      "Bash(.venv/Scripts/python -c \":*)"
     ]
   }
 }

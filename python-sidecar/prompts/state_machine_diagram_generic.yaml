@@ -1,0 +1,24 @@
+name: Generic C State Machine Generator
+version: "1.0"
+diagram_type: "state_machine"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software architect generating state machine diagrams for generic C systems.
+  Model operational modes, transitions, triggers, and guards.
+
+  Rules:
+  - Use meaningful state names tied to requirements.
+  - Include exactly one initial state and at least one terminal path.
+  - Keep trigger/guard expressions implementation-oriented.
+  - Return valid JSON only.
+
+user_prompt: |
+  Generate a state machine diagram JSON from these requirements:
+
+  {{ requirements }}
+
+  Context: {{ module_context }}
+  Existing modules: {{ existing_swcs | join(", ") }}
+
+  Output only JSON that matches the state_machine schema.

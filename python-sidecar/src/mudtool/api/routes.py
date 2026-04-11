@@ -6,12 +6,15 @@ to drive the requirement import, AI generation, and validation pipeline.
 
 from __future__ import annotations
 
+import asyncio
+import json as json_mod
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from mudtool.config.settings import Settings, get_settings
@@ -47,6 +50,14 @@ class GenerateRequest(BaseModel):
     existing_swcs: Optional[list[str]] = None
     temperature: float = 0.2
     apply_autosar_mapping: bool = True
+    autosar_compliant: bool = Field(
+        True,
+        description="If true generate AUTOSAR-compliant diagrams, else generic C-project diagrams.",
+    )
+    activity_label_style: Literal["pseudocode", "call_signature"] = Field(
+        "pseudocode",
+        description="Activity node label style preference.",
+    )
     # Pipeline controls — override server defaults per request
     pipeline_mode: Optional[str] = Field(
         None,
@@ -66,6 +77,14 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     result: GenerationResult
     validation_report: Optional[ValidationReport] = None
+    generation_mode: str = Field(
+        "autosar",
+        description="autosar or generic_c",
+    )
+    elaboration_info: Optional[dict] = Field(
+        None,
+        description="Elaboration context metadata: source/status/elaborated_count/req_hash",
+    )
     pipeline_summary: Optional[dict] = Field(
         None,
         description=(
@@ -218,6 +237,52 @@ async def import_requirements_text(
         tmp_path.unlink(missing_ok=True)
 
 
+@router.post("/elaborate")
+async def elaborate_requirements(request: AnalyzeRequest):
+    """Elaborate requirements using AI chain-of-thought reasoning.
+
+    Pre-processes requirements into structured AUTOSAR-specific JSON
+    with AI "thinking" steps. Results are cached for reuse.
+
+    Returns: {thinking: [...], elaborated: [...], req_hash: "..."}
+    """
+    from mudtool.ai.elaborator import RequirementElaborator
+    from mudtool.api.dependencies import get_orchestrator
+
+    orchestrator = get_orchestrator()
+
+    if not request.requirements.requirements:
+        raise HTTPException(400, "No requirements provided")
+
+    backend = orchestrator._get_backend()
+    settings = get_settings()
+    elaborator = RequirementElaborator(settings, backend)
+    result = await elaborator.elaborate(
+        request.requirements.requirements, force_refresh=False
+    )
+    return result
+
+
+@router.post("/elaborate/refresh")
+async def elaborate_requirements_refresh(request: AnalyzeRequest):
+    """Force-refresh requirement elaboration and overwrite existing cache."""
+    from mudtool.ai.elaborator import RequirementElaborator
+    from mudtool.api.dependencies import get_orchestrator
+
+    orchestrator = get_orchestrator()
+
+    if not request.requirements.requirements:
+        raise HTTPException(400, "No requirements provided")
+
+    backend = orchestrator._get_backend()
+    settings = get_settings()
+    elaborator = RequirementElaborator(settings, backend)
+    result = await elaborator.elaborate(
+        request.requirements.requirements, force_refresh=True
+    )
+    return result
+
+
 @router.post("/analyze", response_model=dict)
 async def analyze_requirements(request: AnalyzeRequest):
     """Analyze requirements: cluster into modules, identify interfaces.
@@ -236,6 +301,24 @@ async def analyze_requirements(request: AnalyzeRequest):
         request.requirements.requirements
     )
     return result
+
+
+async def _ensure_elaboration_data(
+    orchestrator,
+    requirements: list,
+    progress_callback: Optional[callable] = None,
+) -> dict:
+    """Ensure valid elaboration context exists (cache hit or regenerated)."""
+    from mudtool.ai.elaborator import RequirementElaborator
+
+    backend = orchestrator._get_backend()
+    settings = get_settings()
+    elaborator = RequirementElaborator(settings, backend)
+    return await elaborator.elaborate(
+        requirements=requirements,
+        progress_callback=progress_callback,
+        force_refresh=False,
+    )
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -278,6 +361,25 @@ async def generate_diagrams(request: GenerateRequest):
             raise HTTPException(400, f"Invalid diagram type: {dt_str}")
 
     req_ids = [r.req_id for r in request.requirements.requirements]
+    generation_mode = "autosar" if request.autosar_compliant else "generic_c"
+    generation_profile = generation_mode
+
+    elaboration_data = await _ensure_elaboration_data(
+        orchestrator, request.requirements.requirements
+    )
+    elaboration_info = {
+        "source": elaboration_data.get("source", "failed"),
+        "status": elaboration_data.get("status", "unknown"),
+        "elaborated_count": len(elaboration_data.get("elaborated", [])),
+        "req_hash": elaboration_data.get("req_hash"),
+        "quality_score": elaboration_data.get("quality_score"),
+    }
+    logger.info(
+        "Elaboration context: source=%s status=%s count=%s",
+        elaboration_info["source"],
+        elaboration_info["status"],
+        elaboration_info["elaborated_count"],
+    )
 
     # Determine effective pipeline mode
     raw_mode = request.pipeline_mode or (
@@ -300,6 +402,10 @@ async def generate_diagrams(request: GenerateRequest):
             requirements=request.requirements.requirements,
             diagram_types=diagram_types,
             module_context=request.module_context,
+            generation_profile=generation_profile,
+            activity_label_style=request.activity_label_style,
+            autosar_compliant=request.autosar_compliant,
+            elaborated_data=elaboration_data,
         )
     else:
         # ── Multi-stage pipeline path ───────────────────────────────────────
@@ -316,6 +422,10 @@ async def generate_diagrams(request: GenerateRequest):
             max_passes=request.pipeline_max_passes or settings.pipeline_max_passes,
             min_confidence=settings.pipeline_confidence_threshold,
             draft_temperature=request.temperature,
+            generation_profile=generation_profile,
+            activity_label_style=request.activity_label_style,
+            autosar_compliant=request.autosar_compliant,
+            elaborated_data=elaboration_data,
         )
         logger.info(
             f"Pipeline mode={effective_mode.value}, "
@@ -333,11 +443,15 @@ async def generate_diagrams(request: GenerateRequest):
         result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
 
     # AUTOSAR mapping (unchanged)
-    if request.apply_autosar_mapping:
+    if request.autosar_compliant and request.apply_autosar_mapping:
         result = mapper.map_generation_result(result)
 
     # Validate (unchanged)
-    validation_report = validator.validate(result, requirement_ids=req_ids)
+    validation_report = validator.validate(
+        result,
+        requirement_ids=req_ids,
+        autosar_compliant=request.autosar_compliant,
+    )
 
     # Store trace links (unchanged)
     from mudtool.api.dependencies import get_trace_store
@@ -347,7 +461,195 @@ async def generate_diagrams(request: GenerateRequest):
     return GenerateResponse(
         result=result,
         validation_report=validation_report,
+        generation_mode=generation_mode,
+        elaboration_info=elaboration_info,
         pipeline_summary=pipeline_summary,
+    )
+
+
+@router.post("/generate/stream")
+async def generate_diagrams_stream(request: GenerateRequest):
+    """Generate UML diagrams with Server-Sent Events for real-time progress.
+
+    Same logic as /generate, but streams progress events via SSE.
+    Events: progress, diagram_complete, complete, error
+    """
+    from mudtool.ai.pipeline import (
+        PipelineConfig,
+        PipelineMode,
+        PipelineOrchestrator,
+        merge_pipeline_results,
+    )
+    from mudtool.api.dependencies import get_mapper, get_orchestrator, get_validator
+
+    orchestrator = get_orchestrator()
+    mapper = get_mapper()
+    validator = get_validator()
+    settings: Settings = get_settings()
+
+    if not request.requirements.requirements:
+        raise HTTPException(400, "No requirements provided")
+
+    diagram_types = []
+    for dt_str in request.diagram_types:
+        try:
+            diagram_types.append(DiagramType(dt_str))
+        except ValueError:
+            raise HTTPException(400, f"Invalid diagram type: {dt_str}")
+
+    req_ids = [r.req_id for r in request.requirements.requirements]
+    generation_mode = "autosar" if request.autosar_compliant else "generic_c"
+    generation_profile = generation_mode
+
+    raw_mode = request.pipeline_mode or (
+        settings.pipeline_mode if settings.pipeline_enabled else "single_pass"
+    )
+    try:
+        effective_mode = PipelineMode(raw_mode)
+    except ValueError:
+        raise HTTPException(400, f"Invalid pipeline_mode '{raw_mode}'.")
+
+    # SSE event queue — progress_callback pushes, generator yields
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def progress_callback(event: dict) -> None:
+        queue.put_nowait(event)
+
+    async def run_generation():
+        """Background coroutine that runs the actual generation."""
+        try:
+            pipeline_summary = None
+            elaboration_data = await _ensure_elaboration_data(
+                orchestrator,
+                request.requirements.requirements,
+                progress_callback=progress_callback,
+            )
+            elaboration_info = {
+                "source": elaboration_data.get("source", "failed"),
+                "status": elaboration_data.get("status", "unknown"),
+                "elaborated_count": len(elaboration_data.get("elaborated", [])),
+                "req_hash": elaboration_data.get("req_hash"),
+                "quality_score": elaboration_data.get("quality_score"),
+            }
+            logger.info(
+                "Elaboration context: source=%s status=%s count=%s",
+                elaboration_info["source"],
+                elaboration_info["status"],
+                elaboration_info["elaborated_count"],
+            )
+
+            if effective_mode == PipelineMode.SINGLE_PASS:
+                result = await orchestrator.generate_all_diagrams(
+                    requirements=request.requirements.requirements,
+                    diagram_types=diagram_types,
+                    module_context=request.module_context,
+                    progress_callback=progress_callback,
+                    generation_profile=generation_profile,
+                    activity_label_style=request.activity_label_style,
+                    autosar_compliant=request.autosar_compliant,
+                    elaborated_data=elaboration_data,
+                )
+            else:
+                reviewer = (
+                    "llama3.2"
+                    if effective_mode == PipelineMode.TWO_MODEL_FAST
+                    else settings.pipeline_reviewer_model
+                )
+                config = PipelineConfig(
+                    mode=effective_mode,
+                    generator_model=settings.pipeline_generator_model,
+                    reviewer_model=reviewer,
+                    max_passes=request.pipeline_max_passes or settings.pipeline_max_passes,
+                    min_confidence=settings.pipeline_confidence_threshold,
+                    draft_temperature=request.temperature,
+                    generation_profile=generation_profile,
+                    activity_label_style=request.activity_label_style,
+                    autosar_compliant=request.autosar_compliant,
+                    elaborated_data=elaboration_data,
+                )
+                pipeline_orch = PipelineOrchestrator(settings, orchestrator)
+                pipeline_results = await pipeline_orch.generate_with_pipeline(
+                    requirements=request.requirements.requirements,
+                    diagram_types=diagram_types,
+                    config=config,
+                    module_context=request.module_context,
+                    existing_swcs=request.existing_swcs,
+                )
+                result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
+
+            if request.autosar_compliant and request.apply_autosar_mapping:
+                result = mapper.map_generation_result(result)
+
+            validation_report = validator.validate(
+                result,
+                requirement_ids=req_ids,
+                autosar_compliant=request.autosar_compliant,
+            )
+
+            from mudtool.api.dependencies import get_trace_store
+            trace_store = get_trace_store()
+            trace_store.extract_and_store_traces(result)
+
+            # Push final complete event
+            queue.put_nowait({
+                "_final": True,
+                "result": result.model_dump(mode="json"),
+                "validation_report": (
+                    validation_report.model_dump(mode="json")
+                    if validation_report else None
+                ),
+                "pipeline_summary": pipeline_summary,
+                "generation_mode": generation_mode,
+                "elaboration_info": elaboration_info,
+            })
+        except Exception as exc:
+            logger.error(f"SSE generation failed: {exc}", exc_info=True)
+            queue.put_nowait({"_error": True, "message": str(exc)})
+
+    async def event_generator():
+        """Yields SSE-formatted events from the queue."""
+        # Start generation as a background task
+        task = asyncio.create_task(run_generation())
+
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=120)
+                except asyncio.TimeoutError:
+                    # Send keepalive comment
+                    yield ": keepalive\n\n"
+                    continue
+
+                if event.get("_final"):
+                    yield (
+                        f"event: complete\n"
+                        f"data: {json_mod.dumps(event, default=str)}\n\n"
+                    )
+                    break
+                elif event.get("_error"):
+                    yield (
+                        f"event: error\n"
+                        f"data: {json_mod.dumps(event)}\n\n"
+                    )
+                    break
+                else:
+                    event_type = event.get("stage", "progress")
+                    yield (
+                        f"event: {event_type}\n"
+                        f"data: {json_mod.dumps(event)}\n\n"
+                    )
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -415,6 +717,32 @@ async def export_mermaid_inline(request: MermaidInlineRequest):
     exporter = MermaidExporter()
     diagrams = exporter.export_result_inline(request.result)
     return {"diagrams": diagrams}
+
+
+class CSkeletonRequest(BaseModel):
+    result: GenerationResult
+
+
+@router.post("/export/c-skeleton")
+async def export_c_skeleton(request: CSkeletonRequest):
+    """Generate C-code skeleton files from ActivityDiagram JSON.
+
+    Returns: {"files": {"diagram_name": "c_code_string", ...}}
+    Only processes ActivityDiagram instances (other diagram types are skipped).
+    """
+    from mudtool.generator.c_skeleton_exporter import CSkeletonExporter
+
+    exporter = CSkeletonExporter()
+    files = exporter.export_result(request.result)
+
+    if not files:
+        raise HTTPException(
+            400,
+            "No ActivityDiagram found in the generation result. "
+            "C skeleton export only works with activity/flow diagrams."
+        )
+
+    return {"files": files}
 
 
 @router.post("/render")

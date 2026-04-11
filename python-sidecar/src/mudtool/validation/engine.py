@@ -41,6 +41,7 @@ class ValidationEngine:
         self,
         result: GenerationResult,
         requirement_ids: Optional[list[str]] = None,
+        autosar_compliant: bool = True,
     ) -> ValidationReport:
         """Run all validation passes on a generation result.
 
@@ -60,12 +61,15 @@ class ValidationEngine:
         logger.info(f"  Structural: {structural_report.error_count} errors, "
                      f"{structural_report.warning_count} warnings")
 
-        # Pass 2: AUTOSAR Rules
-        logger.info("Validation Pass 2: AUTOSAR rules...")
-        autosar_report = self.autosar.validate(result, requirement_ids)
-        self._merge_report(combined, autosar_report)
-        logger.info(f"  AUTOSAR: {autosar_report.error_count} errors, "
-                     f"{autosar_report.warning_count} warnings")
+        # Pass 2: AUTOSAR Rules (optional for generic C profile)
+        if autosar_compliant:
+            logger.info("Validation Pass 2: AUTOSAR rules...")
+            autosar_report = self.autosar.validate(result, requirement_ids)
+            self._merge_report(combined, autosar_report)
+            logger.info(f"  AUTOSAR: {autosar_report.error_count} errors, "
+                         f"{autosar_report.warning_count} warnings")
+        else:
+            logger.info("Validation Pass 2: AUTOSAR rules skipped (generic_c mode)")
 
         # Pass 3: Cross-Diagram Consistency
         logger.info("Validation Pass 3: Cross-diagram consistency...")

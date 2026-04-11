@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     openai_max_tokens: int = 8192
     openai_enable_thinking: bool = False   # MUD_OPENAI_ENABLE_THINKING — pass think:true to Ollama
+    openai_json_mode: bool = True           # MUD_OPENAI_JSON_MODE — force JSON output via Ollama format field
 
     cloud_provider: CloudProvider = CloudProvider.ANTHROPIC
 

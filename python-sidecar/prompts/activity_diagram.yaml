@@ -1,5 +1,5 @@
 name: AUTOSAR Activity / Code-Flow Generator
-version: "2.2"
+version: "2.4"
 diagram_type: activity
 
 system_prompt: |
@@ -12,33 +12,46 @@ system_prompt: |
   NODE TYPES (use exact strings):
     "initial"       — name = "Start" or "Start (10ms)".
     "final"         — name = "End".
-    "action"        — name = C expression (e.g. "l_f32Output = CalcAssist(l_f32Speed)")
-    "call"          — name = C call (e.g. "Rte_Read_RP_Speed_VehSpd(&l_f32Speed)")
+    "action"        — name = short pseudocode step (e.g. "Compute assist torque")
+    "call"          — name = short semantic step (e.g. "Read vehicle speed")
                       Also set: rte_call, port, element.
-    "function_call" — name = C call (e.g. "l_f32Torque = EPS_CalcAssist(l_f32Speed)")
+    "function_call" — name = semantic call step (e.g. "Compute assist via helper")
                       Set callee = "EPS_CalcAssist". Provide a sub_diagram if logic is non-trivial.
-    "decision"      — name = C condition (e.g. "l_f32Torque > MAX_TORQUE_NM")
+    "decision"      — name = concise condition text (e.g. "Torque exceeds max limit?")
                       Must have >=2 outgoing edges with guards.
     "merge"         — name = "merge" or short label.
     "exception"     — name = fault description. Cite safety requirement.
+    "fork"          — name = "fork" (parallel split).
+    "join"          — name = "join" (parallel merge / synchronization).
 
-  CRITICAL: "name" IS the visible diagram label. Put C-pseudocode in "name".
-  Use "description" for English explanation only.
+  CRITICAL: "name" IS the visible diagram label.
+  If activity_label_style is "pseudocode" (default), keep names concise and semantic.
+  Do not place long call signatures in "name" when style is pseudocode.
+  Put call signatures in description and metadata fields (rte_call, port, element, callee).
+  If activity_label_style is "call_signature", call signatures in name are allowed.
 
-  NAMING (in the name field):
-    Variables: l_f32Name, l_u8Name, l_bName (MISRA-C Hungarian)
-    Constants: ALL_CAPS (MAX_SPEED_KMH, GAIN_FACTOR)
-    RTE calls: Rte_Read_<Port>_<Element>(&l_var)
-    Function calls: l_result = FuncName(l_arg1, l_arg2)
+  NAMING:
+    Prefer pseudocode-level labels:
+    - "Read sensor data"
+    - "Validate input range"
+    - "Compute control output"
+    - "Write actuator command"
+    Keep AUTOSAR naming in metadata fields and description.
 
   ID FORMAT: Nodes N_01..N_xx, Edges E_01..E_xx, Decision branches E_03a/E_03b.
   Guards: "[l_bValid == TRUE]" or "[l_f32Val > LIMIT]"
 
-  REQUIRED FIELDS:
-    All nodes: id, name, node_type, trace_reqs (>=1 req ID), confidence
-    Call nodes: also rte_call, port, element, description (English)
-    Action nodes: also description (English summary)
-    Decision nodes: also description (what is being checked in English)
+  ⚠ CRITICAL JSON FIELD NAMES — the parser is strict:
+    - Nodes: use "node_type" (NOT "type", NOT "nodeType")
+    - Edges: MUST include "id" field (e.g. "E_01"), "source", "target"
+    - Node IDs: use N_XX format (e.g. "N_01", "N_02")
+    - Edge IDs: use E_XX format (e.g. "E_01", "E_02")
+
+  MANDATORY FIELDS CHECK — verify EVERY node before outputting:
+    All nodes: id, name, node_type, trace_reqs (>=1 req ID), confidence, description (English, 3-10 words)
+    Call nodes: also rte_call, port, element
+    Function_call nodes: also callee (function name string)
+    Decision nodes: >=2 outgoing edges, each with a guard
 
   STANDARD FLOW ORDER: INITIAL -> CALL(reads) -> DECISION(validate) -> ACTION(compute) -> CALL(writes) -> FINAL
 
@@ -49,6 +62,7 @@ system_prompt: |
                     "parent_diagram":"RE_Name Code Flow", "nodes":[...], "edges":[...] }
     Keep children small (3-8 nodes). Leave sub_diagrams:[] if no helpers needed.
 
+  Activity label style: {{ activity_label_style | default("pseudocode") }}.
   OUTPUT: Return ONE JSON object. Output ONLY JSON — no markdown, no explanation.
   Keep diagrams concise: aim for 5-15 nodes per runnable.
 
@@ -66,14 +80,14 @@ output_schema: |
       "owner_runnable": "RE_Name",
       "source_requirements": ["REQ-001"],
       "nodes": [
-        {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95},
-        {"id":"N_02","name":"Rte_Read_RP_Port_Elem(&l_f32Var)","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Read input from port","trace_reqs":["REQ-001"],"confidence":0.95}
+        {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point"},
+        {"id":"N_02","name":"Read input value","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Rte_Read_RP_Port_Elem(&l_f32Var)","trace_reqs":["REQ-001"],"confidence":0.95}
       ],
       "edges": [
         {"id":"E_01","source":"N_01","target":"N_02"}
       ],
       "sub_diagrams": [],
-      "provenance": {"version":"2.2","confidence":0.90}
+      "provenance": {"version":"2.4","confidence":0.90}
     }],
     "analyzed_requirements": ["REQ-001"]
   }
@@ -81,12 +95,13 @@ output_schema: |
 user_prompt: |
   Generate an activity flowchart for {{ module_context or "the SWC" }}.
 
-  For EACH runnable, show its internal logic as a C-pseudocode flowchart:
-  1. RTE input reads (Rte_Read per port) — name = full C call signature
-  2. Validation / range checks (decision nodes) — name = C condition
-  3. Core algorithm (action nodes) — name = C assignment expression
-  4. Safety checks if required
-  5. RTE output writes (Rte_Write per port) — name = full C call signature
+  Label style: {{ activity_label_style | default("pseudocode") }}.
+  For EACH runnable, show its internal logic as a pseudocode flowchart:
+  1. RTE input reads (Rte_Read per port) — use semantic step names
+  2. Validation / range checks (decision nodes) — concise condition text
+  3. Core algorithm (action nodes) — concise compute/update steps
+  4. Safety checks if required (exception nodes for fault paths)
+  5. RTE output writes (Rte_Write per port) — semantic write step names
   6. If a helper function is needed, use "function_call" node and optionally provide sub_diagrams
 
   REQUIREMENTS ({{ requirement_count }} total):
@@ -107,13 +122,13 @@ few_shot_examples:
           "owner_runnable": "RE_Process",
           "source_requirements": ["REQ-001","REQ-002"],
           "nodes": [
-            {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95},
-            {"id":"N_02","name":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Read sensor input","trace_reqs":["REQ-002"],"confidence":0.95},
-            {"id":"N_03","name":"l_f32Sensor > MAX_LIMIT","node_type":"decision","description":"Validate input range","trace_reqs":["REQ-002"],"confidence":0.90},
-            {"id":"N_04","name":"l_f32Output = l_f32Sensor * GAIN_FACTOR","node_type":"action","description":"Compute output from sensor","trace_reqs":["REQ-002"],"confidence":0.85},
-            {"id":"N_05","name":"l_f32Output = 0.0F","node_type":"action","description":"Set safe default on range failure","trace_reqs":["REQ-002"],"confidence":0.85},
-            {"id":"N_06","name":"Rte_Write_PP_Output_OutputValue(l_f32Output)","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Write output to PP_Output","trace_reqs":["REQ-002"],"confidence":0.95},
-            {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95}
+            {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point 10ms cycle"},
+            {"id":"N_02","name":"Read sensor input","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_03","name":"Sensor value exceeds max limit?","node_type":"decision","description":"Validate input range","trace_reqs":["REQ-002"],"confidence":0.90},
+            {"id":"N_04","name":"Compute output value","node_type":"action","description":"l_f32Output = l_f32Sensor * GAIN_FACTOR","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_05","name":"Set output to safe default","node_type":"action","description":"l_f32Output = 0.0F","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_06","name":"Write output value","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Rte_Write_PP_Output_OutputValue(l_f32Output)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Exit point"}
           ],
           "edges": [
             {"id":"E_01","source":"N_01","target":"N_02"},
@@ -125,7 +140,103 @@ few_shot_examples:
             {"id":"E_06","source":"N_06","target":"N_07"}
           ],
           "sub_diagrams": [],
-          "provenance": {"version":"2.2","confidence":0.90}
+          "provenance": {"version":"2.4","confidence":0.90}
         }],
         "analyzed_requirements": ["REQ-001","REQ-002"]
       }
+
+  - input: |
+      REQ-010: SWC_BrakeCtrl shall contain RE_CheckBrake.
+      REQ-011: RE_CheckBrake reads brake pressure from RP_BrakePressure, monitors fault status, raises DEM event on critical failure.
+      REQ-012: If pressure exceeds CRITICAL_PRESSURE_BAR, set l_bFault = TRUE and report via Dem_SetEventStatus.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "RE_CheckBrake Code Flow",
+          "owner_swc": "SWC_BrakeCtrl",
+          "owner_runnable": "RE_CheckBrake",
+          "source_requirements": ["REQ-010","REQ-011","REQ-012"],
+          "nodes": [
+            {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-010"],"confidence":0.95,"description":"Entry point"},
+            {"id":"N_02","name":"Rte_Read_RP_BrakePressure_Pressure(&l_f32Pressure)","node_type":"call","rte_call":"Rte_Read","port":"RP_BrakePressure","element":"Pressure","description":"Read brake pressure","trace_reqs":["REQ-011"],"confidence":0.95},
+            {"id":"N_03","name":"l_f32Pressure > CRITICAL_PRESSURE_BAR","node_type":"decision","description":"Check critical pressure threshold","trace_reqs":["REQ-012"],"confidence":0.90},
+            {"id":"N_04","name":"l_bFault = TRUE","node_type":"action","description":"Set fault flag","trace_reqs":["REQ-012"],"confidence":0.90},
+            {"id":"N_05","name":"Dem_SetEventStatus(DTC_BRAKE_OVERPRESSURE, DEM_EVENT_STATUS_FAILED)","node_type":"exception","description":"Report critical DEM event","trace_reqs":["REQ-012"],"confidence":0.85},
+            {"id":"N_06","name":"l_bFault = FALSE","node_type":"action","description":"Clear fault flag","trace_reqs":["REQ-011"],"confidence":0.85},
+            {"id":"N_07","name":"merge","node_type":"merge","description":"Rejoin after decision","trace_reqs":["REQ-011"],"confidence":0.90},
+            {"id":"N_08","name":"Rte_Write_PP_BrakeStatus_FaultActive(l_bFault)","node_type":"call","rte_call":"Rte_Write","port":"PP_BrakeStatus","element":"FaultActive","description":"Write fault status output","trace_reqs":["REQ-011"],"confidence":0.95},
+            {"id":"N_09","name":"End","node_type":"final","trace_reqs":["REQ-010"],"confidence":0.95,"description":"Exit point"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03a","source":"N_03","target":"N_04","guard":"[l_f32Pressure > CRITICAL_PRESSURE_BAR]"},
+            {"id":"E_03b","source":"N_03","target":"N_06","guard":"[l_f32Pressure <= CRITICAL_PRESSURE_BAR]"},
+            {"id":"E_04","source":"N_04","target":"N_05"},
+            {"id":"E_05","source":"N_05","target":"N_07"},
+            {"id":"E_06","source":"N_06","target":"N_07"},
+            {"id":"E_07","source":"N_07","target":"N_08"},
+            {"id":"E_08","source":"N_08","target":"N_09"}
+          ],
+          "sub_diagrams": [],
+          "provenance": {"version":"2.4","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-010","REQ-011","REQ-012"]
+      }
+
+  - input: |
+      REQ-020: SWC_MotorCtrl shall contain RE_ControlMotor triggered every 5ms.
+      REQ-021: RE_ControlMotor reads speed from RP_MotorSpeed and calls static helper MotorCtrl_CalcPWM to compute PWM duty cycle.
+      REQ-022: MotorCtrl_CalcPWM applies PID control: error = setpoint - actual, integral += error * dt, output = Kp*error + Ki*integral.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "RE_ControlMotor Code Flow",
+          "owner_swc": "SWC_MotorCtrl",
+          "owner_runnable": "RE_ControlMotor",
+          "source_requirements": ["REQ-020","REQ-021","REQ-022"],
+          "nodes": [
+            {"id":"N_01","name":"Start (5ms)","node_type":"initial","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Entry point 5ms cycle"},
+            {"id":"N_02","name":"Rte_Read_RP_MotorSpeed_ActualSpeed(&l_f32Speed)","node_type":"call","rte_call":"Rte_Read","port":"RP_MotorSpeed","element":"ActualSpeed","description":"Read motor speed","trace_reqs":["REQ-021"],"confidence":0.95},
+            {"id":"N_03","name":"l_f32Duty = MotorCtrl_CalcPWM(l_f32Speed, l_f32Setpoint)","node_type":"function_call","callee":"MotorCtrl_CalcPWM","description":"Compute PWM via PID helper","trace_reqs":["REQ-021","REQ-022"],"confidence":0.90},
+            {"id":"N_04","name":"Rte_Write_PP_MotorPWM_DutyCycle(l_f32Duty)","node_type":"call","rte_call":"Rte_Write","port":"PP_MotorPWM","element":"DutyCycle","description":"Write PWM duty cycle","trace_reqs":["REQ-021"],"confidence":0.95},
+            {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Exit point"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03","source":"N_03","target":"N_04"},
+            {"id":"E_04","source":"N_04","target":"N_05"}
+          ],
+          "sub_diagrams": [{
+            "diagram_type": "activity",
+            "name": "MotorCtrl_CalcPWM Code Flow",
+            "function_name": "MotorCtrl_CalcPWM",
+            "parent_diagram": "RE_ControlMotor Code Flow",
+            "owner_swc": "SWC_MotorCtrl",
+            "source_requirements": ["REQ-022"],
+            "nodes": [
+              {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-022"],"confidence":0.95,"description":"Entry point"},
+              {"id":"N_02","name":"l_f32Error = l_f32Setpoint - l_f32Actual","node_type":"action","description":"Compute PID error","trace_reqs":["REQ-022"],"confidence":0.90},
+              {"id":"N_03","name":"l_f32Integral += l_f32Error * DT_005","node_type":"action","description":"Accumulate integral term","trace_reqs":["REQ-022"],"confidence":0.85},
+              {"id":"N_04","name":"l_f32Output = KP * l_f32Error + KI * l_f32Integral","node_type":"action","description":"Compute PID output","trace_reqs":["REQ-022"],"confidence":0.85},
+              {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-022"],"confidence":0.95,"description":"Return l_f32Output"}
+            ],
+            "edges": [
+              {"id":"E_01","source":"N_01","target":"N_02"},
+              {"id":"E_02","source":"N_02","target":"N_03"},
+              {"id":"E_03","source":"N_03","target":"N_04"},
+              {"id":"E_04","source":"N_04","target":"N_05"}
+            ],
+            "sub_diagrams": [],
+            "provenance": {"version":"2.4","confidence":0.85}
+          }],
+          "provenance": {"version":"2.4","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-020","REQ-021","REQ-022"]
+      }
+
+
+

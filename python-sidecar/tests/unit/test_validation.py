@@ -202,3 +202,28 @@ class TestValidationEngine:
         # Should complete without crash
         assert report.diagrams_checked >= 3
         assert report.elements_checked > 0
+
+    def test_skip_autosar_pass_in_generic_mode(self, test_settings):
+        engine = ValidationEngine(test_settings)
+        diagram = SequenceDiagram(
+            name="test",
+            lifelines=[
+                Lifeline(id="ll_1", name="ModuleA"),
+                Lifeline(id="ll_2", name="ModuleB"),
+            ],
+            messages=[
+                Message(
+                    id="m1",
+                    **{"from": "ll_1", "to": "ll_2"},
+                    rte_call="Rte_Invalid",
+                    port="PP_Data",
+                ),
+            ],
+        )
+        result = GenerationResult(diagrams=[diagram])
+        report = engine.validate(
+            result,
+            requirement_ids=["REQ-001"],
+            autosar_compliant=False,
+        )
+        assert not any(i.rule_id.startswith("AUT-") for i in report.issues)

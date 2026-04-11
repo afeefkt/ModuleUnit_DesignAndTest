@@ -29,6 +29,21 @@ logger = logging.getLogger(__name__)
 class StructuralValidator:
     """Validates UML metamodel conformance of generated diagrams."""
 
+    @classmethod
+    def validate_quick(cls, result: GenerationResult) -> list[str]:
+        """Run validation and return issues as flat strings for AI retry prompts.
+
+        Returns a list like:
+          ["[ERROR] STR-020: Activity diagram has no initial node",
+           "[WARNING] STR-023: Activity node 'N_03' may be unreachable"]
+        """
+        validator = cls()
+        report = validator.validate(result)
+        return [
+            f"[{issue.severity.value.upper()}] {issue.rule_id}: {issue.message}"
+            for issue in report.issues
+        ]
+
     def validate(self, result: GenerationResult) -> ValidationReport:
         report = ValidationReport()
 

@@ -468,4 +468,30 @@ class MermaidExporter:
             else:
                 lines.append(f"    {src} --> {tgt}")
 
+        # ── Node styling: color-code by type ──────────────────────────
+        lines.append("")
+        lines.append("    %% Node type styling")
+        lines.append("    classDef rteCall fill:#d4e6f1,stroke:#2980b9,color:#000")
+        lines.append("    classDef decision fill:#fdebd0,stroke:#e67e22,color:#000")
+        lines.append("    classDef exception fill:#f5b7b1,stroke:#e74c3c,color:#000")
+        lines.append("    classDef funcCall fill:#d5f5e3,stroke:#27ae60,color:#000")
+        lines.append("    classDef initial fill:#d5dbdb,stroke:#566573,color:#000")
+        lines.append("    classDef final fill:#566573,stroke:#2c3e50,color:#fff")
+        lines.append("    classDef action fill:#ebf5fb,stroke:#3498db,color:#000")
+
+        # Assign classes to nodes
+        type_to_class = {
+            ActivityNodeType.CALL: "rteCall",
+            ActivityNodeType.DECISION: "decision",
+            ActivityNodeType.EXCEPTION: "exception",
+            ActivityNodeType.FUNCTION_CALL: "funcCall",
+            ActivityNodeType.INITIAL: "initial",
+            ActivityNodeType.FINAL: "final",
+            ActivityNodeType.ACTION: "action",
+        }
+        for node in diagram.nodes:
+            css_class = type_to_class.get(node.node_type)
+            if css_class:
+                lines.append(f"    class {_safe(node.id)} {css_class}")
+
         return "\n".join(lines)

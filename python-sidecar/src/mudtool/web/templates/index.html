@@ -161,6 +161,26 @@
       background: #eff6ff;
     }
 
+    /* ── Elaboration / AI Reasoning ─────────────────────── */
+    .thinking-step {
+      border-left: 2px solid #a78bfa;
+      padding: 4px 8px;
+      background: #faf5ff;
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+
+    .elab-entity {
+      display: inline-block;
+      font-size: 10px;
+      background: #ede9fe;
+      color: #6d28d9;
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin: 1px 2px;
+    }
+
     /* ── Pipeline stage progress badges ────────────────── */
     .pipeline-badge {
       font-size: 10px;
@@ -626,6 +646,22 @@
         </div>
       </div>
 
+      <!-- Elaborate -->
+      <div class="p-4 border-t border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          1.5 · Elaborate Requirements
+        </p>
+        <p class="text-xs text-slate-400 mb-2">AI pre-analysis for richer generation context</p>
+        <button class="secondary w-full text-xs" id="btnElaborate" disabled>
+          <span id="elabLabel">Elaborate</span>
+          <svg id="elabSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+          </svg>
+        </button>
+        <div id="elabStatus" class="text-xs mt-1 hidden"></div>
+      </div>
+
       <!-- Generate button -->
       <div class="p-4 border-t border-slate-100">
         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -640,6 +676,10 @@
             <option value="two_model_fast">Dual AI · fast (~12 min)</option>
             <option value="two_model" selected>Dual AI · generator+reviewer · best (~15 min)</option>
           </select>
+        </div>
+        <div class="flex items-center gap-2 mb-2">
+          <input id="autosarCompliant" type="checkbox" checked />
+          <label class="text-xs text-slate-600 cursor-pointer" for="autosarCompliant">AUTOSAR compliant</label>
         </div>
         <!-- Stage progress chips — shown during multi-stage runs -->
         <div id="pipelineProgress"></div>
@@ -731,6 +771,23 @@
         <div id="uncoveredList" class="mt-2 text-xs text-red-500"></div>
       </div>
 
+      <!-- AI Reasoning (from elaboration) -->
+      <div class="p-4 border-b border-slate-100">
+        <details id="reasoningDetails">
+          <summary class="text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none">
+            AI Reasoning
+            <span id="reasoningCount" class="badge bg-purple-100 text-purple-700 ml-1 hidden">0</span>
+          </summary>
+          <div id="reasoningList" class="mt-2 space-y-1 max-h-64 overflow-y-auto text-xs">
+            <p class="text-slate-400">Click "Elaborate" to see AI reasoning</p>
+          </div>
+          <div id="elabEntities" class="mt-2 hidden">
+            <p class="text-xs font-semibold text-slate-500 mb-1">Extracted Entities</p>
+            <div id="elabEntitiesList" class="flex flex-wrap gap-0.5"></div>
+          </div>
+        </details>
+      </div>
+
       <!-- Export -->
       <div class="p-4 border-b border-slate-100">
         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -751,6 +808,9 @@
           </button>
           <button class="secondary w-full text-left text-xs" id="btnExportSvg" disabled>
             🖼️ SVG images via Kroki.io
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportCSkeleton" disabled>
+            🔧 C-Code Skeleton (.c)
           </button>
         </div>
         <label class="flex items-center gap-2 mt-2 text-xs text-slate-500">
@@ -778,6 +838,17 @@
     </aside>
 
   </div><!-- end main layout -->
+
+  <!-- ══════════════════════ NODE DETAIL PANEL ══════════════════════ -->
+  <div id="nodeDetailPanel" class="fixed bottom-4 left-4 bg-white border border-slate-300 rounded-lg shadow-xl
+            p-4 z-50 max-w-sm hidden text-xs" style="min-width:280px">
+    <div class="flex justify-between items-center mb-2">
+      <span class="font-bold text-slate-700 text-sm" id="nodeDetailTitle">Node Details</span>
+      <button onclick="document.getElementById('nodeDetailPanel').classList.add('hidden')"
+        class="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+    </div>
+    <div id="nodeDetailBody" class="space-y-1.5 text-slate-600"></div>
+  </div>
 
   <!-- ══════════════════════ TOAST ══════════════════════ -->
   <div id="toast" class="fixed bottom-4 right-4 bg-slate-800 text-white text-sm px-4 py-2.5
@@ -859,6 +930,7 @@
         state.requirements = d.requirement_set;
         renderReqList(d.requirement_set.requirements);
         document.getElementById('btnGenerate').disabled = false;
+        document.getElementById('btnElaborate').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
       } catch (e) {
@@ -884,6 +956,7 @@
         state.requirements = d.requirement_set;
         renderReqList(d.requirement_set.requirements);
         document.getElementById('btnGenerate').disabled = false;
+        document.getElementById('btnElaborate').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
       } catch (e) {
@@ -922,119 +995,235 @@
       })[t] || 'bg-gray-100 text-gray-600';
     }
 
-    // ── Generate ─────────────────────────────────────────────
+    // ── Generate (SSE streaming with progress) ──────────────
+    const modeLabels = {
+      single_pass: '1-pass',
+      multi_pass: 'self-review',
+      two_model_fast: 'dual AI (fast)',
+      two_model: 'dual AI (best)',
+    };
+
+    function buildProgressHTML(selectedTypes) {
+      return `<div id="genProgress" class="px-4 py-3 space-y-2">
+        <p class="text-xs font-semibold text-slate-500 mb-2">GENERATION PROGRESS</p>
+        ${selectedTypes.map(dt => `
+          <div class="flex items-center gap-2 text-xs" id="prog_${dt}">
+            <span class="w-5 text-center" id="progIcon_${dt}">
+              <span class="inline-block w-2 h-2 rounded-full bg-slate-300"></span>
+            </span>
+            <span class="w-24 font-medium text-slate-600">${dt.replace('_', ' ')}</span>
+            <div class="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div class="h-full bg-blue-500 rounded-full transition-all duration-500" id="progBar_${dt}" style="width: 0%"></div>
+            </div>
+            <span class="w-48 text-slate-400 truncate" id="progLabel_${dt}">Waiting...</span>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    function updateProgress(event) {
+      const dt = event.diagram_type;
+      if (!dt) return;
+      const icon = document.getElementById(`progIcon_${dt}`);
+      const bar = document.getElementById(`progBar_${dt}`);
+      const label = document.getElementById(`progLabel_${dt}`);
+      if (!icon || !bar || !label) return;
+
+      label.textContent = event.message || event.stage || '';
+
+      if (event.stage === 'start') {
+        icon.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>';
+        bar.style.width = '5%';
+      } else if (event.stage === 'generate') {
+        icon.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>';
+        const pct = Math.min(80, (event.attempt || 1) / (event.max_attempts || 5) * 80);
+        bar.style.width = pct + '%';
+      } else if (event.stage === 'validate') {
+        bar.style.width = '85%';
+        bar.className = bar.className.replace('bg-blue-500', 'bg-yellow-500');
+        label.className = label.className.replace('text-slate-400', 'text-yellow-600');
+      } else if (event.stage === 'verify') {
+        bar.style.width = '90%';
+      } else if (event.stage === 'diagram_complete') {
+        bar.style.width = '100%';
+        if (event.success) {
+          icon.innerHTML = '<span class="text-green-500 font-bold">&#10003;</span>';
+          bar.className = bar.className.replace(/bg-(blue|yellow)-500/, 'bg-green-500');
+          label.className = label.className.replace(/text-(slate-400|yellow-600)/, 'text-green-600');
+        } else {
+          icon.innerHTML = '<span class="text-red-500 font-bold">&#10007;</span>';
+          bar.className = bar.className.replace(/bg-(blue|yellow)-500/, 'bg-red-500');
+          label.className = label.className.replace(/text-(slate-400|yellow-600)/, 'text-red-600');
+        }
+      }
+    }
+
+    async function handleGenerationComplete(d) {
+      state.generationResult = d.result;
+      state.validationReport = d.validation_report;
+      const generationMode = d.generation_mode === 'generic_c' ? 'Generic C' : 'AUTOSAR';
+
+      // Fetch inline Mermaid diagrams
+      const mr = await fetch(`${API}/export/mermaid/inline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result: d.result }),
+      });
+      if (!mr.ok) throw new Error('Failed to get Mermaid diagrams');
+      const md = await mr.json();
+      state.diagrams = md.diagrams || {};
+
+      // ── Show generation errors & warnings prominently ────────────
+      const genErrContainer = document.getElementById('genErrors');
+      if (genErrContainer) genErrContainer.remove();
+
+      const genErrors = (d.result.errors || []);
+      const genWarnings = (d.result.warnings || []);
+      if (genErrors.length > 0 || genWarnings.length > 0) {
+        let bannerHtml = '';
+        genErrors.forEach(e => {
+          bannerHtml += `<div class="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-xs mb-2">
+            <span class="font-semibold">&#x26D4; Error:</span> ${escapeHtml(e)}
+          </div>`;
+        });
+        genWarnings.forEach(w => {
+          bannerHtml += `<div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-yellow-700 text-xs mb-2">
+            <span class="font-semibold">&#x26A0; Warning:</span> ${escapeHtml(w)}
+          </div>`;
+        });
+        const canvas = document.getElementById('diagramCanvas');
+        canvas.insertAdjacentHTML('afterbegin',
+          `<div id="genErrors" class="px-4 pt-4">${bannerHtml}</div>`);
+      }
+
+      if (Object.keys(state.diagrams).length === 0 && genErrors.length === 0) {
+        toast('AI generated 0 diagrams — check model status and server logs', true);
+        setStatus('0 diagrams — try 1-pass mode or check Ollama is running');
+      }
+
+      renderAllDiagrams();
+      renderValidation(d.validation_report);
+      loadCoverage();
+      enableExportButtons();
+      document.getElementById('btnClear').disabled = false;
+
+      const pipelineMode = document.getElementById('pipelineMode').value;
+      const nDiags = d.result.diagrams?.length || 0;
+      const elabInfo = d.elaboration_info || null;
+      const elabSuffix = elabInfo
+        ? ` · elaboration=${elabInfo.source || 'unknown'} (${elabInfo.elaborated_count || 0})`
+        : '';
+      if (elabInfo && elabInfo.status && elabInfo.status !== 'ok') {
+        toast(`Elaboration warning: status=${elabInfo.status}`, true);
+      }
+      if (d.pipeline_summary) {
+        const refined = Object.values(d.pipeline_summary.diagrams || {})
+          .filter(s => s.was_refined).length;
+        const modeLabel = modeLabels[d.pipeline_summary.mode] || d.pipeline_summary.mode;
+        const refinedNote = refined > 0 ? ` · ${refined} refined` : '';
+        setStatus(`Generated ${nDiags} diagram(s) via ${modeLabel} · ${generationMode}${refinedNote}${elabSuffix}`);
+        toast(`Generated ${nDiags} diagrams (${modeLabel}, ${generationMode})${refinedNote}`);
+        // Show stage badges
+        const ppEl = document.getElementById('pipelineProgress');
+        if (ppEl) {
+          Object.entries(d.pipeline_summary.diagrams || {}).forEach(([dt, info]) => {
+            info.stages?.forEach(s => {
+              if (s.skipped) return;
+              const cls = { draft: 'stage-draft', critique: 'stage-critique', refinement: 'stage-refine' }[s.stage] || '';
+              ppEl.insertAdjacentHTML('beforeend',
+                `<span class="pipeline-badge ${cls}" title="${s.model} · ${s.duration_ms}ms">${s.stage}: ${dt}</span>`);
+            });
+          });
+        }
+      } else {
+        setStatus(`Generated ${nDiags} diagram(s) · ${generationMode}${elabSuffix}`);
+        toast(`Generated ${nDiags} diagrams successfully (${generationMode})`);
+      }
+    }
+
     document.getElementById('btnGenerate').addEventListener('click', async () => {
       if (!state.requirements) return;
       setGenerating(true);
       const pipelineMode = document.getElementById('pipelineMode').value;
-      const modeLabels = {
-        single_pass: '1-pass',
-        multi_pass: 'self-review',
-        two_model_fast: 'dual AI (fast)',
-        two_model: 'dual AI (best)',
-      };
-      setStatus(`Generating diagrams via ${modeLabels[pipelineMode] || pipelineMode}…`);
-      document.getElementById('emptyState').classList.remove('hidden');
-      document.getElementById('diagramTabs').innerHTML =
-        `<p class="py-2 text-slate-400 text-xs animate-pulse">AI is generating diagrams…</p>`;
-      // Reset pipeline progress chips
+      setStatus(`Generating diagrams via ${modeLabels[pipelineMode] || pipelineMode}...`);
+
       const ppEl = document.getElementById('pipelineProgress');
       if (ppEl) ppEl.innerHTML = '';
 
       const selectedTypes = [...document.querySelectorAll('.diag-type:checked')]
         .map(cb => cb.value);
+      const autosarCompliant = document.getElementById('autosarCompliant').checked;
+
+      // Show progress bar instead of empty spinner
+      const tabsEl = document.getElementById('diagramTabs');
+      tabsEl.innerHTML = buildProgressHTML(selectedTypes);
 
       const body = {
         requirements: state.requirements,
         diagram_types: selectedTypes,
-        apply_autosar_mapping: true,
+        apply_autosar_mapping: autosarCompliant,
+        autosar_compliant: autosarCompliant,
         pipeline_mode: pipelineMode,
       };
 
       try {
-        const r = await fetch(`${API}/generate`, {
+        // Use SSE streaming for real-time progress
+        const response = await fetch(`${API}/generate/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!r.ok) throw new Error(await r.text());
-        const d = await r.json();
-        state.generationResult = d.result;
-        state.validationReport = d.validation_report;
+        if (!response.ok) throw new Error(await response.text());
 
-        // Fetch inline Mermaid diagrams
-        const mr = await fetch(`${API}/export/mermaid/inline`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ result: d.result }),
-        });
-        if (!mr.ok) throw new Error('Failed to get Mermaid diagrams');
-        const md = await mr.json();
-        state.diagrams = md.diagrams || {};
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalData = null;
 
-        // ── Show generation errors & warnings prominently ────────────
-        const genErrContainer = document.getElementById('genErrors');
-        if (genErrContainer) genErrContainer.remove();   // clear previous
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        const genErrors  = (d.result.errors   || []);
-        const genWarnings = (d.result.warnings || []);
-        if (genErrors.length > 0 || genWarnings.length > 0) {
-          let bannerHtml = '';
-          genErrors.forEach(e => {
-            bannerHtml += `<div class="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-xs mb-2">
-              <span class="font-semibold">&#x26D4; Generation Error:</span> ${escapeHtml(e)}
-            </div>`;
-          });
-          genWarnings.forEach(w => {
-            bannerHtml += `<div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-yellow-700 text-xs mb-2">
-              <span class="font-semibold">&#x26A0; Warning:</span> ${escapeHtml(w)}
-            </div>`;
-          });
-          const canvas = document.getElementById('diagramCanvas');
-          canvas.insertAdjacentHTML('afterbegin',
-            `<div id="genErrors" class="px-4 pt-4">${bannerHtml}</div>`);
-        }
+          // Parse SSE events from buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';  // keep incomplete line
 
-        // Warn visibly when AI returned 0 diagrams (model timeout, malformed JSON, etc.)
-        if (Object.keys(state.diagrams).length === 0 && genErrors.length === 0) {
-          toast('AI generated 0 diagrams — check model status and server logs', true);
-          setStatus('0 diagrams — try 1-pass mode or check Ollama is running');
-        }
-
-        renderAllDiagrams();
-        renderValidation(d.validation_report);
-        loadCoverage();
-        enableExportButtons();
-        document.getElementById('btnClear').disabled = false;
-
-        // Show pipeline summary in status bar
-        if (d.pipeline_summary) {
-          const refined = Object.values(d.pipeline_summary.diagrams || {})
-            .filter(s => s.was_refined).length;
-          const modeLabel = modeLabels[d.pipeline_summary.mode] || d.pipeline_summary.mode;
-          const refinedNote = refined > 0 ? ` · ${refined} diagram(s) refined` : '';
-          setStatus(`Generated ${d.result.diagrams.length} diagram(s) via ${modeLabel}${refinedNote}`);
-          toast(`Generated ${d.result.diagrams.length} diagrams (${modeLabel})${refinedNote}`);
-          // Show stage badges
-          if (ppEl) {
-            Object.entries(d.pipeline_summary.diagrams || {}).forEach(([dt, info]) => {
-              info.stages?.forEach(s => {
-                if (s.skipped) return;
-                const cls = { draft: 'stage-draft', critique: 'stage-critique', refinement: 'stage-refine' }[s.stage] || '';
-                ppEl.insertAdjacentHTML('beforeend',
-                  `<span class="pipeline-badge ${cls}" title="${s.model} · ${s.duration_ms}ms">${s.stage}: ${dt}</span>`);
-              });
-            });
+          let eventType = 'progress';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (eventType === 'complete') {
+                  finalData = data;
+                } else if (eventType === 'error') {
+                  throw new Error(data.message || 'Generation failed');
+                } else {
+                  updateProgress(data);
+                  setStatus(data.message || `${data.stage}...`);
+                }
+              } catch (parseErr) {
+                if (parseErr.message && !parseErr.message.includes('JSON'))
+                  throw parseErr;
+              }
+              eventType = 'progress';
+            }
           }
-        } else {
-          setStatus(`Generated ${d.result.diagrams.length} diagram(s)`);
-          toast(`Generated ${d.result.diagrams.length} diagrams successfully`);
         }
+
+        if (!finalData) throw new Error('Generation stream ended without result');
+        await handleGenerationComplete(finalData);
       } catch (e) {
         toast('Generation failed: ' + e.message, true);
-        setStatus('Generation failed — check API key in .env');
-        document.getElementById('diagramTabs').innerHTML =
-          '<p class="py-2 text-red-400 text-xs px-4">Generation failed</p>';
+        setStatus('Generation failed — check Ollama is running');
+        tabsEl.innerHTML =
+          `<div class="py-3 px-4 text-red-500 text-xs">
+            <p class="font-semibold mb-1">Generation Failed</p>
+            <p>${escapeHtml(e.message)}</p>
+            <p class="mt-2 text-slate-400">Try: 1-pass mode, check Ollama is running (ollama serve), or check server logs</p>
+          </div>`;
       } finally {
         setGenerating(false);
       }
@@ -1155,6 +1344,9 @@
         state.activeTab = entries[0][0];
         document.getElementById('mmdSource').textContent = entries[0][1];
       }
+
+      // Attach click handlers to SVG nodes for interactive detail panel
+      attachNodeClickHandlers();
     }
 
     // Click a card → highlight it + update source panel
@@ -1172,6 +1364,81 @@
       const src = document.getElementById(safeId);
       if (!src) return;
       src.style.display = src.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // ── Interactive Node Details ─────────────────────────────
+    function attachNodeClickHandlers() {
+      // After Mermaid renders, add click handlers to SVG nodes
+      setTimeout(() => {
+        document.querySelectorAll('.diagram-card-body .mermaid svg .node').forEach(svgNode => {
+          svgNode.style.cursor = 'pointer';
+          svgNode.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Extract node ID from SVG element id (Mermaid uses the flowchart node ID)
+            const svgId = svgNode.id || '';
+            // Mermaid prefixes node IDs with "flowchart-" and appends a number
+            const match = svgId.match(/flowchart-(N_\w+)-/i) || svgId.match(/(N_\w+)/i);
+            const nodeId = match ? match[1] : svgId;
+            showNodeDetail(nodeId);
+          });
+        });
+      }, 500); // Wait for Mermaid to finish rendering
+    }
+
+    function showNodeDetail(nodeId) {
+      if (!state.generationResult) return;
+      const panel = document.getElementById('nodeDetailPanel');
+      const body = document.getElementById('nodeDetailBody');
+      const title = document.getElementById('nodeDetailTitle');
+
+      // Search all activity diagrams for this node
+      let found = null;
+      for (const diag of (state.generationResult.diagrams || [])) {
+        if (diag.diagram_type !== 'activity') continue;
+        for (const node of (diag.nodes || [])) {
+          if (node.id === nodeId || node.id.replace(/-/g, '_') === nodeId) {
+            found = { node, diagram: diag };
+            break;
+          }
+        }
+        if (found) break;
+        // Check sub_diagrams
+        for (const sub of (diag.sub_diagrams || [])) {
+          for (const node of (sub.nodes || [])) {
+            if (node.id === nodeId || node.id.replace(/-/g, '_') === nodeId) {
+              found = { node, diagram: sub };
+              break;
+            }
+          }
+          if (found) break;
+        }
+        if (found) break;
+      }
+
+      if (!found) {
+        title.textContent = nodeId;
+        body.innerHTML = '<p class="text-slate-400">Node not found in activity diagrams</p>';
+        panel.classList.remove('hidden');
+        return;
+      }
+
+      const n = found.node;
+      title.textContent = `${n.node_type.toUpperCase()}: ${n.id}`;
+      let html = `<div><strong>Name:</strong> <code class="text-xs bg-slate-100 px-1 rounded">${n.name || '—'}</code></div>`;
+      if (n.description) html += `<div><strong>Description:</strong> ${n.description}</div>`;
+      html += `<div><strong>Type:</strong> ${n.node_type}</div>`;
+      if (n.trace_reqs && n.trace_reqs.length) {
+        html += `<div><strong>Requirements:</strong> ${n.trace_reqs.map(r => `<span class="bg-blue-100 text-blue-700 px-1 rounded">${r}</span>`).join(' ')}</div>`;
+      }
+      if (n.confidence != null) html += `<div><strong>Confidence:</strong> ${(n.confidence * 100).toFixed(0)}%</div>`;
+      if (n.rte_call) html += `<div><strong>RTE Call:</strong> ${n.rte_call}</div>`;
+      if (n.port) html += `<div><strong>Port:</strong> ${n.port}</div>`;
+      if (n.element) html += `<div><strong>Element:</strong> ${n.element}</div>`;
+      if (n.callee) html += `<div><strong>Callee:</strong> ${n.callee} <span class="text-slate-400">(see sub-diagram)</span></div>`;
+      html += `<div class="text-slate-400 mt-1"><strong>Diagram:</strong> ${found.diagram.name || '—'}</div>`;
+
+      body.innerHTML = html;
+      panel.classList.remove('hidden');
     }
 
     function escapeHtml(s) {
@@ -1256,7 +1523,7 @@
     // ── Export ───────────────────────────────────────────────
     function enableExportButtons() {
       ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml',
-        'btnExportXmi', 'btnExportSvg'].forEach(id => {
+        'btnExportXmi', 'btnExportSvg', 'btnExportCSkeleton'].forEach(id => {
           document.getElementById(id).disabled = false;
         });
     }
@@ -1297,7 +1564,7 @@
       if (ppEl) ppEl.innerHTML = '';
 
       // Disable export buttons
-      ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml', 'btnExportXmi', 'btnExportSvg']
+      ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml', 'btnExportXmi', 'btnExportSvg', 'btnExportCSkeleton']
         .forEach(id => { document.getElementById(id).disabled = true; });
 
       // Source panel
@@ -1360,6 +1627,152 @@
         setStatus('SVG render failed');
       }
     });
+
+    document.getElementById('btnExportCSkeleton').addEventListener('click', async () => {
+      if (!state.generationResult) return;
+      setStatus('Generating C skeleton...');
+      try {
+        const r = await fetch(`${API}/export/c-skeleton`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result: state.generationResult }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        const files = d.files || {};
+        const names = Object.keys(files);
+        if (names.length === 0) {
+          toast('No ActivityDiagram found for C export', true);
+          return;
+        }
+        // Download each file as .c
+        for (const [name, code] of Object.entries(files)) {
+          const blob = new Blob([code], { type: 'text/x-c' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${name}.c`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        toast(`Downloaded ${names.length} C skeleton file(s)`);
+        setStatus(`C skeleton exported: ${names.join(', ')}`);
+      } catch (e) {
+        toast('C skeleton export failed: ' + e.message, true);
+        setStatus('C skeleton export failed');
+      }
+    });
+
+    // ── Elaborate ──────────────────────────────────────────────
+    let elaboratedData = null;
+
+    function setElaborating(active) {
+      const btn = document.getElementById('btnElaborate');
+      const lbl = document.getElementById('elabLabel');
+      const spinner = document.getElementById('elabSpinner');
+      btn.disabled = active || !state.requirements;
+      lbl.textContent = active ? 'Elaborating...' : 'Elaborate';
+      spinner.classList.toggle('active', active);
+    }
+
+    document.getElementById('btnElaborate').addEventListener('click', async () => {
+      if (!state.requirements) return;
+      setElaborating(true);
+      setStatus('AI is reasoning about requirements...');
+      const statusEl = document.getElementById('elabStatus');
+      statusEl.classList.remove('hidden');
+      statusEl.className = 'text-xs mt-1 text-blue-500';
+      statusEl.textContent = 'Thinking step-by-step about each requirement...';
+
+      try {
+        const r = await fetch(`${API}/elaborate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirements: state.requirements }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        elaboratedData = data;
+        renderElaborationResults(data);
+        statusEl.className = 'text-xs mt-1 text-green-600';
+        statusEl.textContent = `Done — ${(data.elaborated || []).length} requirements elaborated`;
+        setStatus('Elaboration complete — ready to generate with enriched context');
+        toast(`Elaborated ${(data.elaborated || []).length} requirements with AI reasoning`);
+      } catch (e) {
+        statusEl.className = 'text-xs mt-1 text-red-500';
+        statusEl.textContent = 'Failed: ' + e.message;
+        toast('Elaboration failed: ' + e.message, true);
+        setStatus('Elaboration failed');
+      } finally {
+        setElaborating(false);
+      }
+    });
+
+    function renderElaborationResults(data) {
+      // Render architecture summary if present
+      const summaryEl = document.getElementById('elabSummary');
+      if (data.architecture_summary) {
+        if (!summaryEl) {
+          const container = document.getElementById('elabStatus').parentElement;
+          container.insertAdjacentHTML('beforeend', `
+            <div id="elabSummary" class="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+              <div class="font-bold mb-1">Architecture Analysis Summary</div>
+              <div id="elabSummaryText"></div>
+            </div>
+          `);
+        }
+        document.getElementById('elabSummaryText').textContent = data.architecture_summary;
+        document.getElementById('elabSummary').classList.remove('hidden');
+      } else if (summaryEl) {
+        summaryEl.classList.add('hidden');
+      }
+
+      // Render thinking steps
+      const thinking = data.thinking || [];
+      const reasoningList = document.getElementById('reasoningList');
+      const reasoningCount = document.getElementById('reasoningCount');
+
+      if (thinking.length) {
+        reasoningCount.textContent = thinking.length;
+        reasoningCount.classList.remove('hidden');
+        reasoningList.innerHTML = thinking.map(t =>
+          `<div class="thinking-step bg-slate-50 border-l-2 border-slate-300 pl-3 py-1 mb-2 italic">
+            ${escapeHtml(t)}
+          </div>`
+        ).join('');
+        // Auto-open the details
+        document.getElementById('reasoningDetails').open = true;
+      } else {
+        reasoningList.innerHTML = '<p class="text-slate-400 text-xs italic">No reasoning steps returned</p>';
+      }
+
+      // Render extracted entities
+      const elaborated = data.elaborated || [];
+      const entitiesDiv = document.getElementById('elabEntities');
+      const entitiesList = document.getElementById('elabEntitiesList');
+
+      if (elaborated.length) {
+        const entities = new Set();
+        elaborated.forEach(e => {
+          const ent = e.entities || {};
+          if (ent.swc) entities.add('SWC:' + ent.swc);
+          (ent.runnables || []).forEach(r => entities.add('RE:' + r));
+          (ent.ports || []).forEach(p => entities.add('Port:' + p));
+          (ent.interfaces || []).forEach(i => entities.add('IF:' + i));
+        });
+        if (entities.size) {
+          entitiesDiv.classList.remove('hidden');
+          entitiesList.innerHTML = [...entities].sort().map(e => {
+            const [type, name] = e.split(':');
+            let cls = 'bg-slate-100 text-slate-600';
+            if (type === 'SWC') cls = 'bg-indigo-100 text-indigo-700 font-semibold';
+            if (type === 'RE') cls = 'bg-emerald-100 text-emerald-700';
+            if (type === 'Port') cls = 'bg-amber-100 text-amber-700';
+            return `<span class="elab-entity px-2 py-0.5 rounded text-[10px] ${cls}">${escapeHtml(e)}</span>`;
+          }).join('');
+        }
+      }
+    }
 
     // ── Init ─────────────────────────────────────────────────
     checkHealth();

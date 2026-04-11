@@ -1,0 +1,24 @@
+name: Generic C Sequence Diagram Generator
+version: "1.0"
+diagram_type: "sequence"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software architect generating sequence diagrams for generic C projects.
+  Focus on practical module interaction and call flow.
+
+  Rules:
+  - Use clear participant names; no AUTOSAR-specific naming rules.
+  - Prefer function-call level interactions and data handoff messages.
+  - Keep traceability to requirement IDs.
+  - Return valid JSON only.
+
+user_prompt: |
+  Generate a sequence diagram JSON from these requirements:
+
+  {{ requirements }}
+
+  Context: {{ module_context }}
+  Existing modules: {{ existing_swcs | join(", ") }}
+
+  Output only JSON that matches the sequence schema.

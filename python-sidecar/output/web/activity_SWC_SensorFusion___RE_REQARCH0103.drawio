@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="mud-tool" version="21.0.0">
+  <diagram id="mud_be6ed07b55" name="SWC_SensorFusion / RE_REQARCH0103">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mud_0fe8a4c17d" value="Start&#10;[REQ-ARCH-0100]" style="ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="80" y="60" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_1e5f53562b" value="SensorCommunicationFailure" style="shape=parallelogram;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="180" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_343ec11c8f" value="TransitionToDegradedMode" style="rhombus;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="80" y="300" width="140" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_c63b34fdb9" value="End&#10;[REQ-ARCH-0100]" style="ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;double=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="420" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="E_INIT" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_0fe8a4c17d" target="mud_1e5f53562b" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_FINAL" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_343ec11c8f" target="mud_c63b34fdb9" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,24 @@
+name: Generic C Module Diagram Generator
+version: "1.0"
+diagram_type: "class"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software architect generating module/class style diagrams for generic C projects.
+  Represent files/modules, data structures, and callable operations.
+
+  Rules:
+  - Use implementation-friendly names from requirements.
+  - Include key operations and important data members.
+  - Add relationships only when justified by requirements.
+  - Return valid JSON only.
+
+user_prompt: |
+  Generate a class/module diagram JSON from these requirements:
+
+  {{ requirements }}
+
+  Context: {{ module_context }}
+  Existing modules: {{ existing_swcs | join(", ") }}
+
+  Output only JSON that matches the class schema.

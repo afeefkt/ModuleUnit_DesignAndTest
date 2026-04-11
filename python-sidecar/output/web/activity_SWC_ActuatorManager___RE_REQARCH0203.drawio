@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="mud-tool" version="21.0.0">
+  <diagram id="mud_b29a95090b" name="SWC_ActuatorManager / RE_REQARCH0203">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mud_a531350410" value="Start&#10;[REQ-ARCH-0100]" style="ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="80" y="60" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_42c38280ee" value="Rte_Read(RP_SteeringCommand)" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="180" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_f6c3abb4f0" value="Rte_Write(SP_ActuatorSignal, steeringSignal)" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="300" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_2d3985eb4b" value="Rte_Read(RP_BrakingCommand)" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="420" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_f024b3528c" value="Rte_Write(SP_ActuatorSignal, brakingSignal)" style="rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="80" y="540" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="mud_567fac4307" value="End&#10;[REQ-ARCH-0100]" style="ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;double=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="660" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="E_INIT" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_a531350410" target="mud_42c38280ee" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_FINAL" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;" edge="1" source="mud_f024b3528c" target="mud_567fac4307" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -11,13 +11,15 @@ import json
 import logging
 import re
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from mudtool.ai.base_backend import AIResponse, BaseAIBackend
 from mudtool.ai.cloud_backend import CloudBackend
 from mudtool.ai.local_backend import LocalBackend
 from mudtool.ai.prompt_engine import PromptEngine
 from mudtool.config.settings import AIBackend, Settings
+from mudtool.validation.structural_validator import StructuralValidator
+from mudtool.validation.autosar_validator import AUTOSARValidator
 from mudtool.models.json_uml import (
     ActivityDiagram,
     ClassDiagram,
@@ -59,6 +61,9 @@ class AIOrchestrator:
         self.prompt_engine = PromptEngine(settings)
         self._cloud_backend: Optional[CloudBackend] = None
         self._local_backend: Optional[LocalBackend] = None
+
+        # Compiled naming patterns for computed confidence scoring
+        self._swc_pattern = re.compile(settings.swc_naming_regex)
 
         # Initialize backends based on settings
         self._cloud_backend = CloudBackend(settings)
@@ -110,6 +115,11 @@ class AIOrchestrator:
         module_context: Optional[str] = None,
         existing_swcs: Optional[list[str]] = None,
         temperature: float = 0.2,
+        progress_callback: Optional[callable] = None,
+        generation_profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
+        autosar_compliant: bool = True,
+        elaborated_data: Optional[dict] = None,
     ) -> GenerationResult:
         """Generate a single diagram from requirements.
 
@@ -122,6 +132,7 @@ class AIOrchestrator:
             module_context: Optional module/SWC context for better results.
             existing_swcs: Optional existing SWC catalog for cross-references.
             temperature: AI sampling temperature.
+            progress_callback: Optional callback for SSE progress events.
 
         Returns:
             GenerationResult containing the generated diagram(s).
@@ -137,26 +148,81 @@ class AIOrchestrator:
                 "runnable_regex": self.settings.runnable_naming_regex,
                 "port_regex": self.settings.port_naming_regex,
             },
+            profile=generation_profile,
+            activity_label_style=activity_label_style,
         )
         user_prompt = self.prompt_engine.render_user_prompt(
-            diagram_type, requirements, module_context, existing_swcs
+            diagram_type,
+            requirements,
+            module_context,
+            existing_swcs,
+            profile=generation_profile,
+            activity_label_style=activity_label_style,
         )
+
+        # Inject elaborated context if available (from pre-processing step)
+        try:
+            from mudtool.ai.elaborator import RequirementElaborator, build_enriched_context
+            elab_data = elaborated_data
+            if elab_data is None:
+                elaborator = RequirementElaborator.__new__(RequirementElaborator)
+                req_hash = RequirementElaborator._compute_hash(requirements)
+                cache_path = RequirementElaborator.get_cache_path(req_hash)
+                if cache_path.exists():
+                    import json as _json
+                    elab_data = _json.loads(cache_path.read_text(encoding="utf-8"))
+
+            if elab_data:
+                enriched = build_enriched_context(elab_data)
+                if enriched:
+                    user_prompt = enriched + "\n\n" + user_prompt
+                    logger.info(
+                        f"Injected elaborated context ({len(enriched)} chars) "
+                        f"into {diagram_type.value} prompt"
+                    )
+        except Exception as exc:
+            logger.debug(f"No elaborated context available: {exc}")
+
         prompt_hash = self.prompt_engine.compute_prompt_hash(system_prompt, user_prompt)
 
         # Attempt generation with retries
         last_error: Optional[str] = None
-        for attempt in range(1, self.settings.max_retries + 1):
+        max_retries = self.settings.max_retries
+        base_user_prompt = user_prompt  # preserve original prompt for retry replacement
+        best_result: Optional[GenerationResult] = None
+        best_score: float = -1.0
+        for attempt in range(1, max_retries + 1):
             try:
+                # Adaptive temperature: slightly lower for structural fix retries,
+                # slightly higher for later attempts to encourage different outputs
+                attempt_temp = temperature
+                if attempt == 2 or attempt == 3:
+                    attempt_temp = max(temperature - 0.05, 0.05)
+                elif attempt >= 4:
+                    attempt_temp = min(temperature + 0.10, 0.40)
+
                 logger.info(
-                    f"Generation attempt {attempt}/{self.settings.max_retries} "
-                    f"for {diagram_type.value} via {backend.backend_name}"
+                    f"Generation attempt {attempt}/{max_retries} "
+                    f"for {diagram_type.value} via {backend.backend_name} "
+                    f"(temp={attempt_temp:.2f})"
                 )
+                if progress_callback:
+                    progress_callback({
+                        "stage": "generate",
+                        "diagram_type": diagram_type.value,
+                        "attempt": attempt,
+                        "max_attempts": max_retries,
+                        "message": (
+                            f"Generating {diagram_type.value} diagram"
+                            f" (attempt {attempt}/{max_retries})..."
+                        ),
+                    })
 
                 response = await backend.generate(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_tokens=self.settings.anthropic_max_tokens,
-                    temperature=temperature,
+                    temperature=attempt_temp,
                 )
 
                 # Parse the response
@@ -170,26 +236,135 @@ class AIOrchestrator:
 
                 if result.errors and attempt < self.settings.max_retries:
                     last_error = "; ".join(result.errors)
+                    summarized = self._summarize_parse_errors(result.errors)
                     logger.warning(
-                        f"Attempt {attempt} produced errors: {last_error}. Retrying..."
+                        f"Attempt {attempt} produced errors: {summarized}. Retrying..."
                     )
-                    # Add error context to the next attempt
-                    user_prompt += (
-                        f"\n\nPREVIOUS ATTEMPT FAILED with: {last_error}\n"
-                        "Please fix the errors and ensure valid JSON output."
+                    # Replace (not append) error context for next attempt
+                    user_prompt = (
+                        base_user_prompt
+                        + f"\n\nPREVIOUS ATTEMPT FAILED:\n{summarized}\n"
+                        "Fix these issues. Output ONLY valid JSON matching the schema."
                     )
                     continue
 
-                # Success
+                # Track best result across attempts (score by nodes + diagrams)
+                if result.diagrams:
+                    node_count = self._count_result_nodes(result)
+                    diag_count = len(result.diagrams)
+                    score = diag_count * 100 + node_count
+                    if score > best_score:
+                        best_score = score
+                        best_result = result
+                        logger.debug(
+                            f"Attempt {attempt} is new best: "
+                            f"{diag_count} diagrams, {node_count} nodes"
+                        )
+
+                # Run quick validation on successful parse to feed issues
+                # back into the retry prompt (validation-driven retry).
+                if result.diagrams and attempt < self.settings.max_retries:
+                    req_id_list = [r.req_id for r in requirements]
+                    val_issues = self._quick_validate(
+                        result, req_id_list, autosar_compliant=autosar_compliant
+                    )
+
+                    # Explicit coverage check: find which requirements are
+                    # not traced by any diagram element
+                    covered = self._collect_covered_reqs(result)
+                    uncovered = sorted(set(req_id_list) - covered)
+                    coverage_pct = (
+                        len(covered & set(req_id_list))
+                        / max(len(req_id_list), 1)
+                        * 100
+                    )
+
+                    needs_retry = False
+                    retry_parts: list[str] = []
+
+                    if val_issues:
+                        issues_text = "\n".join(
+                            f"  - {v}" for v in val_issues[:15]
+                        )
+                        retry_parts.append(
+                            f"VALIDATION ISSUES:\n{issues_text}"
+                        )
+                        needs_retry = True
+
+                    if coverage_pct < 60 and uncovered:
+                        retry_parts.append(
+                            f"CRITICAL: Only {coverage_pct:.0f}% requirement coverage!\n"
+                            f"These {len(uncovered)} requirements have NO trace_reqs "
+                            f"in any diagram element: {uncovered}\n"
+                            "You MUST add trace_reqs referencing these IDs to "
+                            "relevant nodes/elements in your output."
+                        )
+                        needs_retry = True
+                        logger.warning(
+                            f"Attempt {attempt}: coverage {coverage_pct:.0f}%, "
+                            f"uncovered={uncovered}"
+                        )
+
+                    if needs_retry:
+                        logger.info(
+                            f"Attempt {attempt} parsed OK but has "
+                            f"{len(val_issues)} validation issues, "
+                            f"coverage={coverage_pct:.0f}%. Retrying..."
+                        )
+                        if progress_callback:
+                            progress_callback({
+                                "stage": "validate",
+                                "diagram_type": diagram_type.value,
+                                "attempt": attempt,
+                                "max_attempts": max_retries,
+                                "issues": len(val_issues),
+                                "coverage_pct": round(coverage_pct),
+                                "message": (
+                                    f"Attempt {attempt}: {len(val_issues)} issues, "
+                                    f"{coverage_pct:.0f}% coverage — retrying..."
+                                ),
+                            })
+                        feedback = "\n\n".join(retry_parts)
+                        # Replace (not append) to keep prompt concise
+                        user_prompt = (
+                            base_user_prompt
+                            + f"\n\nPREVIOUS ATTEMPT produced valid JSON but "
+                            f"NEEDS FIXES:\n{feedback}\n"
+                            "Fix ALL listed issues in your output. "
+                            "Output only the corrected JSON."
+                        )
+                        continue
+
+                # Success — pick the better of current result vs best_result
                 total_time = int((time.monotonic() - start_time) * 1000)
-                result.total_generation_time_ms = total_time
-                result.analyzed_requirements = [r.req_id for r in requirements]
+                cur_nodes = self._count_result_nodes(result) if result.diagrams else 0
+                best_nodes = self._count_result_nodes(best_result) if best_result else 0
+
+                # If current attempt has fewer nodes than best, use best instead
+                final = result
+                if best_result and best_nodes > cur_nodes:
+                    logger.info(
+                        f"Attempt {attempt} has {cur_nodes} nodes but "
+                        f"best attempt had {best_nodes} — using best"
+                    )
+                    final = best_result
+
+                final.total_generation_time_ms = total_time
+                final.analyzed_requirements = [r.req_id for r in requirements]
+
+                computed_conf = self._compute_confidence(
+                    final, [r.req_id for r in requirements]
+                )
+                for d in final.diagrams:
+                    if d.provenance:
+                        d.provenance.confidence = computed_conf
 
                 logger.info(
                     f"Generated {diagram_type.value} diagram in {total_time}ms "
-                    f"({len(result.diagrams)} diagrams, attempt {attempt})"
+                    f"({len(final.diagrams)} diagrams, attempt {attempt}, "
+                    f"confidence={computed_conf:.3f})"
                 )
-                return result
+                return final
 
             except Exception as e:
                 last_error = str(e)
@@ -197,8 +372,25 @@ class AIOrchestrator:
                 if attempt >= self.settings.max_retries:
                     break
 
-        # All retries exhausted - return partial result
+        # All retries exhausted — return best result from any attempt if available
         total_time = int((time.monotonic() - start_time) * 1000)
+        if best_result and best_result.diagrams:
+            best_result.total_generation_time_ms = total_time
+            best_result.analyzed_requirements = [r.req_id for r in requirements]
+            computed_conf = self._compute_confidence(
+                best_result, [r.req_id for r in requirements]
+            )
+            for d in best_result.diagrams:
+                if d.provenance:
+                    d.provenance.confidence = computed_conf
+            logger.info(
+                f"Retries exhausted — returning best result: "
+                f"{len(best_result.diagrams)} diagrams, "
+                f"{self._count_result_nodes(best_result)} nodes, "
+                f"confidence={computed_conf:.3f}"
+            )
+            return best_result
+
         return GenerationResult(
             errors=[
                 f"Generation failed after {self.settings.max_retries} attempts. "
@@ -213,6 +405,11 @@ class AIOrchestrator:
         requirements: list[Requirement],
         diagram_types: Optional[list[DiagramType]] = None,
         module_context: Optional[str] = None,
+        progress_callback: Optional[callable] = None,
+        generation_profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
+        autosar_compliant: bool = True,
+        elaborated_data: Optional[dict] = None,
     ) -> GenerationResult:
         """Generate multiple diagram types from requirements.
 
@@ -240,10 +437,41 @@ class AIOrchestrator:
         )
         start_time = time.monotonic()
 
+        req_id_list = [r.req_id for r in requirements]
+
         for dt in diagram_types:
             logger.info(f"Generating {dt.value} diagrams...")
             try:
-                result = await self.generate_diagram(dt, requirements, module_context)
+                if progress_callback:
+                    progress_callback({
+                        "stage": "start",
+                        "diagram_type": dt.value,
+                        "message": f"Starting {dt.value} diagram generation...",
+                    })
+
+                result = await self.generate_diagram(
+                    dt, requirements, module_context,
+                    progress_callback=progress_callback,
+                    generation_profile=generation_profile,
+                    activity_label_style=activity_label_style,
+                    autosar_compliant=autosar_compliant,
+                    elaborated_data=elaborated_data,
+                )
+
+                # ── Post-generation verification gate ──────────────────
+                if progress_callback:
+                    progress_callback({
+                        "stage": "verify",
+                        "diagram_type": dt.value,
+                        "message": f"Verifying {dt.value} diagram quality...",
+                    })
+                result = await self._verify_and_maybe_regen(
+                    result, dt, requirements, module_context, req_id_list,
+                    generation_profile=generation_profile,
+                    activity_label_style=activity_label_style,
+                    autosar_compliant=autosar_compliant,
+                    elaborated_data=elaborated_data,
+                )
 
                 combined.diagrams.extend(result.diagrams)
                 combined.warnings.extend(result.warnings)
@@ -253,6 +481,20 @@ class AIOrchestrator:
                     if combined.module_assignments is None:
                         combined.module_assignments = {}
                     combined.module_assignments.update(result.module_assignments)
+
+                if progress_callback:
+                    conf = self._compute_confidence(result, req_id_list)
+                    progress_callback({
+                        "stage": "diagram_complete",
+                        "diagram_type": dt.value,
+                        "success": bool(result.diagrams),
+                        "diagram_count": len(result.diagrams),
+                        "confidence": round(conf, 2),
+                        "message": (
+                            f"{dt.value}: {len(result.diagrams)} diagram(s), "
+                            f"confidence={conf:.0%}"
+                        ),
+                    })
             except Exception as exc:
                 error_msg = (
                     f"Generation of {dt.value} diagrams failed with "
@@ -260,11 +502,107 @@ class AIOrchestrator:
                 )
                 logger.error(error_msg, exc_info=True)
                 combined.errors.append(error_msg)
+                if progress_callback:
+                    progress_callback({
+                        "stage": "diagram_complete",
+                        "diagram_type": dt.value,
+                        "success": False,
+                        "error": str(exc),
+                        "message": f"{dt.value}: FAILED — {exc}",
+                    })
 
         combined.total_generation_time_ms = int(
             (time.monotonic() - start_time) * 1000
         )
         return combined
+
+    async def _verify_and_maybe_regen(
+        self,
+        result: GenerationResult,
+        diagram_type: DiagramType,
+        requirements: list[Requirement],
+        module_context: Optional[str],
+        req_id_list: list[str],
+        generation_profile: str = "autosar",
+        activity_label_style: str = "pseudocode",
+        autosar_compliant: bool = True,
+        elaborated_data: Optional[dict] = None,
+    ) -> GenerationResult:
+        """Post-generation verification gate.
+
+        Checks:
+          1. Has at least one diagram
+          2. Coverage > 50%
+          3. Computed confidence > 0.35
+          4. No structural ERROR-level issues
+
+        If any check fails, auto-regenerates ONCE with a slightly higher
+        temperature to encourage a different output.
+        """
+        if not result.diagrams:
+            logger.warning(
+                f"[Verify] {diagram_type.value}: 0 diagrams — auto-regenerating"
+            )
+            return await self.generate_diagram(
+                diagram_type,
+                requirements,
+                module_context,
+                temperature=0.25,
+                generation_profile=generation_profile,
+                activity_label_style=activity_label_style,
+                autosar_compliant=autosar_compliant,
+                elaborated_data=elaborated_data,
+            )
+
+        covered = self._collect_covered_reqs(result)
+        n_reqs = max(len(req_id_list), 1)
+        coverage_pct = len(covered & set(req_id_list)) / n_reqs * 100
+        confidence = self._compute_confidence(result, req_id_list)
+
+        # Collect structural errors
+        try:
+            str_issues = StructuralValidator.validate_quick(result)
+            str_errors = sum(1 for i in str_issues if i.startswith("[ERROR]"))
+        except Exception:
+            str_errors = 0
+
+        reasons: list[str] = []
+        if coverage_pct < 50:
+            reasons.append(f"coverage={coverage_pct:.0f}%")
+        if confidence < 0.35:
+            reasons.append(f"confidence={confidence:.2f}")
+        if str_errors > 0:
+            reasons.append(f"{str_errors} structural errors")
+
+        if reasons:
+            logger.warning(
+                f"[Verify] {diagram_type.value} FAILED: "
+                f"{', '.join(reasons)} — auto-regenerating once"
+            )
+            regen = await self.generate_diagram(
+                diagram_type,
+                requirements,
+                module_context,
+                temperature=0.25,
+                generation_profile=generation_profile,
+                activity_label_style=activity_label_style,
+                autosar_compliant=autosar_compliant,
+                elaborated_data=elaborated_data,
+            )
+            # Keep whichever result is better
+            regen_conf = self._compute_confidence(regen, req_id_list)
+            if regen_conf > confidence and regen.diagrams:
+                logger.info(
+                    f"[Verify] Regen improved confidence: "
+                    f"{confidence:.2f} → {regen_conf:.2f}"
+                )
+                return regen
+            logger.info(
+                f"[Verify] Regen did not improve "
+                f"({regen_conf:.2f} vs {confidence:.2f}), keeping original"
+            )
+
+        return result
 
     async def analyze_requirements(
         self,
@@ -357,6 +695,14 @@ Output valid JSON with this structure:
 
         for i, d_data in enumerate(diagrams_data):
             try:
+                activity_normalization_stats: Optional[dict[str, int]] = None
+                if diagram_type == DiagramType.ACTIVITY and isinstance(d_data, dict):
+                    activity_normalization_stats = {"inferred": 0, "defaulted": 0}
+                    d_data = self._normalize_activity_payload(
+                        d_data,
+                        stats=activity_normalization_stats,
+                    )
+
                 # Inject/override diagram_type
                 d_data["diagram_type"] = diagram_type.value
 
@@ -393,6 +739,15 @@ Output valid JSON with this structure:
                     diagram = self._repair_activity_diagram(diagram, req_ids)
 
                 result.diagrams.append(diagram)
+                if activity_normalization_stats:
+                    inferred_count = activity_normalization_stats.get("inferred", 0)
+                    defaulted_count = activity_normalization_stats.get("defaulted", 0)
+                    if inferred_count or defaulted_count:
+                        result.warnings.append(
+                            "Activity normalization (diagram "
+                            f"{i}): inferred node_type for {inferred_count} "
+                            f"node(s); defaulted {defaulted_count} to action."
+                        )
 
                 # Flatten sub-diagrams into the result list
                 if isinstance(diagram, ActivityDiagram) and diagram.sub_diagrams:
@@ -409,6 +764,203 @@ Output valid JSON with this structure:
                 )
 
         return result
+
+    @staticmethod
+    def _count_result_nodes(result: GenerationResult) -> int:
+        """Count total nodes/elements across all diagrams in a result."""
+        count = 0
+        for d in result.diagrams:
+            if isinstance(d, ActivityDiagram):
+                count += len(d.nodes)
+                for sub in d.sub_diagrams:
+                    count += len(sub.nodes)
+            elif isinstance(d, SequenceDiagram):
+                count += len(d.lifelines) + len(d.messages)
+            elif isinstance(d, StateMachineDiagram):
+                count += len(d.states) + len(d.transitions)
+            elif isinstance(d, ClassDiagram):
+                count += len(d.classes) + len(d.associations)
+            elif isinstance(d, ComponentDiagram):
+                count += len(d.components) + len(d.connectors)
+        return count
+
+    @staticmethod
+    def _summarize_parse_errors(errors: list[str]) -> str:
+        """Summarize verbose Pydantic errors into concise retry feedback.
+
+        Instead of dumping 500-char raw errors, extract the key missing fields
+        so the LLM can fix them without being overwhelmed.
+        """
+        missing_fields: set[str] = set()
+        other_issues: list[str] = []
+        for err in errors:
+            # Extract "field_name Field required" patterns from Pydantic errors
+            for m in re.finditer(r"(\w+(?:\.\w+)*)\s+Field required", err):
+                field_path = m.group(1)
+                # Keep just the field name, not the full path
+                field_name = field_path.rsplit(".", 1)[-1]
+                missing_fields.add(field_name)
+            if "validation error" not in err.lower() and "Field required" not in err:
+                # Non-Pydantic error — keep a short version
+                other_issues.append(err[:200])
+
+        parts: list[str] = []
+        if missing_fields:
+            parts.append(
+                f"Missing required fields: {', '.join(sorted(missing_fields))}. "
+                "Ensure EVERY node has: id, name, node_type, trace_reqs, confidence, description. "
+                "Ensure EVERY edge has: id, source, target. "
+                "Use 'node_type' (not 'type')."
+            )
+        for issue in other_issues[:3]:
+            parts.append(issue)
+        return "\n".join(parts) if parts else "; ".join(errors)[:500]
+
+    @classmethod
+    def _normalize_activity_node_type(cls, raw_type: Any) -> Any:
+        """Normalize legacy/LLM activity node type variants to schema values."""
+        if not isinstance(raw_type, str):
+            return None
+
+        norm = raw_type.strip().lower().replace("-", "_").replace(" ", "_")
+        if not norm:
+            return None
+        if norm.endswith("_node"):
+            norm = norm[:-5]
+        elif norm.endswith("node"):
+            norm = norm[:-4]
+
+        alias_map = {
+            "activity": "action",
+            "process": "action",
+            "operation": "action",
+            "step": "action",
+            "functioncall": "function_call",
+            "function": "function_call",
+            "branch": "decision",
+            "condition": "decision",
+            "error": "exception",
+            "fault": "exception",
+        }
+        norm = alias_map.get(norm, norm)
+        return norm
+
+    @staticmethod
+    def _is_non_empty_text(value: Any) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+
+    @classmethod
+    def _infer_activity_node_type_from_text(cls, node: dict) -> tuple[str, bool]:
+        """Infer node type from id/name keywords when explicit type is missing."""
+        text_parts = []
+        for key in ("name", "id"):
+            value = node.get(key)
+            if isinstance(value, str):
+                text_parts.append(value.lower())
+        text = " ".join(text_parts)
+
+        if any(k in text for k in ("start", "initial", "begin")):
+            return "initial", True
+        if any(k in text for k in ("end", "final", "stop", "terminate")):
+            return "final", True
+        if "?" in text or any(k in text for k in ("if", "check", "validate", "decision")):
+            return "decision", True
+        if any(k in text for k in ("call", "invoke", "rte_")):
+            return "call", True
+        return "action", False
+
+    @classmethod
+    def _resolve_activity_node_type(cls, node: dict) -> tuple[str, bool, bool]:
+        """
+        Resolve node_type from modern, camelCase, or legacy keys.
+
+        Returns:
+            (resolved_type, used_inference, defaulted_to_action)
+        """
+        valid_types = {
+            "initial",
+            "final",
+            "action",
+            "call",
+            "function_call",
+            "decision",
+            "fork",
+            "join",
+            "merge",
+            "exception",
+        }
+
+        for key in ("node_type", "nodeType", "type"):
+            normalized = cls._normalize_activity_node_type(node.get(key))
+            if normalized in valid_types:
+                return normalized, False, False
+
+        inferred, matched = cls._infer_activity_node_type_from_text(node)
+        if inferred in valid_types:
+            return inferred, True, not matched and inferred == "action"
+        return "action", True, True
+
+    @staticmethod
+    def _normalize_activity_node_name(node: dict, fallback_id: str) -> str:
+        """Derive a usable node name from common legacy keys."""
+        for key in ("name", "label", "title"):
+            value = node.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        desc = node.get("description")
+        if isinstance(desc, str) and desc.strip():
+            return desc.strip()[:80]
+
+        clean_id = (fallback_id or "Node").strip()
+        clean_id = clean_id.replace("_", " ").replace("-", " ")
+        return clean_id or "Node"
+
+    @classmethod
+    def _normalize_activity_payload(
+        cls,
+        payload: dict,
+        stats: Optional[dict[str, int]] = None,
+    ) -> dict:
+        """Normalize common non-schema activity payload variants before validation."""
+        nodes = payload.get("nodes")
+        if isinstance(nodes, list):
+            for idx, node in enumerate(nodes, start=1):
+                if not isinstance(node, dict):
+                    continue
+                if "id" not in node:
+                    node["id"] = f"N_{idx:02d}"
+                node["name"] = cls._normalize_activity_node_name(node, str(node.get("id", "")))
+                node_type, used_inference, defaulted = cls._resolve_activity_node_type(node)
+                node["node_type"] = node_type
+                if stats is not None:
+                    if used_inference and not defaulted:
+                        stats["inferred"] = stats.get("inferred", 0) + 1
+                    if defaulted:
+                        stats["defaulted"] = stats.get("defaulted", 0) + 1
+
+        edges = payload.get("edges")
+        if isinstance(edges, list):
+            for idx, edge in enumerate(edges, start=1):
+                if not isinstance(edge, dict):
+                    continue
+                edge.setdefault("id", f"E_{idx:02d}")
+                if "source" not in edge and "from" in edge:
+                    edge["source"] = edge["from"]
+                if "source" not in edge and "source_id" in edge:
+                    edge["source"] = edge["source_id"]
+                if "target" not in edge and "to" in edge:
+                    edge["target"] = edge["to"]
+                if "target" not in edge and "target_id" in edge:
+                    edge["target"] = edge["target_id"]
+
+        sub_diagrams = payload.get("sub_diagrams")
+        if isinstance(sub_diagrams, list):
+            for sub in sub_diagrams:
+                if isinstance(sub, dict):
+                    cls._normalize_activity_payload(sub, stats=stats)
+
+        return payload
 
     def _repair_activity_diagram(
         self,
@@ -486,6 +1038,165 @@ Output valid JSON with this structure:
 
         # Return rebuilt diagram with repaired node/edge lists
         return diagram.model_copy(update={"nodes": nodes, "edges": edges})
+
+    @staticmethod
+    def _collect_covered_reqs(result: GenerationResult) -> set[str]:
+        """Collect all requirement IDs referenced by any diagram element."""
+        covered: set[str] = set()
+        for diagram in result.diagrams:
+            if hasattr(diagram, "source_requirements"):
+                covered.update(diagram.source_requirements or [])
+            if isinstance(diagram, SequenceDiagram):
+                for ll in diagram.lifelines:
+                    covered.update(ll.trace_reqs)
+                for msg in diagram.messages:
+                    if msg.trace_req:
+                        covered.add(msg.trace_req)
+            elif isinstance(diagram, StateMachineDiagram):
+                for state in diagram.states:
+                    covered.update(state.trace_reqs)
+            elif isinstance(diagram, ClassDiagram):
+                for cls in diagram.classes:
+                    covered.update(cls.trace_reqs)
+            elif isinstance(diagram, ComponentDiagram):
+                for comp in diagram.components:
+                    covered.update(comp.trace_reqs)
+            elif isinstance(diagram, ActivityDiagram):
+                for node in diagram.nodes:
+                    covered.update(node.trace_reqs)
+                for sub in diagram.sub_diagrams:
+                    for node in sub.nodes:
+                        covered.update(node.trace_reqs)
+        return covered
+
+    def _compute_confidence(
+        self,
+        result: GenerationResult,
+        req_ids: list[str],
+    ) -> float:
+        """Compute metrics-based confidence, replacing self-reported AI values.
+
+        Weighted average of:
+          trace_coverage    (reqs covered / total reqs)       x 0.40
+          naming_compliance (valid AUTOSAR names / total)      x 0.25
+          structural_score  (1.0 - errors/elements)            x 0.25
+          node_completeness (nodes with all fields / total)    x 0.10
+        """
+        if not result.diagrams:
+            return 0.0
+
+        covered_reqs: set[str] = set()
+        total_elements = 0
+        named_elements = 0
+        valid_names = 0
+        complete_nodes = 0
+        total_nodes = 0
+
+        for diagram in result.diagrams:
+            if hasattr(diagram, "source_requirements"):
+                covered_reqs.update(diagram.source_requirements)
+
+            if isinstance(diagram, SequenceDiagram):
+                for ll in diagram.lifelines:
+                    covered_reqs.update(ll.trace_reqs)
+                    total_elements += 1
+                    named_elements += 1
+                    if ll.name and self._swc_pattern.match(ll.name):
+                        valid_names += 1
+                for msg in diagram.messages:
+                    if msg.trace_req:
+                        covered_reqs.add(msg.trace_req)
+                    total_elements += 1
+
+            elif isinstance(diagram, StateMachineDiagram):
+                for state in diagram.states:
+                    covered_reqs.update(state.trace_reqs)
+                    total_elements += 1
+
+            elif isinstance(diagram, ClassDiagram):
+                for cls in diagram.classes:
+                    covered_reqs.update(cls.trace_reqs)
+                    total_elements += 1
+                    named_elements += 1
+                    if cls.name and self._swc_pattern.match(cls.name):
+                        valid_names += 1
+
+            elif isinstance(diagram, ComponentDiagram):
+                for comp in diagram.components:
+                    covered_reqs.update(comp.trace_reqs)
+                    total_elements += 1
+                    named_elements += 1
+                    if comp.name and self._swc_pattern.match(comp.name):
+                        valid_names += 1
+
+            elif isinstance(diagram, ActivityDiagram):
+                for node in diagram.nodes:
+                    covered_reqs.update(node.trace_reqs)
+                    total_elements += 1
+                    total_nodes += 1
+                    if node.description and node.trace_reqs:
+                        complete_nodes += 1
+                for sub in diagram.sub_diagrams:
+                    for node in sub.nodes:
+                        covered_reqs.update(node.trace_reqs)
+                        total_elements += 1
+
+        trace_coverage = len(covered_reqs & set(req_ids)) / max(len(req_ids), 1)
+        naming_score = valid_names / max(named_elements, 1)
+
+        try:
+            str_issues = StructuralValidator.validate_quick(result)
+            error_count = sum(1 for i in str_issues if i.startswith("[ERROR]"))
+        except Exception:
+            error_count = 0
+        structural_score = max(0.0, 1.0 - (error_count / max(total_elements, 1)))
+
+        completeness = complete_nodes / max(total_nodes, 1) if total_nodes else 1.0
+
+        confidence = (
+            trace_coverage * 0.40
+            + naming_score * 0.25
+            + structural_score * 0.25
+            + completeness * 0.10
+        )
+        return round(min(1.0, max(0.0, confidence)), 3)
+
+    # Warning rules that are critical enough to trigger a retry
+    _RETRY_WORTHY_RULES = {"AUT-010", "AUT-007"}
+
+    def _quick_validate(
+        self,
+        result: GenerationResult,
+        req_ids: list[str],
+        autosar_compliant: bool = True,
+    ) -> list[str]:
+        """Run structural + AUTOSAR validators and return retry-worthy issues.
+
+        Returns all ERROR-severity issues plus WARNING-level issues from
+        coverage-critical rules (AUT-010 requirement coverage, AUT-007
+        traceability) so the retry prompt addresses them.
+        """
+        issues: list[str] = []
+        try:
+            structural = StructuralValidator.validate_quick(result)
+            issues.extend(i for i in structural if i.startswith("[ERROR]"))
+        except Exception as exc:
+            logger.debug(f"Structural quick-validate failed: {exc}")
+
+        if autosar_compliant:
+            try:
+                autosar = AUTOSARValidator(self.settings).validate_quick(result, req_ids)
+                issues.extend(i for i in autosar if i.startswith("[ERROR]"))
+                # Include WARNING-level issues from coverage-critical rules
+                issues.extend(
+                    i for i in autosar
+                    if i.startswith("[WARNING]")
+                    and any(rule in i for rule in self._RETRY_WORTHY_RULES)
+                )
+            except Exception as exc:
+                logger.debug(f"AUTOSAR quick-validate failed: {exc}")
+
+        return issues
 
     def _extract_json(self, text: str) -> dict | list:
         """Extract JSON from AI response text.

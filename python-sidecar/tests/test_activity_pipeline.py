@@ -313,6 +313,245 @@ class TestParseResponseWrapper:
         )
         print(f"\n  [PASS] no empty-diagram regression: {len(diag.nodes)} nodes")
 
+    def test_wrapper_accepts_legacy_activity_shape(self):
+        """Legacy payloads with node `type` and edges without `id` must parse."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Legacy Activity",
+                "nodes": [
+                    {"id": "0", "type": "InitialNode", "name": "Start"},
+                    {"id": "1", "type": "ActivityNode", "name": "Read Sensor Data"},
+                    {"id": "2", "type": "DecisionNode", "name": "Check Sensor Data"},
+                    {"id": "3", "type": "FinalNode", "name": "End"},
+                ],
+                "edges": [
+                    {"source": "0", "target": "1"},
+                    {"source": "1", "target": "2"},
+                    {"source": "2", "target": "3"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        assert len(result.diagrams) == 1
+        diag = result.diagrams[0]
+        assert isinstance(diag, ActivityDiagram)
+        assert diag.nodes[0].node_type == ActivityNodeType.INITIAL
+        assert diag.nodes[1].node_type == ActivityNodeType.ACTION
+        assert diag.nodes[2].node_type == ActivityNodeType.DECISION
+        assert diag.edges[0].id == "E_01"
+        assert diag.edges[1].id == "E_02"
+        assert diag.edges[2].id == "E_03"
+        print("\n  [PASS] legacy activity node/edge schema normalized")
+
+    def test_wrapper_legacy_activity_missing_name_is_derived(self):
+        """Legacy nodes without `name` must be auto-filled from description/id."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Legacy Missing Name",
+                "nodes": [
+                    {"id": "initial_node", "type": "InitialNode"},
+                    {"id": "read_sensor_data", "type": "ActivityNode",
+                     "description": "Read sensor data from source"},
+                    {"id": "end_node", "type": "FinalNode"},
+                ],
+                "edges": [
+                    {"source": "initial_node", "target": "read_sensor_data"},
+                    {"source": "read_sensor_data", "target": "end_node"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.nodes[0].name == "initial node"
+        assert "Read sensor data from source" in diag.nodes[1].name
+        assert diag.nodes[2].name == "end node"
+        print("\n  [PASS] missing node names are derived for legacy activity payloads")
+
+    def test_wrapper_null_node_type_uses_legacy_type(self):
+        """node_type=null should backfill from legacy `type`."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Null NodeType Backfill",
+                "nodes": [
+                    {"id": "initial_node", "node_type": None, "type": "InitialNode"},
+                    {"id": "check_sensor_data", "node_type": "", "type": "DecisionNode"},
+                    {"id": "end_node", "node_type": None, "type": "FinalNode"},
+                ],
+                "edges": [
+                    {"source": "initial_node", "target": "check_sensor_data"},
+                    {"source": "check_sensor_data", "target": "end_node"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.nodes[0].node_type == ActivityNodeType.INITIAL
+        assert diag.nodes[1].node_type == ActivityNodeType.DECISION
+        assert diag.nodes[2].node_type == ActivityNodeType.FINAL
+        assert not result.warnings, f"Unexpected normalization warnings: {result.warnings}"
+        print("\n  [PASS] node_type=None/empty falls back to legacy `type`")
+
+    def test_wrapper_camel_case_node_type_is_supported(self):
+        """nodeType camelCase key should be accepted when node_type is absent."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Camel NodeType",
+                "nodes": [
+                    {"id": "start", "nodeType": "initial"},
+                    {"id": "do_work", "nodeType": "action"},
+                    {"id": "end", "nodeType": "final"},
+                ],
+                "edges": [
+                    {"source": "start", "target": "do_work"},
+                    {"source": "do_work", "target": "end"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.nodes[0].node_type == ActivityNodeType.INITIAL
+        assert diag.nodes[1].node_type == ActivityNodeType.ACTION
+        assert diag.nodes[2].node_type == ActivityNodeType.FINAL
+        assert not result.warnings, f"Unexpected normalization warnings: {result.warnings}"
+        print("\n  [PASS] camelCase nodeType is normalized")
+
+    def test_wrapper_infers_and_defaults_node_type_with_warning(self):
+        """Missing/invalid node type should infer from id/name or default to action."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Inference NodeType",
+                "nodes": [
+                    {"id": "end_node", "name": "End Node", "node_type": None},
+                    {"id": "ambiguous_step", "name": "Compute Value", "node_type": "???"},
+                ],
+                "edges": [
+                    {"source": "end_node", "target": "ambiguous_step"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        node_types = {n.id: n.node_type for n in diag.nodes}
+        assert node_types["end_node"] == ActivityNodeType.FINAL
+        assert node_types["ambiguous_step"] == ActivityNodeType.ACTION
+        assert result.warnings, "Expected normalization warning for inferred/defaulted node types"
+        warning = " ".join(result.warnings)
+        assert "inferred node_type for 1 node(s)" in warning
+        assert "defaulted 1 to action" in warning
+        print("\n  [PASS] node_type inference/defaulting emits warning")
+
+    def test_wrapper_accepts_edge_source_target_id_aliases(self):
+        """Edges using source_id/target_id should normalize to source/target."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Edge Alias Activity",
+                "nodes": [
+                    {"id": "n1", "name": "Start", "node_type": "initial"},
+                    {"id": "n2", "name": "Read input", "node_type": "action"},
+                    {"id": "n3", "name": "End", "node_type": "final"},
+                ],
+                "edges": [
+                    {"source_id": "n1", "target_id": "n2"},
+                    {"from": "n2", "target_id": "n3"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.edges[0].source == "n1"
+        assert diag.edges[0].target == "n2"
+        assert diag.edges[1].source == "n2"
+        assert diag.edges[1].target == "n3"
+        print("\n  [PASS] source_id/target_id edge aliases normalized")
+
+    def test_wrapper_normalizes_subdiagram_edge_aliases(self):
+        """Edge alias normalization should apply recursively for sub_diagrams."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Parent",
+                "nodes": [
+                    {"id": "n1", "name": "Start", "node_type": "initial"},
+                    {"id": "n2", "name": "Call helper", "node_type": "function_call", "callee": "Helper"},
+                    {"id": "n3", "name": "End", "node_type": "final"},
+                ],
+                "edges": [
+                    {"source_id": "n1", "target_id": "n2"},
+                    {"source_id": "n2", "target_id": "n3"},
+                ],
+                "sub_diagrams": [{
+                    "diagram_type": "activity",
+                    "name": "Helper",
+                    "function_name": "Helper",
+                    "nodes": [
+                        {"id": "s1", "name": "Start", "node_type": "initial"},
+                        {"id": "s2", "name": "Compute", "node_type": "action"},
+                        {"id": "s3", "name": "End", "node_type": "final"},
+                    ],
+                    "edges": [
+                        {"source_id": "s1", "target_id": "s2"},
+                        {"source_id": "s2", "target_id": "s3"},
+                    ],
+                }],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        parent = result.diagrams[0]
+        child = result.diagrams[1]
+        assert parent.edges[0].source == "n1"
+        assert parent.edges[0].target == "n2"
+        assert child.edges[0].source == "s1"
+        assert child.edges[0].target == "s2"
+        print("\n  [PASS] sub-diagram edge aliases normalized")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LAYER 2 — Mermaid Exporter
