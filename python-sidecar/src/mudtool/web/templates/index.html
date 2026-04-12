@@ -898,33 +898,55 @@
 
     // ── Import ───────────────────────────────────────────────
     document.getElementById('btnImport').addEventListener('click', async () => {
+      console.log("[DEBUG] Import button clicked.");
       const file = document.getElementById('reqFile').files[0];
-      if (!file) { toast('Select a file first', true); return; }
+      if (!file) { 
+        console.warn("[DEBUG] No file selected.");
+        toast('Select a file first', true); 
+        return; 
+      }
 
+      console.log(`[DEBUG] Selected file: ${file.name}, size: ${file.size} bytes`);
       setStatus('Importing…');
       const fd = new FormData();
       fd.append('file', file);
 
       try {
+        console.log("[DEBUG] Sending POST request to /requirements/import");
         const r = await fetch(`${API}/requirements/import`, { method: 'POST', body: fd });
-        if (!r.ok) throw new Error(await r.text());
+        console.log(`[DEBUG] Received response with status ${r.status}`);
+        if (!r.ok) {
+          const errText = await r.text();
+          console.error(`[DEBUG] Request failed: ${errText}`);
+          throw new Error(errText);
+        }
         const d = await r.json();
+        console.log(`[DEBUG] Import successful. Parsed ${d.requirement_set.requirements.length} requirements.`);
         state.requirements = d.requirement_set;
+        console.log("[DEBUG] Calling renderReqList...");
         renderReqList(d.requirement_set.requirements);
+        console.log("[DEBUG] renderReqList completed successfully.");
         document.getElementById('btnGenerate').disabled = false;
         document.getElementById('btnElaborate').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
       } catch (e) {
+        console.error("[DEBUG] Import caught an exception:", e);
         toast('Import failed: ' + e.message, true);
         setStatus('Import failed');
       }
     });
 
     document.getElementById('btnImportText').addEventListener('click', async () => {
+      console.log("[DEBUG] Import text button clicked.");
       const text = document.getElementById('reqText').value.trim();
-      if (!text) { toast('Paste some requirements first', true); return; }
+      if (!text) { 
+        console.warn("[DEBUG] No text pasted.");
+        toast('Paste some requirements first', true); 
+        return; 
+      }
 
+      console.log(`[DEBUG] Pasted text length: ${text.length} characters.`);
       const fmt = document.getElementById('reqTextFmt').value;
       const fd = new FormData();
       fd.append('requirements_text', text);
@@ -932,16 +954,26 @@
 
       setStatus('Importing…');
       try {
+        console.log(`[DEBUG] Sending POST request to /requirements/import/text with format: ${fmt}`);
         const r = await fetch(`${API}/requirements/import/text`, { method: 'POST', body: fd });
-        if (!r.ok) throw new Error(await r.text());
+        console.log(`[DEBUG] Received response with status ${r.status}`);
+        if (!r.ok) {
+          const errText = await r.text();
+          console.error(`[DEBUG] Request failed: ${errText}`);
+          throw new Error(errText);
+        }
         const d = await r.json();
+        console.log(`[DEBUG] Import successful! Parsed ${d.requirement_set.requirements.length} requirements.`);
         state.requirements = d.requirement_set;
+        console.log("[DEBUG] Calling renderReqList...");
         renderReqList(d.requirement_set.requirements);
+        console.log("[DEBUG] renderReqList completed successfully.");
         document.getElementById('btnGenerate').disabled = false;
         document.getElementById('btnElaborate').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
       } catch (e) {
+        console.error("[DEBUG] Text import caught an exception:", e);
         toast('Import failed: ' + e.message, true);
       }
     });
@@ -965,7 +997,20 @@
         const backend = d.backends || {};
         const names = Object.keys(backend).filter(k => backend[k]);
         document.getElementById('backendBadge').textContent =
-          'AI: -<p class="text-slate-400 p-4 text-center">No requirements</p>';
+          'AI: ' + (names.length ? names.join(',') : 'None');
+      } catch (e) {
+        document.getElementById('healthDot').className = 'w-2 h-2 rounded-full bg-red-500';
+        document.getElementById('backendBadge').textContent = 'AI: Error';
+      }
+    }
+
+    // ── Render Requirements List ────────────────────────────
+    function renderReqList(reqs) {
+      const list = document.getElementById('reqList');
+      document.getElementById('reqCount').textContent = reqs ? reqs.length : 0;
+      
+      if (!reqs || reqs.length === 0) {
+        list.innerHTML = '<p class="text-slate-400 p-4 text-center">No requirements</p>';
         return;
       }
 
