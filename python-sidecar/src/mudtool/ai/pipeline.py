@@ -397,6 +397,7 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         module_context: Optional[str] = None,
         existing_swcs: Optional[list[str]] = None,
+        progress_callback: Optional[callable] = None,
     ) -> list[PipelineGenerationResult]:
         """Run multi-stage generation for all requested diagram types sequentially.
 
@@ -405,7 +406,8 @@ class PipelineOrchestrator:
         results: list[PipelineGenerationResult] = []
         for dt in diagram_types:
             pr = await self._run_pipeline_for_type(
-                dt, requirements, config, module_context, existing_swcs
+                dt, requirements, config, module_context, existing_swcs,
+                progress_callback=progress_callback,
             )
             results.append(pr)
         return results
@@ -417,6 +419,7 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         module_context: Optional[str],
         existing_swcs: Optional[list[str]],
+        progress_callback: Optional[callable] = None,
     ) -> PipelineGenerationResult:
         start = time.monotonic()
         stages: list[StageResult] = []
@@ -449,7 +452,16 @@ class PipelineOrchestrator:
         # ── MULTI-STAGE PIPELINE ─────────────────────────────────────────────
 
         # Stage 1: Draft
-        logger.info(f"[Pipeline:{diagram_type.value}] Stage 1 — DRAFT ({config.generator_model})")
+        logger.info(f"[Pipeline:{diagram_type.value}] Stage 1 - DRAFT ({config.generator_model})")
+        if progress_callback:
+            progress_callback({
+                "stage": "pipeline_stage",
+                "diagram_type": diagram_type.value,
+                "pipeline_stage_name": "DRAFT",
+                "stage_num": 1,
+                "model": config.generator_model,
+                "message": f"[Pipeline:{diagram_type.value}] Stage 1 - DRAFT ({config.generator_model})",
+            })
         draft_stage = await self._run_draft_stage(
             diagram_type, requirements, config, module_context, existing_swcs
         )
@@ -475,7 +487,7 @@ class PipelineOrchestrator:
         if draft_conf >= config.min_confidence:
             logger.info(
                 f"[Pipeline:{diagram_type.value}] Draft confidence {draft_conf:.2f} "
-                f">= {config.min_confidence:.2f} — skipping critique/refine"
+                f">= {config.min_confidence:.2f} - skipping critique/refine"
             )
             stages.append(StageResult(
                 stage_name="critique", model_used="skipped",
@@ -504,9 +516,22 @@ class PipelineOrchestrator:
             )
 
             logger.info(
-                f"[Pipeline:{diagram_type.value}] Stage 2 — CRITIQUE pass {pass_num}/{config.max_passes}"
+                f"[Pipeline:{diagram_type.value}] Stage 2 - CRITIQUE pass {pass_num}/{config.max_passes}"
                 f" ({reviewer})"
             )
+            if progress_callback:
+                progress_callback({
+                    "stage": "pipeline_stage",
+                    "diagram_type": diagram_type.value,
+                    "pipeline_stage_name": "CRITIQUE",
+                    "stage_num": 2,
+                    "pass_num": pass_num,
+                    "model": reviewer,
+                    "message": (
+                        f"[Pipeline:{diagram_type.value}] Stage 2 - CRITIQUE"
+                        f" pass {pass_num} ({reviewer})"
+                    ),
+                })
             critique_stage = await self._run_critique_stage(
                 diagram_type, current_result, requirements, config, reviewer, pass_num
             )
@@ -515,7 +540,7 @@ class PipelineOrchestrator:
             if critique_stage.error or not critique_stage.critique:
                 logger.warning(
                     f"[Pipeline:{diagram_type.value}] Critique failed: {critique_stage.error} "
-                    "— keeping draft result"
+                    "- keeping draft result"
                 )
                 break
 
@@ -526,7 +551,7 @@ class PipelineOrchestrator:
             if critique.approved and critique.quality_score >= config.min_confidence:
                 logger.info(
                     f"[Pipeline:{diagram_type.value}] Critique approved "
-                    f"(score={critique.quality_score:.2f}) — skipping refinement"
+                    f"(score={critique.quality_score:.2f}) - skipping refinement"
                 )
                 stages.append(StageResult(
                     stage_name="refinement", model_used="skipped",
@@ -539,7 +564,7 @@ class PipelineOrchestrator:
                 logger.warning(
                     f"[Pipeline:{diagram_type.value}] Convergence stalled: "
                     f"pass {pass_num} has {current_issue_count} issues "
-                    f"(prev: {prev_issue_count}) — stopping refinement"
+                    f"(prev: {prev_issue_count}) - stopping refinement"
                 )
                 break
             prev_issue_count = current_issue_count
@@ -548,9 +573,24 @@ class PipelineOrchestrator:
             refine_temp = self._adaptive_temperature(critique, config, pass_num)
 
             logger.info(
-                f"[Pipeline:{diagram_type.value}] Stage 3 — REFINEMENT pass {pass_num} "
+                f"[Pipeline:{diagram_type.value}] Stage 3 - REFINEMENT pass {pass_num} "
                 f"({config.generator_model}), {current_issue_count} issue(s), temp={refine_temp:.2f}"
             )
+            if progress_callback:
+                progress_callback({
+                    "stage": "pipeline_stage",
+                    "diagram_type": diagram_type.value,
+                    "pipeline_stage_name": "REFINEMENT",
+                    "stage_num": 3,
+                    "pass_num": pass_num,
+                    "issue_count": current_issue_count,
+                    "model": config.generator_model,
+                    "message": (
+                        f"[Pipeline:{diagram_type.value}] Stage 3 - REFINEMENT"
+                        f" pass {pass_num} ({config.generator_model}),"
+                        f" {current_issue_count} issue(s)"
+                    ),
+                })
             refine_stage = await self._run_refinement_stage(
                 diagram_type, current_result, critique, requirements, config, pass_num,
                 temperature_override=refine_temp,
@@ -567,7 +607,7 @@ class PipelineOrchestrator:
             else:
                 logger.warning(
                     f"[Pipeline:{diagram_type.value}] Refinement failed: {refine_stage.error} "
-                    "— keeping previous result"
+                    "- keeping previous result"
                 )
                 break
 

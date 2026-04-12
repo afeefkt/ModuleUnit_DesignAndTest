@@ -383,6 +383,11 @@ def build_enriched_context(elaborated_data: dict) -> str:
         if logic:
             lines.append(f"  Logic: {logic[:120]}")
 
+        hints = item.get("diagram_hints", {})
+        if hints:
+            hint_parts = ", ".join(f"{k}: {v}" for k, v in hints.items())
+            lines.append(f"  Hints: {hint_parts[:200]}")
+
     # Include concise thinking summary (max 5 steps)
     thinking = elaborated_data.get("thinking", [])
     if thinking:

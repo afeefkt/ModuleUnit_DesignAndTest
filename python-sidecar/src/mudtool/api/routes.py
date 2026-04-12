@@ -367,6 +367,26 @@ async def generate_diagrams(request: GenerateRequest):
     elaboration_data = await _ensure_elaboration_data(
         orchestrator, request.requirements.requirements
     )
+    # Guidelines RAG injection (non-streaming path)
+    if settings.guidelines_enabled:
+        try:
+            from mudtool.ai.guidelines_reader import GuidelinesReader
+            _g_reader = GuidelinesReader(settings)
+            _g_status = await _g_reader.load_all()
+            if _g_status.chunk_count > 0:
+                _req_text = " ".join(
+                    f"{r.title or ''} {r.description or ''}"
+                    for r in request.requirements.requirements
+                )
+                _g_ctx: dict[str, str] = {}
+                for _dt in diagram_types:
+                    _block = await _g_reader.build_guidelines_context(_dt.value, _req_text)
+                    if _block:
+                        _g_ctx[_dt.value] = _block
+                if _g_ctx:
+                    elaboration_data["guidelines_context"] = _g_ctx
+        except Exception as _exc:
+            logger.warning("[Guidelines] Non-streaming load failed (non-fatal): %s", _exc)
     elaboration_info = {
         "source": elaboration_data.get("source", "failed"),
         "status": elaboration_data.get("status", "unknown"),
@@ -516,14 +536,99 @@ async def generate_diagrams_stream(request: GenerateRequest):
         queue.put_nowait(event)
 
     async def run_generation():
-        """Background coroutine that runs the actual generation."""
+        """Background coroutine that runs the full enhanced pipeline."""
         try:
             pipeline_summary = None
+            visual_qa_summary: list[dict] = []
+
+            # ── Stage 0: Structural Pre-check ─────────────────────────────────
+            from mudtool.validation.structural_precheck import StructuralPreCheck
+            precheck = StructuralPreCheck()
+            precheck_results = {}
+            precheck_hints: dict[str, str] = {}  # diagram_type.value → hint block
+            for dt in diagram_types:
+                pc = precheck.check(request.requirements.requirements, dt)
+                precheck_results[dt.value] = pc.to_summary()
+                if pc.gaps or pc.warnings:
+                    progress_callback({
+                        "stage": "precheck",
+                        "diagram_type": dt.value,
+                        "blocked": pc.blocked,
+                        "quality_score": pc.quality_score,
+                        "gap_count": len(pc.gaps),
+                        "warning_count": len(pc.warnings),
+                        "gaps": pc.gaps,
+                        "warnings": pc.warnings,
+                        "suggestions": pc.suggestions,
+                        "message": (
+                            f"[PreCheck:{dt.value}] "
+                            f"{len(pc.gaps)} gap(s), {len(pc.warnings)} warning(s) "
+                            f"- quality={pc.quality_score:.0%}"
+                        ),
+                    })
+                if pc.to_hint_block():
+                    precheck_hints[dt.value] = pc.to_hint_block()
+                logger.info(
+                    "[PreCheck:%s] score=%.2f blocked=%s gaps=%d warnings=%d",
+                    dt.value, pc.quality_score, pc.blocked,
+                    len(pc.gaps), len(pc.warnings),
+                )
+
+            # Filter out blocked diagram types
+            active_diagram_types = [
+                dt for dt in diagram_types
+                if not precheck_results.get(dt.value, {}).get("blocked", False)
+            ]
+            if not active_diagram_types:
+                queue.put_nowait({
+                    "_error": True,
+                    "message": "All diagram types blocked by structural pre-check - "
+                               "requirements are too sparse. Check precheck warnings.",
+                })
+                return
+
+            # ── Stage 0.5: Guidelines RAG Load ───────────────────────────────
+            _guidelines_context: dict[str, str] = {}
+            if settings.guidelines_enabled:
+                try:
+                    from mudtool.ai.guidelines_reader import GuidelinesReader
+                    _g_reader = GuidelinesReader(settings)
+                    _g_status = await _g_reader.load_all(
+                        progress_callback=progress_callback
+                    )
+                    if _g_status.chunk_count > 0:
+                        _req_text = " ".join(
+                            f"{r.title or ''} {r.description or ''}"
+                            for r in request.requirements.requirements
+                        )
+                        for dt in active_diagram_types:
+                            block = await _g_reader.build_guidelines_context(
+                                dt.value, _req_text
+                            )
+                            if block:
+                                _guidelines_context[dt.value] = block
+                        logger.info(
+                            "[Guidelines] %d doc(s), %d chunks, %d diagram contexts",
+                            _g_status.doc_count,
+                            _g_status.chunk_count,
+                            len(_guidelines_context),
+                        )
+                except Exception as exc:
+                    logger.warning("[Guidelines] Load failed (non-fatal): %s", exc)
+
+            # ── Stage 1: Elaboration ──────────────────────────────────────────
             elaboration_data = await _ensure_elaboration_data(
                 orchestrator,
                 request.requirements.requirements,
                 progress_callback=progress_callback,
             )
+            # Inject pre-check hints into elaboration data for prompt rendering
+            if precheck_hints:
+                elaboration_data["precheck_hints"] = precheck_hints
+            # Inject guidelines context into elaboration data for orchestrator injection
+            if _guidelines_context:
+                elaboration_data["guidelines_context"] = _guidelines_context
+
             elaboration_info = {
                 "source": elaboration_data.get("source", "failed"),
                 "status": elaboration_data.get("status", "unknown"),
@@ -538,10 +643,11 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 elaboration_info["elaborated_count"],
             )
 
+            # ── Stage 2: AI Generation ────────────────────────────────────────
             if effective_mode == PipelineMode.SINGLE_PASS:
                 result = await orchestrator.generate_all_diagrams(
                     requirements=request.requirements.requirements,
-                    diagram_types=diagram_types,
+                    diagram_types=active_diagram_types,
                     module_context=request.module_context,
                     progress_callback=progress_callback,
                     generation_profile=generation_profile,
@@ -549,13 +655,14 @@ async def generate_diagrams_stream(request: GenerateRequest):
                     autosar_compliant=request.autosar_compliant,
                     elaborated_data=elaboration_data,
                 )
+                pipeline_config = None  # single-pass has no pipeline config
             else:
                 reviewer = (
                     "llama3.2"
                     if effective_mode == PipelineMode.TWO_MODEL_FAST
                     else settings.pipeline_reviewer_model
                 )
-                config = PipelineConfig(
+                pipeline_config = PipelineConfig(
                     mode=effective_mode,
                     generator_model=settings.pipeline_generator_model,
                     reviewer_model=reviewer,
@@ -570,27 +677,123 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 pipeline_orch = PipelineOrchestrator(settings, orchestrator)
                 pipeline_results = await pipeline_orch.generate_with_pipeline(
                     requirements=request.requirements.requirements,
-                    diagram_types=diagram_types,
-                    config=config,
+                    diagram_types=active_diagram_types,
+                    config=pipeline_config,
                     module_context=request.module_context,
                     existing_swcs=request.existing_swcs,
+                    progress_callback=progress_callback,
                 )
                 result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
 
+            # ── Stage 3: AUTOSAR Mapping ──────────────────────────────────────
             if request.autosar_compliant and request.apply_autosar_mapping:
                 result = mapper.map_generation_result(result)
 
+            # ── Stage 4: Validation ───────────────────────────────────────────
             validation_report = validator.validate(
                 result,
                 requirement_ids=req_ids,
                 autosar_compliant=request.autosar_compliant,
             )
 
+            # ── Stage 5: Mermaid Lint ─────────────────────────────────────────
+            from mudtool.generator.mermaid_exporter import MermaidExporter
+            from mudtool.validation.mermaid_linter import MermaidLinter
+
+            mermaid_exporter = MermaidExporter()
+            linter = MermaidLinter()
+            mermaid_inline = mermaid_exporter.export_result_inline(result)
+            lint_results = linter.lint_all(mermaid_inline)
+
+            for key, lint in lint_results.items():
+                if lint.errors or lint.warnings:
+                    progress_callback({
+                        "stage": "mermaid_lint",
+                        "diagram_key": key,
+                        "diagram_type": lint.diagram_type,
+                        "valid": lint.valid,
+                        "auto_fixed": lint.auto_fixed,
+                        "error_count": len(lint.errors),
+                        "warning_count": len(lint.warnings),
+                        "errors": lint.errors,
+                        "warnings": lint.warnings,
+                        "message": (
+                            f"[Lint:{key}] "
+                            f"{'x ' + str(len(lint.errors)) + ' error(s)' if lint.errors else 'ok'}"
+                            f"{', ' + str(len(lint.warnings)) + ' warning(s)' if lint.warnings else ''}"
+                            f"{' (auto-fixed)' if lint.auto_fixed else ''}"
+                        ),
+                    })
+                # Apply auto-fixes to the inline mermaid map for Visual QA
+                if lint.auto_fixed and lint.fixed_text:
+                    mermaid_inline[key] = lint.fixed_text
+
+            logger.info(
+                "[MermaidLint] %d diagram(s) checked: %d with errors, %d with warnings",
+                len(lint_results),
+                sum(1 for r in lint_results.values() if r.errors),
+                sum(1 for r in lint_results.values() if r.warnings),
+            )
+
+            # ── Stage 6: Traceability ─────────────────────────────────────────
             from mudtool.api.dependencies import get_trace_store
             trace_store = get_trace_store()
             trace_store.extract_and_store_traces(result)
 
-            # Push final complete event
+            # ── Stage 7: Visual QA + Correction Loop ─────────────────────────
+            if settings.visual_qa_enabled and pipeline_config is not None:
+                from mudtool.ai.visual_qa import VisualCorrectionLoop, VisualQAAgent
+
+                qa_agent = VisualQAAgent(settings)
+                correction_loop = VisualCorrectionLoop(
+                    settings=settings,
+                    visual_qa_agent=qa_agent,
+                    orchestrator=orchestrator,
+                    mermaid_exporter=mermaid_exporter,
+                )
+                progress_callback({
+                    "stage": "visual_qa_start",
+                    "diagram_count": len(mermaid_inline),
+                    "model": settings.visual_qa_model,
+                    "max_rounds": settings.visual_qa_max_rounds,
+                    "message": (
+                        f"[VisualQA] Starting visual review of "
+                        f"{len(mermaid_inline)} diagram(s) "
+                        f"via {settings.visual_qa_model}..."
+                    ),
+                })
+                result, visual_qa_summary = await correction_loop.run(
+                    generation_result=result,
+                    requirements=request.requirements.requirements,
+                    pipeline_config=pipeline_config,
+                    progress_callback=progress_callback,
+                )
+                logger.info(
+                    "[VisualQA] Correction loop done: %d QA result(s)",
+                    len(visual_qa_summary),
+                )
+            elif settings.visual_qa_enabled:
+                # Single-pass mode: run QA-only (no correction — no pipeline config)
+                from mudtool.ai.visual_qa import VisualQAAgent
+                qa_agent = VisualQAAgent(settings)
+                progress_callback({
+                    "stage": "visual_qa_start",
+                    "diagram_count": len(mermaid_inline),
+                    "model": settings.visual_qa_model,
+                    "max_rounds": 1,
+                    "message": (
+                        f"[VisualQA] Reviewing {len(mermaid_inline)} diagram(s) "
+                        f"(QA-only in single-pass mode)..."
+                    ),
+                })
+                qa_results = await qa_agent.run_visual_qa_pass(
+                    mermaid_inline,
+                    progress_callback=progress_callback,
+                    round_num=1,
+                )
+                visual_qa_summary = [r.to_summary() for r in qa_results.values()]
+
+            # ── Final event ───────────────────────────────────────────────────
             queue.put_nowait({
                 "_final": True,
                 "result": result.model_dump(mode="json"),
@@ -601,6 +804,9 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 "pipeline_summary": pipeline_summary,
                 "generation_mode": generation_mode,
                 "elaboration_info": elaboration_info,
+                "precheck_summary": precheck_results,
+                "visual_qa_summary": visual_qa_summary or [],
+                "lint_summary": {k: v.to_summary() for k, v in lint_results.items()},
             })
         except Exception as exc:
             logger.error(f"SSE generation failed: {exc}", exc_info=True)
@@ -644,7 +850,7 @@ async def generate_diagrams_stream(request: GenerateRequest):
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -962,6 +1168,34 @@ async def test_connection():
     except Exception as e:
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return {"ok": False, "backends": {}, "latency_ms": elapsed_ms, "error": str(e)}
+
+
+@router.get("/guidelines/status")
+async def get_guidelines_status():
+    """Return status of the guidelines directory and cache.
+
+    Returns doc count, chunk count, filenames, embedding mode, and directory paths.
+    """
+    from mudtool.ai.guidelines_reader import GuidelinesReader
+    settings: Settings = get_settings()
+    reader = GuidelinesReader(settings)
+    return reader.get_status()
+
+
+@router.post("/guidelines/clear-cache")
+async def clear_guidelines_cache():
+    """Delete all cached guideline chunk/embedding JSON files.
+
+    Forces full re-parse and re-embed on the next generation run.
+    """
+    from mudtool.ai.guidelines_reader import GuidelinesReader
+    settings: Settings = get_settings()
+    reader = GuidelinesReader(settings)
+    deleted = reader.clear_cache()
+    return {
+        "deleted_count": deleted,
+        "message": f"Cleared {deleted} cached guideline file(s)",
+    }
 
 
 def _write_env_updates(updates: dict[str, str]) -> None:

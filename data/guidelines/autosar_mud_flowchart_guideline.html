@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AUTOSAR Module/Unit Design — Flowchart Creation Guideline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@300;400;600;700&display=swap');
+
+  :root {
+    --c-bg: #FAFAF8;
+    --c-surface: #FFFFFF;
+    --c-ink: #1A1A1A;
+    --c-ink-secondary: #4A4A4A;
+    --c-ink-muted: #7A7A7A;
+    --c-accent: #0055A4;
+    --c-accent-light: #E8F0FA;
+    --c-safety-red: #C0392B;
+    --c-safety-red-light: #FBEAE8;
+    --c-safety-amber: #D4881C;
+    --c-safety-amber-light: #FFF6E8;
+    --c-safety-green: #27864C;
+    --c-safety-green-light: #E8F5EC;
+    --c-border: #D8D8D0;
+    --c-border-light: #EBEBEB;
+    --c-code-bg: #F4F4F0;
+    --font-serif: 'Source Serif 4', 'Georgia', serif;
+    --font-sans: 'Source Sans 3', 'Helvetica Neue', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+    --max-w: 900px;
+    --page-pad: 48px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-serif);
+    font-size: 16px;
+    line-height: 1.72;
+    color: var(--c-ink);
+    background: var(--c-bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== COVER PAGE ===== */
+  .cover {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(170deg, #001F3F 0%, #003366 40%, #0055A4 100%);
+    color: #fff;
+    padding: var(--page-pad);
+    text-align: center;
+    page-break-after: always;
+  }
+  .cover-badge {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 24px;
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 18px;
+    border-radius: 3px;
+  }
+  .cover h1 {
+    font-family: var(--font-sans);
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    margin-bottom: 16px;
+    max-width: 720px;
+  }
+  .cover-subtitle {
+    font-size: 20px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.75);
+    max-width: 560px;
+    margin-bottom: 40px;
+  }
+  .cover-meta {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    line-height: 1.8;
+  }
+  .cover-meta strong { color: rgba(255,255,255,0.6); font-weight: 600; }
+  .cover-standards {
+    display: flex;
+    gap: 12px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .cover-standards span {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 5px 14px;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 2px;
+    color: rgba(255,255,255,0.65);
+  }
+
+  /* ===== MAIN CONTENT ===== */
+  .page-wrap {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 64px var(--page-pad) 100px;
+  }
+
+  /* ===== TOC ===== */
+  .toc {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 4px;
+    padding: 36px 40px;
+    margin-bottom: 56px;
+    page-break-after: always;
+  }
+  .toc-title {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--c-ink-muted);
+    margin-bottom: 20px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc-counter;
+  }
+  .toc > ol > li {
+    counter-increment: toc-counter;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--c-border-light);
+  }
+  .toc > ol > li:last-child { border-bottom: none; }
+  .toc > ol > li > a {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--c-ink);
+    text-decoration: none;
+    display: flex;
+    align-items: baseline;
+  }
+  .toc > ol > li > a::before {
+    content: counter(toc-counter, decimal-leading-zero);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--c-accent);
+    margin-right: 14px;
+    min-width: 24px;
+  }
+  .toc > ol > li > a:hover { color: var(--c-accent); }
+
+  /* ===== HEADINGS ===== */
+  h2 {
+    font-family: var(--font-sans);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--c-ink);
+    margin-top: 56px;
+    margin-bottom: 8px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid var(--c-accent);
+    letter-spacing: -0.3px;
+    page-break-after: avoid;
+  }
+  h2 .section-num {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--c-accent);
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  h3 {
+    font-family: var(--font-sans);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--c-ink);
+    margin-top: 36px;
+    margin-bottom: 10px;
+    page-break-after: avoid;
+  }
+  h4 {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--c-ink-secondary);
+    margin-top: 24px;
+    margin-bottom: 8px;
+  }
+
+  p { margin-bottom: 14px; }
+  p + p { margin-top: 0; }
+
+  /* ===== CALLOUT BOXES ===== */
+  .callout {
+    border-left: 4px solid;
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 15px;
+  }
+  .callout-title {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .callout.info    { border-color: var(--c-accent); background: var(--c-accent-light); }
+  .callout.info .callout-title { color: var(--c-accent); }
+  .callout.warning { border-color: var(--c-safety-amber); background: var(--c-safety-amber-light); }
+  .callout.warning .callout-title { color: var(--c-safety-amber); }
+  .callout.danger  { border-color: var(--c-safety-red); background: var(--c-safety-red-light); }
+  .callout.danger .callout-title { color: var(--c-safety-red); }
+  .callout.success { border-color: var(--c-safety-green); background: var(--c-safety-green-light); }
+  .callout.success .callout-title { color: var(--c-safety-green); }
+
+  /* ===== TABLES ===== */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 14px;
+    font-family: var(--font-sans);
+  }
+  thead {
+    background: #0055A4;
+    color: #fff;
+  }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--c-border-light);
+    vertical-align: top;
+  }
+  tbody tr:nth-child(even) { background: #F8F8F6; }
+  tbody tr:hover { background: var(--c-accent-light); }
+
+  /* ===== SVG DIAGRAM CONTAINERS ===== */
+  .diagram-wrap {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 4px;
+    padding: 24px;
+    margin: 24px 0;
+    text-align: center;
+    page-break-inside: avoid;
+  }
+  .diagram-wrap svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .diagram-caption {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--c-ink-muted);
+    margin-top: 10px;
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* ===== CODE / REQUIREMENT BLOCKS ===== */
+  .req-block {
+    background: var(--c-code-bg);
+    border: 1px solid var(--c-border);
+    border-radius: 3px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    color: var(--c-ink-secondary);
+  }
+  .req-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c-accent);
+    background: var(--c-accent-light);
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+
+  /* ===== RULE CARDS ===== */
+  .rule-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 20px 0;
+  }
+  .rule-card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 4px;
+    padding: 16px 18px;
+    page-break-inside: avoid;
+  }
+  .rule-card.do { border-left: 4px solid var(--c-safety-green); }
+  .rule-card.dont { border-left: 4px solid var(--c-safety-red); }
+  .rule-card-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .rule-card.do .rule-card-label { color: var(--c-safety-green); }
+  .rule-card.dont .rule-card-label { color: var(--c-safety-red); }
+  .rule-card p {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* ===== STEP NUMBERING ===== */
+  .step {
+    display: flex;
+    gap: 16px;
+    margin: 20px 0;
+    align-items: flex-start;
+  }
+  .step-num {
+    min-width: 36px;
+    height: 36px;
+    background: var(--c-accent);
+    color: #fff;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-content h4 { margin-top: 0; }
+
+  /* ===== FOOTER ===== */
+  .doc-footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--c-border);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--c-ink-muted);
+    text-align: center;
+  }
+
+  /* ===== PRINT / PDF ===== */
+  @media print {
+    body { background: #fff; font-size: 11pt; }
+    .cover { min-height: 100vh; }
+    .page-wrap { padding: 32px 24px; }
+    h2 { page-break-before: always; }
+    .diagram-wrap, .callout, table, .rule-grid { page-break-inside: avoid; }
+    .toc a { color: var(--c-ink) !important; }
+  }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 720px) {
+    :root { --page-pad: 20px; }
+    .cover h1 { font-size: 28px; }
+    h2 { font-size: 22px; }
+    .rule-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Utility */
+  .mt-0 { margin-top: 0; }
+  .mb-0 { margin-bottom: 0; }
+  strong { font-weight: 600; }
+  code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--c-code-bg);
+    padding: 1px 6px;
+    border-radius: 2px;
+    color: var(--c-safety-red);
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- COVER PAGE                                                     -->
+<!-- ============================================================ -->
+<div class="cover">
+  <div class="cover-badge">Engineering Guideline Document</div>
+  <h1>Module / Unit Design<br>Flowchart Creation Guideline</h1>
+  <p class="cover-subtitle">
+    A practical, standards-aligned reference for creating software detailed design flowcharts from requirements in AUTOSAR-based automotive ECU projects.
+  </p>
+  <div class="cover-meta">
+    <strong>Applicable Standards:</strong> Automotive SPICE v4.0 (SWE.3) &middot; ISO 26262:2018 Part 6 &middot; AUTOSAR Classic Platform<br>
+    <strong>Document Class:</strong> Process Guideline &middot; <strong>Version:</strong> 1.0 &middot; <strong>Date:</strong> April 2026
+  </div>
+  <div class="cover-standards">
+    <span>A-SPICE SWE.3</span>
+    <span>ISO 26262-6</span>
+    <span>AUTOSAR CP</span>
+    <span>MISRA C:2012</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MAIN CONTENT                                                   -->
+<!-- ============================================================ -->
+<div class="page-wrap">
+
+<!-- ===== TABLE OF CONTENTS ===== -->
+<nav class="toc">
+  <div class="toc-title">Table of Contents</div>
+  <ol>
+    <li><a href="#sec1">Purpose, Scope &amp; Normative References</a></li>
+    <li><a href="#sec2">Terminology &amp; Definitions</a></li>
+    <li><a href="#sec3">Standard Flowchart Symbols &amp; Notation</a></li>
+    <li><a href="#sec4">Requirement-to-Flowchart Conversion Process</a></li>
+    <li><a href="#sec5">AUTOSAR-Specific Design Patterns</a></li>
+    <li><a href="#sec6">Mandatory Design Rules (Automotive Grade)</a></li>
+    <li><a href="#sec7">Worked Example — Speed-Torque Control Module</a></li>
+    <li><a href="#sec8">Traceability &amp; Review Checklist</a></li>
+    <li><a href="#sec9">Tool Recommendations &amp; Export Guidance</a></li>
+    <li><a href="#sec10">References &amp; Further Reading</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- SECTION 1                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec1"><span class="section-num">01</span>Purpose, Scope &amp; Normative References</h2>
+
+<h3>1.1 Purpose</h3>
+<p>
+  This guideline establishes a repeatable method for translating software requirements into Module/Unit Design (MUD) flowcharts within AUTOSAR Classic Platform projects. It targets the <strong>SWE.3 — Software Detailed Design and Unit Construction</strong> process area defined by Automotive SPICE, ensuring that every flowchart produced is reviewable, traceable to its source requirements, and compliant with ISO 26262 Part 6 safety expectations.
+</p>
+
+<h3>1.2 Scope</h3>
+<p>
+  This document applies to the detailed design of <strong>application-layer SWC Runnables</strong> and <strong>Complex Device Driver (CDD) units</strong> in AUTOSAR-based ECU software. It covers functional logic flow, decision structures, error handling paths, and timing-related patterns. It does not cover BSW module configuration or system-level architecture diagrams (which belong to SWE.2).
+</p>
+
+<h3>1.3 Normative References</h3>
+<table>
+  <thead>
+    <tr><th>Standard</th><th>Section</th><th>Relevance</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Automotive SPICE v4.0</td><td>SWE.3 BP.1–BP.7</td><td>Detailed design development, interface documentation, dynamic behavior, traceability</td></tr>
+    <tr><td>ISO 26262:2018</td><td>Part 6, Clause 8</td><td>Software unit design methods (Table 5: semi-formal notation recommended ASIL A–D)</td></tr>
+    <tr><td>ISO 26262:2018</td><td>Part 6, Clause 9</td><td>Software unit verification — flowchart serves as basis for unit test derivation</td></tr>
+    <tr><td>AUTOSAR CP R22-11+</td><td>SWC Template, Methodology</td><td>Port interfaces, Runnable entity structure, Internal Behavior</td></tr>
+    <tr><td>ISO 5807:1985</td><td>Full standard</td><td>International standard for flowchart symbol definitions and drawing conventions</td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <div class="callout-title">A-SPICE SWE.3 Context</div>
+  The detailed design flowchart is a key work product for SWE.3-BP.1 (develop software detailed design) and SWE.3-BP.3 (describe dynamic behavior). It must be created <em>before</em> unit implementation and serve as the specification against which SWE.4 unit tests are written.
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 2                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec2"><span class="section-num">02</span>Terminology &amp; Definitions</h2>
+
+<table>
+  <thead>
+    <tr><th>Term</th><th>Definition</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>MUD</strong></td><td>Module/Unit Design — the detailed design specification for a software unit or module.</td></tr>
+    <tr><td><strong>SWC</strong></td><td>Software Component — an AUTOSAR application-layer entity with defined ports and runnables.</td></tr>
+    <tr><td><strong>Runnable</strong></td><td>An executable function within an SWC, triggered by an RTE event (e.g., TimingEvent, DataReceivedEvent).</td></tr>
+    <tr><td><strong>Software Unit</strong></td><td>The smallest independently testable piece of software — typically a C function implementing a Runnable or sub-function.</td></tr>
+    <tr><td><strong>CDD</strong></td><td>Complex Device Driver — hardware-dependent software outside standard AUTOSAR BSW layers.</td></tr>
+    <tr><td><strong>Nominal Path</strong></td><td>The expected execution flow under normal operating conditions.</td></tr>
+    <tr><td><strong>Error Path</strong></td><td>An alternative execution flow triggered by detected faults, invalid inputs, or safety violations.</td></tr>
+    <tr><td><strong>Safe State</strong></td><td>A defined operating condition that avoids unreasonable risk (ISO 26262 definition).</td></tr>
+    <tr><td><strong>ASIL</strong></td><td>Automotive Safety Integrity Level (A through D), determining the rigor of design and verification methods.</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 3                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec3"><span class="section-num">03</span>Standard Flowchart Symbols &amp; Notation</h2>
+
+<p>
+  All flowcharts shall use symbols conforming to <strong>ISO 5807:1985</strong> (Information Processing — Documentation Symbols and Conventions for Program Flowcharts). The table and visual reference below define the complete symbol set permitted in MUD flowcharts.
+</p>
+
+<h3>3.1 Symbol Reference Table</h3>
+<table>
+  <thead>
+    <tr><th>Symbol</th><th>Shape</th><th>Usage</th><th>Label Convention</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Start / End</strong></td>
+      <td>Rounded rectangle (stadium)</td>
+      <td>Entry and exit points of a Runnable or sub-function</td>
+      <td><code>START: &lt;RunnableName&gt;</code> / <code>END</code></td>
+    </tr>
+    <tr>
+      <td><strong>Process</strong></td>
+      <td>Rectangle</td>
+      <td>A computation, assignment, or transformation step</td>
+      <td>Verb phrase: "Compute…", "Update…", "Filter…"</td>
+    </tr>
+    <tr>
+      <td><strong>Decision</strong></td>
+      <td>Diamond</td>
+      <td>A conditional branch (Boolean or multi-way)</td>
+      <td>Question: "Speed &gt; Max?" with labeled exits</td>
+    </tr>
+    <tr>
+      <td><strong>Input / Output</strong></td>
+      <td>Parallelogram</td>
+      <td>Data entering or leaving the unit via RTE ports or HW registers</td>
+      <td>"Read Rte_Read_…" / "Write Rte_Write_…"</td>
+    </tr>
+    <tr>
+      <td><strong>Predefined Process</strong></td>
+      <td>Rectangle with double vertical edges</td>
+      <td>A call to another unit, library function, or sub-routine</td>
+      <td>"Call &lt;FunctionName&gt;()"</td>
+    </tr>
+    <tr>
+      <td><strong>Connector</strong></td>
+      <td>Small circle</td>
+      <td>Link between parts of a flowchart (same page)</td>
+      <td>Single letter or number: A, B, 1, 2</td>
+    </tr>
+    <tr>
+      <td><strong>Off-Page Connector</strong></td>
+      <td>Home-plate pentagon</td>
+      <td>Flow continues on another page or diagram</td>
+      <td>Reference to target diagram ID</td>
+    </tr>
+    <tr>
+      <td><strong>Comment / Annotation</strong></td>
+      <td>Open bracket (dashed line)</td>
+      <td>Requirement ID tags, ASIL markings, design notes</td>
+      <td><code>[SWR_MOD_001]</code>, <code>{ASIL-B}</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3.2 Visual Symbol Reference</h3>
+<div class="diagram-wrap">
+<svg viewBox="0 0 820 440" xmlns="http://www.w3.org/2000/svg" font-family="Source Sans 3, Helvetica, sans-serif">
+  <!-- Background grid -->
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E8E8E4" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="820" height="440" fill="#FEFEFE"/>
+  <rect width="820" height="440" fill="url(#grid)"/>
+
+  <!-- Row 1 -->
+  <!-- START/END -->
+  <rect x="30" y="30" width="160" height="56" rx="28" fill="#E8F0FA" stroke="#0055A4" stroke-width="2"/>
+  <text x="110" y="63" text-anchor="middle" font-size="14" font-weight="600" fill="#0055A4">START / END</text>
+  <text x="110" y="78" text-anchor="middle" font-size="11" fill="#4A4A4A">Rounded Rectangle</text>
+
+  <!-- PROCESS -->
+  <rect x="230" y="30" width="160" height="56" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="2"/>
+  <text x="310" y="63" text-anchor="middle" font-size="14" font-weight="600" fill="#27864C">PROCESS</text>
+  <text x="310" y="78" text-anchor="middle" font-size="11" fill="#4A4A4A">Rectangle</text>
+
+  <!-- DECISION -->
+  <g transform="translate(530, 58)">
+    <polygon points="80,0 160,40 80,80 0,40" fill="#FFF6E8" stroke="#D4881C" stroke-width="2"/>
+    <text x="80" y="36" text-anchor="middle" font-size="14" font-weight="600" fill="#D4881C">DECISION</text>
+    <text x="80" y="52" text-anchor="middle" font-size="11" fill="#4A4A4A">Diamond</text>
+  </g>
+
+  <!-- Row 2 -->
+  <!-- I/O -->
+  <g transform="translate(30, 170)">
+    <polygon points="24,0 184,0 160,56 0,56" fill="#F0E8FA" stroke="#6C3FA0" stroke-width="2"/>
+    <text x="92" y="30" text-anchor="middle" font-size="14" font-weight="600" fill="#6C3FA0">INPUT / OUTPUT</text>
+    <text x="92" y="46" text-anchor="middle" font-size="11" fill="#4A4A4A">Parallelogram</text>
+  </g>
+
+  <!-- PREDEFINED PROCESS -->
+  <g transform="translate(230, 170)">
+    <rect x="0" y="0" width="160" height="56" rx="3" fill="#FBEAE8" stroke="#C0392B" stroke-width="2"/>
+    <line x1="14" y1="0" x2="14" y2="56" stroke="#C0392B" stroke-width="1.5"/>
+    <line x1="146" y1="0" x2="146" y2="56" stroke="#C0392B" stroke-width="1.5"/>
+    <text x="80" y="30" text-anchor="middle" font-size="13" font-weight="600" fill="#C0392B">PREDEFINED</text>
+    <text x="80" y="46" text-anchor="middle" font-size="13" font-weight="600" fill="#C0392B">PROCESS</text>
+  </g>
+
+  <!-- CONNECTOR -->
+  <g transform="translate(490, 170)">
+    <circle cx="40" cy="28" r="26" fill="#E8F0FA" stroke="#0055A4" stroke-width="2"/>
+    <text x="40" y="22" text-anchor="middle" font-size="14" font-weight="600" fill="#0055A4">A</text>
+    <text x="40" y="38" text-anchor="middle" font-size="10" fill="#4A4A4A">Connector</text>
+  </g>
+
+  <!-- OFF-PAGE -->
+  <g transform="translate(610, 170)">
+    <polygon points="0,0 100,0 100,40 50,56 0,40" fill="#E8F0FA" stroke="#0055A4" stroke-width="2"/>
+    <text x="50" y="22" text-anchor="middle" font-size="11" font-weight="600" fill="#0055A4">OFF-PAGE</text>
+    <text x="50" y="36" text-anchor="middle" font-size="10" fill="#4A4A4A">Pentagon</text>
+  </g>
+
+  <!-- Row 3 — Annotation -->
+  <g transform="translate(30, 300)">
+    <line x1="0" y1="0" x2="0" y2="56" stroke="#7A7A7A" stroke-width="2"/>
+    <line x1="0" y1="0" x2="20" y2="0" stroke="#7A7A7A" stroke-width="2"/>
+    <line x1="0" y1="56" x2="20" y2="56" stroke="#7A7A7A" stroke-width="2"/>
+    <text x="28" y="24" font-size="12" fill="#7A7A7A" font-style="italic">[SWR_MOD_001]</text>
+    <text x="28" y="42" font-size="12" fill="#7A7A7A" font-style="italic">{ASIL-B}</text>
+    <text x="130" y="34" font-size="12" font-weight="600" fill="#4A4A4A">ANNOTATION</text>
+  </g>
+
+  <!-- Legend for flow lines -->
+  <g transform="translate(300, 300)">
+    <rect x="0" y="0" width="480" height="110" rx="4" fill="#F8F8F6" stroke="#D8D8D0" stroke-width="1"/>
+    <text x="16" y="22" font-size="12" font-weight="700" fill="#4A4A4A" letter-spacing="1">FLOW LINE RULES</text>
+
+    <line x1="16" y1="44" x2="80" y2="44" stroke="#1A1A1A" stroke-width="2" marker-end="url(#arrowBlack)"/>
+    <text x="92" y="48" font-size="12" fill="#4A4A4A">Standard flow — always top-to-bottom or left-to-right</text>
+
+    <line x1="16" y1="68" x2="80" y2="68" stroke="#27864C" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrowGreen)"/>
+    <text x="92" y="72" font-size="12" fill="#4A4A4A">Error / fallback path — always labeled with condition</text>
+
+    <line x1="16" y1="92" x2="80" y2="92" stroke="#C0392B" stroke-width="2" marker-end="url(#arrowRed)"/>
+    <text x="92" y="96" font-size="12" fill="#4A4A4A">Safety-critical path — leads to safe state / DEM report</text>
+  </g>
+
+  <!-- Arrowhead markers -->
+  <defs>
+    <marker id="arrowBlack" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1A1A1A"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#27864C"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0055A4"/>
+    </marker>
+  </defs>
+</svg>
+<div class="diagram-caption">Figure 1 — Standard Flowchart Symbol Set (ISO 5807 compliant)</div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 4                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec4"><span class="section-num">04</span>Requirement-to-Flowchart Conversion Process</h2>
+
+<p>
+  The following seven-step process transforms software requirements into a complete, standards-compliant MUD flowchart. Each step maps directly to A-SPICE SWE.3 base practices and ISO 26262 Part 6 design method expectations.
+</p>
+
+<h3>4.1 The Seven-Step Conversion Method</h3>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <h4>Identify Inputs, Preconditions &amp; Trigger Events</h4>
+    <p>Extract all "WHEN", "IF", "UPON", and "EACH" clauses from requirements. These define the entry conditions, triggering RTE events (TimingEvent, DataReceivedEvent), and the input data flowing through Rte_Read operations. Map each to an Input/Output parallelogram at the top of your flow.</p>
+    <div class="req-block"><span class="req-id">SWR_SPD_001</span>  "The module shall read the vehicle speed signal from the RTE each 10 ms task cycle."
+→  <strong>Block:</strong> I/O Parallelogram — "Read VehicleSpeed via Rte_Read"
+→  <strong>Trigger:</strong> TimingEvent (10 ms)</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <h4>Classify Requirements into Behavior Categories</h4>
+    <p>Sort every requirement into one of four categories. This classification drives the flowchart structure and ensures completeness of coverage:</p>
+    <table>
+      <thead><tr><th>Category</th><th>Description</th><th>Flowchart Region</th></tr></thead>
+      <tbody>
+        <tr><td><strong>A. Nominal</strong></td><td>Normal operating logic — the happy path</td><td>Center/main flow</td></tr>
+        <tr><td><strong>B. Alternative</strong></td><td>Special conditions, mode-dependent paths</td><td>Branching from decisions</td></tr>
+        <tr><td><strong>C. Error / Safety</strong></td><td>Fault detection, DEM reporting, degradation</td><td>Right-side error branches</td></tr>
+        <tr><td><strong>D. Initialization / State</strong></td><td>Init sequences, mode transitions, debouncing</td><td>Top section or separate sub-flow</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content">
+    <h4>Establish the High-Level Flow Skeleton</h4>
+    <p>Begin every Runnable flowchart with this canonical structure — it matches automotive design conventions and audit expectations across OEMs:</p>
+    <div class="diagram-wrap">
+<svg viewBox="0 0 260 520" xmlns="http://www.w3.org/2000/svg" font-family="Source Sans 3, Helvetica, sans-serif">
+  <rect width="260" height="520" fill="#FEFEFE"/>
+
+  <!-- START -->
+  <rect x="55" y="10" width="150" height="36" rx="18" fill="#E8F0FA" stroke="#0055A4" stroke-width="2"/>
+  <text x="130" y="33" text-anchor="middle" font-size="12" font-weight="600" fill="#0055A4">START</text>
+  <line x1="130" y1="46" x2="130" y2="62" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Read Inputs -->
+  <polygon points="60,68 200,68 188,100 72,100" fill="#F0E8FA" stroke="#6C3FA0" stroke-width="1.5"/>
+  <text x="130" y="88" text-anchor="middle" font-size="11" font-weight="600" fill="#6C3FA0">Read Inputs (RTE)</text>
+  <line x1="130" y1="100" x2="130" y2="116" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Validate -->
+  <g transform="translate(130, 148)">
+    <polygon points="55,0 110,32 55,64 0,32" fill="#FFF6E8" stroke="#D4881C" stroke-width="1.5"/>
+    <text x="55" y="28" text-anchor="middle" font-size="10" font-weight="600" fill="#D4881C">Inputs</text>
+    <text x="55" y="40" text-anchor="middle" font-size="10" font-weight="600" fill="#D4881C">Valid?</text>
+  </g>
+  <line x1="130" y1="116" x2="130" y2="116" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <!-- Yes label -->
+  <text x="137" y="225" font-size="10" fill="#27864C" font-weight="600">Yes</text>
+  <line x1="130" y1="212" x2="130" y2="236" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <!-- No label -->
+  <text x="243" y="178" font-size="10" fill="#C0392B" font-weight="600">No</text>
+
+  <!-- Main Algorithm -->
+  <rect x="55" y="240" width="150" height="36" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="130" y="262" text-anchor="middle" font-size="11" font-weight="600" fill="#27864C">Main Algorithm</text>
+  <line x1="130" y1="276" x2="130" y2="292" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Apply Limits -->
+  <rect x="55" y="296" width="150" height="36" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="130" y="318" text-anchor="middle" font-size="11" font-weight="600" fill="#27864C">Apply Limits / Safety</text>
+  <line x1="130" y1="332" x2="130" y2="348" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Write Outputs -->
+  <polygon points="60,354 200,354 188,386 72,386" fill="#F0E8FA" stroke="#6C3FA0" stroke-width="1.5"/>
+  <text x="130" y="374" text-anchor="middle" font-size="11" font-weight="600" fill="#6C3FA0">Write Outputs (RTE)</text>
+  <line x1="130" y1="386" x2="130" y2="402" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Update States -->
+  <rect x="55" y="406" width="150" height="36" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="130" y="428" text-anchor="middle" font-size="11" font-weight="600" fill="#27864C">Update Internal States</text>
+  <line x1="130" y1="442" x2="130" y2="458" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- END -->
+  <rect x="55" y="462" width="150" height="36" rx="18" fill="#E8F0FA" stroke="#0055A4" stroke-width="2"/>
+  <text x="130" y="484" text-anchor="middle" font-size="12" font-weight="600" fill="#0055A4">END</text>
+
+  <!-- Right-side labels -->
+  <text x="8" y="88" font-size="9" fill="#7A7A7A" font-style="italic">Step 1</text>
+  <text x="8" y="178" font-size="9" fill="#7A7A7A" font-style="italic">Step 2</text>
+  <text x="8" y="262" font-size="9" fill="#7A7A7A" font-style="italic">Step 3</text>
+  <text x="8" y="318" font-size="9" fill="#7A7A7A" font-style="italic">Step 4</text>
+  <text x="8" y="374" font-size="9" fill="#7A7A7A" font-style="italic">Step 5</text>
+  <text x="8" y="428" font-size="9" fill="#7A7A7A" font-style="italic">Step 6</text>
+</svg>
+<div class="diagram-caption">Figure 2 — Canonical Runnable Flowchart Skeleton</div>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-content">
+    <h4>Map Each Requirement to a Block Type</h4>
+    <p>Apply this conversion table to every individual software requirement:</p>
+    <table>
+      <thead><tr><th>Requirement Pattern</th><th>Block Type</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td>"…shall compute / calculate / filter…"</td><td>Process (rectangle)</td><td>"Compute torque request"</td></tr>
+        <tr><td>"…if / when / in case of…"</td><td>Decision (diamond)</td><td>"Speed &gt; MaxSpeed?"</td></tr>
+        <tr><td>"…shall read / receive…"</td><td>Input (parallelogram)</td><td>"Read ADC channel 3"</td></tr>
+        <tr><td>"…shall output / write / send…"</td><td>Output (parallelogram)</td><td>"Write PWM duty cycle"</td></tr>
+        <tr><td>"…shall call / invoke…"</td><td>Predefined Process</td><td>"Call CheckSensorValidity()"</td></tr>
+        <tr><td>"…shall report / set DTC…"</td><td>Process + Annotation</td><td>"Report DEM event" + [SWR_ERR_012]</td></tr>
+      </tbody>
+    </table>
+    <div class="callout success">
+      <div class="callout-title">Golden Rule</div>
+      Every requirement shall map to at least one flowchart element. If a requirement does not appear in the flowchart, either the flowchart is incomplete or the requirement belongs to a different design level.
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">5</div>
+  <div class="step-content">
+    <h4>Connect Blocks with Directed Flow Lines</h4>
+    <p>Apply these layout rules strictly: primary flow runs top-to-bottom; sub-flows branch left-to-right; error paths branch rightward and are drawn with dashed lines or distinct color. Every flow line must have an arrowhead. Every decision exit must carry a label (Yes/No, True/False, or the specific condition name).</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">6</div>
+  <div class="step-content">
+    <h4>Add Error &amp; Safety Handling Paths</h4>
+    <p>ISO 26262 Part 6 requires explicit documentation of error detection, degradation, and safe-state transitions. For every decision where a fault or invalid condition is possible, add a clearly labeled error branch showing:</p>
+    <p>
+      <strong>a)</strong> The specific error flag or DEM event to set,
+      <strong>b)</strong> The safe/default output value,
+      <strong>c)</strong> The termination point (END or transition to safe state).
+    </p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">7</div>
+  <div class="step-content">
+    <h4>Annotate with Requirement IDs &amp; ASIL Tags</h4>
+    <p>Attach requirement ID annotations (using bracket symbols) alongside every flowchart element they trace to. For safety-relevant paths, add ASIL level tags. This enables direct traceability from flowchart to requirements (SWE.3-BP.5) and supports A-SPICE assessment evidence.</p>
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 5                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec5"><span class="section-num">05</span>AUTOSAR-Specific Design Patterns</h2>
+
+<h3>5.1 Runnable Entry Pattern</h3>
+<p>
+  Every AUTOSAR Runnable is triggered by an RTE event. The flowchart for a cyclic Runnable should begin with the triggering context and immediate port reads:
+</p>
+<div class="req-block">START: Rnbl_SpeedCtrl_10ms
+├── Read VehicleSpeed   ← Rte_Read_RPort_VehicleSpeed_VehSpd()
+├── Read TargetSpeed    ← Rte_Read_RPort_TargetSpeed_TgtSpd()
+├── Read EnableFlag     ← Rte_Read_RPort_CtrlEnable_EnblFlg()
+│   ... [processing logic] ...
+├── Write TorqueCmd     ← Rte_Write_PPort_TorqueCmd_TrqReq()
+└── END</div>
+
+<h3>5.2 Common AUTOSAR Flow Patterns</h3>
+
+<h4>Pattern A — Input Qualification with NvM Fallback</h4>
+<div class="diagram-wrap">
+<svg viewBox="0 0 560 280" xmlns="http://www.w3.org/2000/svg" font-family="Source Sans 3, Helvetica, sans-serif">
+  <rect width="560" height="280" fill="#FEFEFE"/>
+
+  <!-- Read Input -->
+  <polygon points="40,20 200,20 185,52 55,52" fill="#F0E8FA" stroke="#6C3FA0" stroke-width="1.5"/>
+  <text x="120" y="40" text-anchor="middle" font-size="11" font-weight="600" fill="#6C3FA0">Read Sensor via RTE</text>
+  <line x1="120" y1="52" x2="120" y2="72" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Decision: Signal Quality OK? -->
+  <g transform="translate(120, 108)">
+    <polygon points="60,0 120,36 60,72 0,36" fill="#FFF6E8" stroke="#D4881C" stroke-width="1.5"/>
+    <text x="60" y="32" text-anchor="middle" font-size="10" font-weight="600" fill="#D4881C">Signal</text>
+    <text x="60" y="44" text-anchor="middle" font-size="10" font-weight="600" fill="#D4881C">Quality OK?</text>
+  </g>
+
+  <!-- Yes path -->
+  <text x="127" y="193" font-size="10" fill="#27864C" font-weight="600">Yes</text>
+  <line x1="120" y1="180" x2="120" y2="210" stroke="#27864C" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+  <rect x="45" y="214" width="150" height="32" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="120" y="234" text-anchor="middle" font-size="11" font-weight="600" fill="#27864C">Use Live Value</text>
+
+  <!-- No path -->
+  <text x="250" y="143" font-size="10" fill="#C0392B" font-weight="600">No</text>
+  <line x1="240" y1="144" x2="290" y2="144" stroke="#C0392B" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRed)"/>
+
+  <!-- Increment counter -->
+  <rect x="294" y="128" width="130" height="32" rx="3" fill="#FBEAE8" stroke="#C0392B" stroke-width="1.5"/>
+  <text x="359" y="148" text-anchor="middle" font-size="10" font-weight="600" fill="#C0392B">Increment ErrCnt</text>
+  <line x1="359" y1="160" x2="359" y2="176" stroke="#C0392B" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+
+  <!-- Decision: Counter > Threshold? -->
+  <g transform="translate(359, 208)">
+    <polygon points="50,0 100,28 50,56 0,28" fill="#FFF6E8" stroke="#D4881C" stroke-width="1.5"/>
+    <text x="50" y="24" text-anchor="middle" font-size="9" font-weight="600" fill="#D4881C">ErrCnt ></text>
+    <text x="50" y="36" text-anchor="middle" font-size="9" font-weight="600" fill="#D4881C">Thresh?</text>
+  </g>
+
+  <!-- No from counter -->
+  <text x="312" y="228" font-size="9" fill="#27864C" font-weight="600">No</text>
+  <line x1="309" y1="236" x2="278" y2="236" stroke="#27864C" stroke-width="1.5"/>
+  <rect x="195" y="220" width="83" height="28" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.2"/>
+  <text x="237" y="238" text-anchor="middle" font-size="9" font-weight="600" fill="#27864C">Use Last Valid</text>
+
+  <!-- Yes from counter -->
+  <text x="466" y="234" font-size="9" fill="#C0392B" font-weight="600">Yes</text>
+  <line x1="459" y1="236" x2="486" y2="236" stroke="#C0392B" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRed)"/>
+  <rect x="490" y="220" width="60" height="28" rx="3" fill="#FBEAE8" stroke="#C0392B" stroke-width="1.5"/>
+  <text x="520" y="238" text-anchor="middle" font-size="9" font-weight="600" fill="#C0392B">Use NvM</text>
+
+  <!-- Annotation -->
+  <line x1="440" y1="128" x2="440" y2="160" stroke="#7A7A7A" stroke-width="1"/>
+  <line x1="440" y1="128" x2="452" y2="128" stroke="#7A7A7A" stroke-width="1"/>
+  <line x1="440" y1="160" x2="452" y2="160" stroke="#7A7A7A" stroke-width="1"/>
+  <text x="456" y="140" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_ERR_005]</text>
+  <text x="456" y="152" font-size="9" fill="#7A7A7A" font-style="italic">{ASIL-B}</text>
+</svg>
+<div class="diagram-caption">Figure 3 — Pattern A: Input Qualification with Debounce Counter and NvM Fallback</div>
+</div>
+
+<h4>Pattern B — Mode-Dependent Processing (Init / Normal / Fault)</h4>
+<p>
+  When a module operates in distinct modes (common in motor control, HVAC, and BMS applications), use a top-level multi-way decision that dispatches to separate sub-flows. Each mode path should be self-contained with its own output write and state update.
+</p>
+
+<h4>Pattern C — Cascaded Safety Checks (ASIL Decomposition)</h4>
+<p>
+  For ASIL-B and above, safety checks must be decomposed into individual decision diamonds rather than combined into a single complex condition. This supports structural coverage analysis (MC/DC) required by ISO 26262 Part 6 Table 9.
+</p>
+
+<h3>5.3 AUTOSAR Service Call Integration</h3>
+<p>
+  When a Runnable interacts with BSW services (DEM, NvM, FIM, WdgM), represent these as <strong>Predefined Process blocks</strong> (rectangle with double vertical edges) and label them with the standardized AUTOSAR API name:
+</p>
+<table>
+  <thead><tr><th>BSW Service</th><th>Flowchart Label</th><th>Typical Usage</th></tr></thead>
+  <tbody>
+    <tr><td>DEM</td><td>"Call Dem_SetEventStatus()"</td><td>Report diagnostic events from error paths</td></tr>
+    <tr><td>NvM</td><td>"Call NvM_ReadBlock()" / "NvM_WriteBlock()"</td><td>Persist or retrieve calibration/fallback data</td></tr>
+    <tr><td>FIM</td><td>"Call FiM_GetFunctionPermission()"</td><td>Check if function is inhibited due to active fault</td></tr>
+    <tr><td>WdgM</td><td>"Call WdgM_CheckpointReached()"</td><td>Alive/deadline/logical supervision checkpoints</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 6                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec6"><span class="section-num">06</span>Mandatory Design Rules (Automotive Grade)</h2>
+
+<p>
+  The following rules are non-negotiable for any MUD flowchart intended for A-SPICE assessment or ISO 26262 certification evidence. Violations will be flagged during design reviews and formal assessments.
+</p>
+
+<h3>6.1 Structural Integrity Rules</h3>
+
+<div class="rule-grid">
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-01 — Complete Exits</div>
+    <p>Every decision diamond shall have <strong>all possible outcomes</strong> explicitly labeled. Boolean decisions require exactly two exits (Yes/No). Multi-way decisions require one exit per enumeration value plus a default/else path.</p>
+  </div>
+  <div class="rule-card dont">
+    <div class="rule-card-label">Violation Example</div>
+    <p>A diamond with only one arrow leaving it, or exits labeled only "Yes" with no "No" path visible. This creates ambiguous behavior and will fail A-SPICE BP.4 evaluation.</p>
+  </div>
+
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-02 — No Dangling Lines</div>
+    <p>Every flow arrow must terminate at a valid block (process, decision, I/O, connector, or end). No arrow shall point into empty space or stop without connection.</p>
+  </div>
+  <div class="rule-card dont">
+    <div class="rule-card-label">Violation Example</div>
+    <p>An error branch arrow that points downward but does not connect to any block — the reviewer cannot determine what happens after the fault is detected.</p>
+  </div>
+
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-03 — No Hidden Logic</div>
+    <p>The flowchart shall express the <strong>complete</strong> algorithmic behavior of the unit. Any logic present in the code but absent from the flowchart constitutes a design gap.</p>
+  </div>
+  <div class="rule-card dont">
+    <div class="rule-card-label">Violation Example</div>
+    <p>A process block labeled "Apply filter" that omits the type of filter (FIR, moving average, low-pass) and its relevant parameters. The design is not detailed enough for independent unit test derivation.</p>
+  </div>
+
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-04 — Decompose Complex Decisions</div>
+    <p>Conditions with more than <strong>two Boolean sub-expressions</strong> shall be decomposed into sequential diamonds. This supports MC/DC coverage analysis.</p>
+  </div>
+  <div class="rule-card dont">
+    <div class="rule-card-label">Violation Example</div>
+    <p>A single diamond: "InputValid AND !Timeout AND !FaultActive AND Speed &lt; 200?" — must be broken into four sequential decisions.</p>
+  </div>
+</div>
+
+<h3>6.2 Naming &amp; Labeling Rules</h3>
+
+<div class="rule-grid">
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-05 — Action Verb Labels</div>
+    <p>Process blocks shall begin with an action verb: <strong>Compute, Filter, Update, Validate, Check, Limit, Increment, Reset, Set, Clear, Call, Report</strong>.</p>
+  </div>
+  <div class="rule-card dont">
+    <div class="rule-card-label">Violation Example</div>
+    <p>"Torque value" — this is a noun phrase, not an action. It gives no indication of what the unit does with the torque value.</p>
+  </div>
+
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-06 — Design Level Abstraction</div>
+    <p>Flowcharts shall operate at the <strong>design level</strong>, not implementation level. Use physical/functional names (e.g., "Motor Speed"), not C variable names (e.g., <code>u16_MtrSpd_rpm</code>).</p>
+  </div>
+  <div class="rule-card dont">
+    <div class="rule-card-label">Violation Example</div>
+    <p>"if (u16_MtrSpd_rpm > CAL_MaxSpd_rpm)" — this is code, not design. The flowchart should read: "Motor Speed &gt; Maximum Speed Limit?"</p>
+  </div>
+
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-07 — One Sentence Per Block</div>
+    <p>Each process block shall contain a single, concise statement (maximum one sentence). If more detail is needed, decompose into multiple blocks or reference a sub-flow.</p>
+  </div>
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-08 — Requirement Traceability Tags</div>
+    <p>Every flowchart element derived from a requirement shall carry an annotation with its source requirement ID (e.g., <code>[SWR_MOD_042]</code>). This is mandatory for A-SPICE SWE.3-BP.5 bidirectional traceability.</p>
+  </div>
+</div>
+
+<h3>6.3 Layout Rules</h3>
+
+<div class="rule-grid">
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-09 — Top-to-Bottom Primary Flow</div>
+    <p>The nominal execution path shall flow from top to bottom. Error/alternative branches extend to the right. Loops return flow upward using connectors (circles), never by drawing arrows that cross the main flow.</p>
+  </div>
+  <div class="rule-card do">
+    <div class="rule-card-label">Rule R-10 — Hierarchical Decomposition</div>
+    <p>If a single flowchart exceeds <strong>one printed page</strong> (approximately 15–20 blocks), decompose it into a Level 0 overview calling Level 1 sub-flows via Predefined Process blocks.</p>
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 7                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec7"><span class="section-num">07</span>Worked Example — Speed-Torque Control Module</h2>
+
+<h3>7.1 Source Requirements</h3>
+
+<div class="req-block"><span class="req-id">SWR_TRQ_001</span>  The Runnable Rnbl_TrqCtrl_10ms shall read the vehicle speed signal each 10 ms cycle.
+<span class="req-id">SWR_TRQ_002</span>  The module shall validate the speed input. Valid range: 0 to 250 km/h.
+<span class="req-id">SWR_TRQ_003</span>  If the speed input is invalid, the module shall output a torque of 0 Nm and report DEM event DTC_SpdInvalid.
+<span class="req-id">SWR_TRQ_004</span>  If the speed input is valid, the module shall compute the torque request using the control algorithm.
+<span class="req-id">SWR_TRQ_005</span>  The computed torque shall be limited to the range ±300 Nm.
+<span class="req-id">SWR_TRQ_006</span>  The module shall write the final torque command to the RTE output port.
+<span class="req-id">SWR_TRQ_007</span>  The module shall store the current speed value for use in the next cycle.</div>
+
+<h3>7.2 Requirement-to-Block Mapping</h3>
+<table>
+  <thead><tr><th>Req ID</th><th>Category</th><th>Block Type(s)</th><th>Flowchart Label</th></tr></thead>
+  <tbody>
+    <tr><td>SWR_TRQ_001</td><td>Nominal</td><td>I/O Parallelogram</td><td>Read VehicleSpeed via RTE</td></tr>
+    <tr><td>SWR_TRQ_002</td><td>Nominal</td><td>Decision Diamond</td><td>Speed in [0, 250] km/h?</td></tr>
+    <tr><td>SWR_TRQ_003</td><td>Error</td><td>Process + Predefined Process</td><td>Set Torque = 0 Nm / Call Dem_SetEventStatus()</td></tr>
+    <tr><td>SWR_TRQ_004</td><td>Nominal</td><td>Process</td><td>Compute Torque Request</td></tr>
+    <tr><td>SWR_TRQ_005</td><td>Nominal</td><td>Process</td><td>Limit Torque to ±300 Nm</td></tr>
+    <tr><td>SWR_TRQ_006</td><td>Nominal</td><td>I/O Parallelogram</td><td>Write TorqueCmd via RTE</td></tr>
+    <tr><td>SWR_TRQ_007</td><td>Nominal</td><td>Process</td><td>Store Speed for Next Cycle</td></tr>
+  </tbody>
+</table>
+
+<h3>7.3 Complete Flowchart</h3>
+<div class="diagram-wrap">
+<svg viewBox="0 0 620 660" xmlns="http://www.w3.org/2000/svg" font-family="Source Sans 3, Helvetica, sans-serif">
+  <rect width="620" height="660" fill="#FEFEFE"/>
+
+  <!-- START -->
+  <rect x="140" y="12" width="200" height="38" rx="19" fill="#E8F0FA" stroke="#0055A4" stroke-width="2"/>
+  <text x="240" y="36" text-anchor="middle" font-size="13" font-weight="600" fill="#0055A4">START: Rnbl_TrqCtrl_10ms</text>
+  <line x1="240" y1="50" x2="240" y2="70" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+
+  <!-- Read Speed (I/O) -->
+  <polygon points="150,76 330,76 315,110 165,110" fill="#F0E8FA" stroke="#6C3FA0" stroke-width="1.5"/>
+  <text x="240" y="97" text-anchor="middle" font-size="12" font-weight="600" fill="#6C3FA0">Read VehicleSpeed via RTE</text>
+  <line x1="240" y1="110" x2="240" y2="135" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <!-- Annotation for SWR_TRQ_001 -->
+  <text x="340" y="90" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_001]</text>
+
+  <!-- Decision: Speed Valid? -->
+  <g transform="translate(240, 174)">
+    <polygon points="70,0 140,39 70,78 0,39" fill="#FFF6E8" stroke="#D4881C" stroke-width="1.5"/>
+    <text x="70" y="34" text-anchor="middle" font-size="11" font-weight="600" fill="#D4881C">Speed in</text>
+    <text x="70" y="48" text-anchor="middle" font-size="11" font-weight="600" fill="#D4881C">[0, 250]?</text>
+  </g>
+  <!-- Annotation SWR_TRQ_002 -->
+  <text x="390" y="210" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_002]</text>
+
+  <!-- Yes -->
+  <text x="247" y="265" font-size="11" fill="#27864C" font-weight="600">Yes</text>
+  <line x1="240" y1="252" x2="240" y2="284" stroke="#27864C" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+
+  <!-- No (error path to right) -->
+  <text x="390" y="208" font-size="11" fill="#C0392B" font-weight="600">No</text>
+  <line x1="380" y1="213" x2="430" y2="213" stroke="#C0392B" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRed)"/>
+
+  <!-- Error: Set Torque = 0 -->
+  <rect x="434" y="197" width="150" height="32" rx="3" fill="#FBEAE8" stroke="#C0392B" stroke-width="1.5"/>
+  <text x="509" y="217" text-anchor="middle" font-size="11" font-weight="600" fill="#C0392B">Set Torque = 0 Nm</text>
+  <line x1="509" y1="229" x2="509" y2="249" stroke="#C0392B" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+
+  <!-- Error: Call DEM -->
+  <rect x="434" y="253" width="150" height="32" rx="3" fill="#FBEAE8" stroke="#C0392B" stroke-width="1.5"/>
+  <line x1="448" y1="253" x2="448" y2="285" stroke="#C0392B" stroke-width="0.8"/>
+  <line x1="570" y1="253" x2="570" y2="285" stroke="#C0392B" stroke-width="0.8"/>
+  <text x="509" y="273" text-anchor="middle" font-size="10" font-weight="600" fill="#C0392B">Call Dem_SetEventStatus</text>
+  <text x="509" y="300" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_003] {ASIL-B}</text>
+
+  <!-- Error path joins at Write Output -->
+  <line x1="509" y1="285" x2="509" y2="485" stroke="#C0392B" stroke-width="1" stroke-dasharray="5,3"/>
+  <line x1="509" y1="485" x2="330" y2="485" stroke="#C0392B" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arrowRed)"/>
+
+  <!-- Compute Torque -->
+  <rect x="150" y="288" width="180" height="36" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="240" y="310" text-anchor="middle" font-size="12" font-weight="600" fill="#27864C">Compute Torque Request</text>
+  <line x1="240" y1="324" x2="240" y2="348" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <text x="340" y="306" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_004]</text>
+
+  <!-- Limit Torque -->
+  <rect x="150" y="352" width="180" height="36" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="240" y="374" text-anchor="middle" font-size="12" font-weight="600" fill="#27864C">Limit Torque to ±300 Nm</text>
+  <line x1="240" y1="388" x2="240" y2="412" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <text x="340" y="370" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_005]</text>
+
+  <!-- Safety check annotation -->
+  <rect x="15" y="352" width="120" height="36" rx="3" fill="#FBEAE8" stroke="#C0392B" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="75" y="367" text-anchor="middle" font-size="9" font-weight="600" fill="#C0392B">Safety-relevant</text>
+  <text x="75" y="380" text-anchor="middle" font-size="9" font-weight="600" fill="#C0392B">output limiting</text>
+
+  <!-- Write Output (I/O) -->
+  <polygon points="155,418 325,418 310,452 170,452" fill="#F0E8FA" stroke="#6C3FA0" stroke-width="1.5"/>
+  <text x="240" y="440" text-anchor="middle" font-size="12" font-weight="600" fill="#6C3FA0">Write TorqueCmd via RTE</text>
+  <line x1="240" y1="452" x2="240" y2="480" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <text x="340" y="438" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_006]</text>
+
+  <!-- Merge point indicator -->
+
+  <!-- Store Speed -->
+  <rect x="150" y="484" width="180" height="36" rx="3" fill="#E8F5EC" stroke="#27864C" stroke-width="1.5"/>
+  <text x="240" y="507" text-anchor="middle" font-size="12" font-weight="600" fill="#27864C">Store Speed for Next Cycle</text>
+  <line x1="240" y1="520" x2="240" y2="548" stroke="#1A1A1A" stroke-width="1.5" marker-end="url(#arrowBlack)"/>
+  <text x="340" y="504" font-size="9" fill="#7A7A7A" font-style="italic">[SWR_TRQ_007]</text>
+
+  <!-- END -->
+  <rect x="155" y="552" width="170" height="38" rx="19" fill="#E8F0FA" stroke="#0055A4" stroke-width="2.5"/>
+  <text x="240" y="575" text-anchor="middle" font-size="13" font-weight="600" fill="#0055A4">END</text>
+
+  <!-- Title strip -->
+  <rect x="0" y="620" width="620" height="30" fill="#0055A4"/>
+  <text x="310" y="640" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Figure 4 — Complete MUD Flowchart: Rnbl_TrqCtrl_10ms (Speed-Torque Control)</text>
+</svg>
+</div>
+
+<h3>7.4 Traceability Matrix Extract</h3>
+<table>
+  <thead><tr><th>SW Requirement</th><th>Flowchart Element</th><th>Verified By (SWE.4)</th></tr></thead>
+  <tbody>
+    <tr><td>SWR_TRQ_001</td><td>I/O: "Read VehicleSpeed via RTE"</td><td>TC_TRQ_001: Verify Rte_Read called each 10ms</td></tr>
+    <tr><td>SWR_TRQ_002</td><td>Decision: "Speed in [0, 250]?"</td><td>TC_TRQ_002: BVA at 0, 250, -1, 251</td></tr>
+    <tr><td>SWR_TRQ_003</td><td>Process: "Set Torque = 0 Nm" + Predef: "Dem_SetEventStatus"</td><td>TC_TRQ_003: Verify 0 Nm output + DEM call on invalid</td></tr>
+    <tr><td>SWR_TRQ_004</td><td>Process: "Compute Torque Request"</td><td>TC_TRQ_004: Equivalence partition testing</td></tr>
+    <tr><td>SWR_TRQ_005</td><td>Process: "Limit Torque to ±300 Nm"</td><td>TC_TRQ_005: BVA at ±300, ±301</td></tr>
+    <tr><td>SWR_TRQ_006</td><td>I/O: "Write TorqueCmd via RTE"</td><td>TC_TRQ_006: Verify Rte_Write with expected value</td></tr>
+    <tr><td>SWR_TRQ_007</td><td>Process: "Store Speed for Next Cycle"</td><td>TC_TRQ_007: Verify persistence across cycles</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 8                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec8"><span class="section-num">08</span>Traceability &amp; Review Checklist</h2>
+
+<p>
+  Use this checklist during peer reviews and formal design inspections (A-SPICE SWE.3-BP.4). Every item maps to a specific standard requirement.
+</p>
+
+<h3>8.1 Formal Review Checklist</h3>
+<table>
+  <thead><tr><th>#</th><th>Check Item</th><th>Standard Reference</th><th>Pass?</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Every SW requirement maps to at least one flowchart element</td><td>SWE.3-BP.5</td><td></td></tr>
+    <tr><td>2</td><td>Every flowchart element traces back to a requirement ID</td><td>SWE.3-BP.5</td><td></td></tr>
+    <tr><td>3</td><td>All decision blocks have labeled exits for every possible outcome</td><td>R-01 / ISO 5807</td><td></td></tr>
+    <tr><td>4</td><td>No flow lines terminate without connecting to a valid block</td><td>R-02</td><td></td></tr>
+    <tr><td>5</td><td>Complex conditions (3+ sub-expressions) are decomposed into sequential diamonds</td><td>R-04 / ISO 26262 Table 9</td><td></td></tr>
+    <tr><td>6</td><td>Error paths lead to explicit safe outputs and/or DEM event reporting</td><td>ISO 26262-6 Cl.8</td><td></td></tr>
+    <tr><td>7</td><td>Process blocks use action verbs (no noun-only labels)</td><td>R-05</td><td></td></tr>
+    <tr><td>8</td><td>Design-level abstraction maintained (no C variable names, no pointer syntax)</td><td>R-06</td><td></td></tr>
+    <tr><td>9</td><td>ASIL tags present on safety-relevant paths and blocks</td><td>ISO 26262-6 Cl.8</td><td></td></tr>
+    <tr><td>10</td><td>Flowchart fits one page or uses hierarchical decomposition with connectors</td><td>R-10</td><td></td></tr>
+    <tr><td>11</td><td>Interface blocks (I/O) reference AUTOSAR port/interface names</td><td>SWE.3-BP.2</td><td></td></tr>
+    <tr><td>12</td><td>Dynamic behavior (timing, debounce, state machines) is represented if applicable</td><td>SWE.3-BP.3</td><td></td></tr>
+    <tr><td>13</td><td>Correct ISO 5807 symbol shapes used consistently throughout</td><td>ISO 5807:1985</td><td></td></tr>
+    <tr><td>14</td><td>Document is under configuration management with version and date</td><td>SWE.3-BP.6 / SUP.8</td><td></td></tr>
+  </tbody>
+</table>
+
+<div class="callout warning">
+  <div class="callout-title">Common Assessment Finding</div>
+  A-SPICE assessors frequently downgrade SWE.3 capability when the detailed design is derived from code (bottom-up) rather than from requirements (top-down). The flowchart must be created <em>before</em> implementation. Evidence of this includes timestamped version control commits showing the design document predating the corresponding source code.
+</div>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 9                                                      -->
+<!-- ============================================================ -->
+<h2 id="sec9"><span class="section-num">09</span>Tool Recommendations &amp; Export Guidance</h2>
+
+<h3>9.1 Recommended Tools</h3>
+<table>
+  <thead><tr><th>Tool</th><th>Type</th><th>Strengths for MUD Flowcharts</th></tr></thead>
+  <tbody>
+    <tr><td>draw.io (diagrams.net)</td><td>Free, open-source</td><td>ISO 5807 shape libraries, Confluence/JIRA integration, SVG/PDF export</td></tr>
+    <tr><td>Enterprise Architect (Sparx)</td><td>Commercial</td><td>UML Activity Diagrams, AUTOSAR profile, DOORS integration for traceability</td></tr>
+    <tr><td>IBM Rhapsody</td><td>Commercial</td><td>Model-driven development, code generation from activity diagrams</td></tr>
+    <tr><td>MATLAB Simulink / Stateflow</td><td>Commercial</td><td>Model-based design with code generation; flowcharts embedded in Stateflow charts</td></tr>
+    <tr><td>PlantUML</td><td>Free, text-based</td><td>Version-controllable (text files), CI/CD pipeline integration, lightweight</td></tr>
+    <tr><td>Visio (Microsoft)</td><td>Commercial</td><td>Wide OEM adoption, built-in flowchart shapes, PDF export</td></tr>
+  </tbody>
+</table>
+
+<h3>9.2 PDF Export Tips</h3>
+<p>
+  When exporting flowcharts for formal documentation or assessment evidence, ensure: vector format output (SVG or PDF, not rasterized PNG/JPEG) for readability at any zoom level; consistent page size (A3 landscape is recommended for complex flows); legible font size (minimum 8pt for annotations, 10pt for block labels); and a title block with document ID, version, author, date, and ASIL classification.
+</p>
+
+<div class="callout info">
+  <div class="callout-title">Exporting This Document to PDF</div>
+  This HTML guideline is designed for clean PDF export. In Chrome or Edge: press <strong>Ctrl + P</strong>, select "Save as PDF", set margins to "Minimum", and enable "Background graphics" for colored callout boxes and table headers.
+</div>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 10                                                     -->
+<!-- ============================================================ -->
+<h2 id="sec10"><span class="section-num">10</span>References &amp; Further Reading</h2>
+
+<table>
+  <thead><tr><th>Reference</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>ISO 5807:1985</td><td>Information Processing — Documentation Symbols and Conventions for Program Flowcharts</td></tr>
+    <tr><td>ISO 26262:2018, Parts 1–12</td><td>Road Vehicles — Functional Safety (especially Part 6: Software Development)</td></tr>
+    <tr><td>Automotive SPICE PAM v4.0</td><td>Process Assessment Model — SWE.1 through SWE.6 process areas</td></tr>
+    <tr><td>AUTOSAR CP Methodology R22-11</td><td>Development activities and work product definitions for AUTOSAR Classic Platform</td></tr>
+    <tr><td>AUTOSAR SWC Template R22-11</td><td>Software Component interface and internal behavior metamodel specification</td></tr>
+    <tr><td>MISRA C:2012 (Amendment 4)</td><td>Guidelines for the use of the C language in critical systems — relevant for implementation from MUD</td></tr>
+    <tr><td>IEC 61508:2010</td><td>Functional Safety of E/E/PE Safety-Related Systems — parent standard of ISO 26262</td></tr>
+    <tr><td>UL Solutions SWE.3 Resource Guide</td><td>Practical guidance on Software Detailed Design and Unit Construction in A-SPICE</td></tr>
+  </tbody>
+</table>
+
+<!-- FOOTER -->
+<div class="doc-footer">
+  <p>
+    <strong>AUTOSAR Module/Unit Design — Flowchart Creation Guideline</strong><br>
+    Version 1.0 &middot; April 2026 &middot; Document Class: Process Guideline<br>
+    Applicable Standards: A-SPICE v4.0 SWE.3 &middot; ISO 26262:2018 Part 6 &middot; AUTOSAR CP &middot; ISO 5807:1985
+  </p>
+</div>
+
+</div><!-- end page-wrap -->
+</body>
+</html>

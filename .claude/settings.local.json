@@ -32,7 +32,12 @@
       "Bash(.venv/Scripts/python -c \"import ast; ast.parse\\(open\\(''src/mudtool/models/json_uml.py''\\).read\\(\\)\\); print\\(''json_uml.py: OK''\\)\")",
       "Bash(.venv/Scripts/python -c \"import ast; ast.parse\\(open\\(''src/mudtool/ai/orchestrator.py''\\).read\\(\\)\\); print\\(''orchestrator.py: OK''\\)\")",
       "Bash(.venv/Scripts/python -c \"import ast; ast.parse\\(open\\(''src/mudtool/ai/elaborator.py''\\).read\\(\\)\\); print\\(''elaborator.py: OK''\\)\")",
-      "Bash(.venv/Scripts/python -c \":*)"
+      "Bash(.venv/Scripts/python -c \":*)",
+      "Bash(wc -l /d/AI_Learnigns/moduleunitdesign/python-sidecar/src/mudtool/ai/*.py)",
+      "Bash(grep -rn \"NotImplemented\\\\|pass$\\\\|raise NotImplemented\\\\|@skip\\\\|@xfail\" /d/AI_Learnigns/moduleunitdesign/python-sidecar/src/mudtool --include=\"*.py\")",
+      "Bash(python3 -c ':*)",
+      "Bash(find src/mudtool/ai -name \"elaborator.cpython*.pyc\" -delete)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_elaborator_enhanced.py::test_build_enriched_context -v)"
     ]
   }
 }

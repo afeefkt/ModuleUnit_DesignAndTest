@@ -106,6 +106,40 @@ class Settings(BaseSettings):
     # If draft provenance.confidence >= this value, skip critique/refine (early exit)
     pipeline_confidence_threshold: float = 0.75
 
+    # ── Visual QA (qwen2-vl via Ollama) ──────────────────────────────────────
+    # MUD_VISUAL_QA_ENABLED=true  → render every diagram to PNG and review with vision LLM
+    visual_qa_enabled: bool = False
+    # MUD_VISUAL_QA_MODEL  → any Ollama multimodal model (ollama pull qwen2-vl:7b)
+    visual_qa_model: str = "qwen2-vl:7b"
+    # MUD_VISUAL_QA_MAX_ROUNDS  → max correction-refinement rounds per diagram (1–3)
+    visual_qa_max_rounds: int = 2
+    # MUD_VISUAL_QA_MIN_SCORE  → approve diagram if vision score >= this (0.0–1.0)
+    visual_qa_min_score: float = 0.70
+
+    # ── Guidelines RAG (design document injection) ────────────────────────────
+    # MUD_GUIDELINES_ENABLED=true  -> load docs from guidelines_dir before generation
+    guidelines_enabled: bool = True
+    # MUD_GUIDELINES_DIR  -> folder containing HTML/PDF/DOCX/TXT/MD guideline files
+    guidelines_dir: Optional[Path] = None
+    # MUD_GUIDELINES_CACHE_DIR  -> where chunked embeddings are cached
+    guidelines_cache_dir: Optional[Path] = None
+    # MUD_GUIDELINES_EMBED_MODEL  -> Ollama model for embeddings (nomic-embed-text recommended)
+    guidelines_embed_model: str = "nomic-embed-text"
+    # MUD_GUIDELINES_MAX_CHUNKS  -> max chunks injected per diagram type per generation
+    guidelines_max_chunks: int = 3
+    # MUD_GUIDELINES_CHUNK_SIZE  -> target characters per text chunk
+    guidelines_chunk_size: int = 800
+
+    def get_guidelines_dir(self) -> Path:
+        if self.guidelines_dir:
+            return self.guidelines_dir
+        return self.project_root / "data" / "guidelines"
+
+    def get_guidelines_cache_dir(self) -> Path:
+        if self.guidelines_cache_dir:
+            return self.guidelines_cache_dir
+        return self.project_root / "data" / "guidelines_cache"
+
     def get_prompts_dir(self) -> Path:
         if self.prompts_dir:
             return self.prompts_dir

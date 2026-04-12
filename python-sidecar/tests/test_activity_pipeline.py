@@ -842,6 +842,7 @@ class TestLiveGenerate:
                                "triggered cyclically every 5ms. Safety: ASIL-D.",
                 "req_type": "functional",
                 "safety_level": "ASIL-D",
+                "priority": "must",
             },
             {
                 "req_id": "REQ-EPS-010",
@@ -850,6 +851,7 @@ class TestLiveGenerate:
                                "vehicle speed from RP_VehicleSpeed, compute a speed-dependent assist "
                                "torque, and write the result to PP_MotorCurrent.",
                 "req_type": "interface",
+                "priority": "must",
             },
             {
                 "req_id": "REQ-EPS-041",
@@ -860,6 +862,7 @@ class TestLiveGenerate:
                                "set l_f32AssistTorque = 0.0F. Safety: ASIL-D.",
                 "req_type": "safety",
                 "safety_level": "ASIL-D",
+                "priority": "must",
             },
         ]
     }

@@ -1,0 +1,17 @@
+@startuml
+title SensorFusion_Lifecycle
+' Owner SWC: SWC_SensorFusion
+
+[*] --> INITIAL
+state INIT
+state RUNNING
+state DEGRADED
+state SHUTDOWN
+
+[*] --> INIT : PowerOn
+INIT --> RUNNING : InitComplete
+RUNNING --> DEGRADED : SensorFailure
+DEGRADED --> RUNNING : Recovery
+RUNNING --> SHUTDOWN : Shutdown
+
+@enduml

@@ -183,6 +183,19 @@ class AIOrchestrator:
         except Exception as exc:
             logger.debug(f"No elaborated context available: {exc}")
 
+        # Inject guidelines context if available (loaded by Guidelines RAG stage)
+        try:
+            guidelines_context = (elab_data or {}).get("guidelines_context", {})
+            guidelines_block = guidelines_context.get(diagram_type.value, "")
+            if guidelines_block:
+                user_prompt = guidelines_block + "\n\n" + user_prompt
+                logger.info(
+                    f"Injected guidelines context ({len(guidelines_block)} chars) "
+                    f"into {diagram_type.value} prompt"
+                )
+        except Exception as exc:
+            logger.debug(f"No guidelines context: {exc}")
+
         prompt_hash = self.prompt_engine.compute_prompt_hash(system_prompt, user_prompt)
 
         # Attempt generation with retries
@@ -508,7 +521,7 @@ class AIOrchestrator:
                         "diagram_type": dt.value,
                         "success": False,
                         "error": str(exc),
-                        "message": f"{dt.value}: FAILED — {exc}",
+                        "message": f"{dt.value}: FAILED - {exc}",
                     })
 
         combined.total_generation_time_ms = int(
