@@ -1,5 +1,5 @@
 name: AUTOSAR Activity / Code-Flow Generator
-version: "2.4"
+version: "3.0"
 diagram_type: activity
 
 system_prompt: |
@@ -9,34 +9,71 @@ system_prompt: |
   TASK: From the requirements, generate ONE ActivityDiagram per AUTOSAR Runnable.
   Set owner_swc and owner_runnable on every diagram.
 
-  NODE TYPES (use exact strings):
-    "initial"       — name = "Start" or "Start (10ms)".
-    "final"         — name = "End".
-    "action"        — name = short pseudocode step (e.g. "Compute assist torque")
-    "call"          — name = short semantic step (e.g. "Read vehicle speed")
+  ════════════════════════════════════════════════════════════════
+  C-PSEUDOCODE LABEL STYLE (MANDATORY — applies to ALL diagrams)
+  ════════════════════════════════════════════════════════════════
+  Node "name" fields MUST look like actual lines of C code, not English sentences.
+  Use the variable naming convention: l_ prefix for locals, module-level for statics.
+
+  NODE TYPES AND REQUIRED NAME FORMAT:
+
+    "initial"       — name = "Start" or "Start (10ms)".  Always first node.
+    "final"         — name = "End".  Always last node.
+
+    "action"        — name = C assignment or operation line.
+                      ✓ CORRECT: "l_f32Output = l_f32Kp * l_f32Error + l_f32Ki * l_f32Integral"
+                      ✓ CORRECT: "l_f32Integral += l_f32Error * DT_010"
+                      ✓ CORRECT: "l_bFaultActive = TRUE"
+                      ✗ WRONG:   "Compute output value"
+                      ✗ WRONG:   "Set fault flag"
+
+    "call"          — name = full RTE call signature.
+                      ✓ CORRECT: "Rte_Read_RP_SensorSpeed_Speed(&l_f32Speed)"
+                      ✓ CORRECT: "Rte_Write_PP_AssistTorque_Torque(l_f32FinalTorque)"
                       Also set: rte_call, port, element.
-    "function_call" — name = semantic call step (e.g. "Compute assist via helper")
-                      Set callee = "EPS_CalcAssist". Provide a sub_diagram if logic is non-trivial.
-    "decision"      — name = concise condition text (e.g. "Torque exceeds max limit?")
-                      Must have >=2 outgoing edges with guards.
-    "merge"         — name = "merge" or short label.
-    "exception"     — name = fault description. Cite safety requirement.
-    "fork"          — name = "fork" (parallel split).
-    "join"          — name = "join" (parallel merge / synchronization).
 
-  CRITICAL: "name" IS the visible diagram label.
-  If activity_label_style is "pseudocode" (default), keep names concise and semantic.
-  Do not place long call signatures in "name" when style is pseudocode.
-  Put call signatures in description and metadata fields (rte_call, port, element, callee).
-  If activity_label_style is "call_signature", call signatures in name are allowed.
+    "function_call" — name = C call expression with return variable.
+                      ✓ CORRECT: "l_f32Assist = EPS_CalcAssistTorque(l_f32DriverTorque, l_f32Speed)"
+                      ✓ CORRECT: "l_bValid = MON_CheckRange(l_f32Val, MIN_VAL, MAX_VAL)"
+                      Set callee = "FunctionName" (without parameters).
+                      ⚠ MANDATORY: ALWAYS provide a sub_diagram for this callee.
 
-  NAMING:
-    Prefer pseudocode-level labels:
-    - "Read sensor data"
-    - "Validate input range"
-    - "Compute control output"
-    - "Write actuator command"
-    Keep AUTOSAR naming in metadata fields and description.
+    "decision"      — name = C boolean expression (no "if", no "?").
+                      ✓ CORRECT: "l_f32Speed > SPEED_MAX_MPS"
+                      ✓ CORRECT: "l_bFaultActive == TRUE"
+                      ✓ CORRECT: "l_u8State != STATE_RUNNING"
+                      ✗ WRONG:   "Speed exceeds maximum?"
+                      ✗ WRONG:   "Is fault active?"
+                      Must have >=2 outgoing edges with C-expression guards, e.g. "[l_f32Speed > SPEED_MAX_MPS]".
+
+    "merge"         — name = "merge".
+    "exception"     — name = full DEM/fault call, e.g. "Dem_SetEventStatus(DTC_FAULT, DEM_EVENT_STATUS_FAILED)".
+    "fork"          — name = "fork".
+    "join"          — name = "join".
+
+  ════════════════════════════════════════════════════════════════
+  MULTIPLE GLOBAL FUNCTIONS — ONE CHART EACH (CRITICAL RULE)
+  ════════════════════════════════════════════════════════════════
+  Think of the output like a C file where each function is a separate flowchart:
+
+    void RE_ControlTorque(void)   →  parent ActivityDiagram
+    float EPS_CalcAssistTorque(…) →  sub_diagram in parent.sub_diagrams[]
+    float EPS_GetBoostFactor(…)   →  sub_diagram in EPS_CalcAssistTorque's sub_diagrams[]
+    void EPS_LimitOutput(…)       →  sub_diagram in parent.sub_diagrams[]
+
+  Rules:
+  - EVERY "function_call" node MUST have a matching sub_diagram — no exceptions.
+  - Sub_diagrams are NESTED: if a helper function itself calls another function,
+    that inner call gets its OWN sub_diagram inside the helper's sub_diagrams[].
+  - Each sub_diagram has its own nodes/edges showing the function body in C pseudocode.
+  - Keep each sub_diagram small (4-10 nodes). Use further nesting for complex logic.
+
+  ════════════════════════════════════════════════════════════════
+  NAMING
+  ════════════════════════════════════════════════════════════════
+  AUTOSAR metadata in owner_swc, owner_runnable, rte_call, port, element, callee.
+  Variable names in node "name": use l_f32, l_u8, l_b prefixes for C locals.
+  Constant names: ALL_CAPS, e.g. SPEED_MAX_MPS, TORQUE_LIMIT_NM.
 
   ID FORMAT: Nodes N_01..N_xx, Edges E_01..E_xx, Decision branches E_03a/E_03b.
   Guards: "[l_bValid == TRUE]" or "[l_f32Val > LIMIT]"
@@ -48,23 +85,16 @@ system_prompt: |
     - Edge IDs: use E_XX format (e.g. "E_01", "E_02")
 
   MANDATORY FIELDS CHECK — verify EVERY node before outputting:
-    All nodes: id, name, node_type, trace_reqs (>=1 req ID), confidence, description (English, 3-10 words)
-    Call nodes: also rte_call, port, element
-    Function_call nodes: also callee (function name string)
-    Decision nodes: >=2 outgoing edges, each with a guard
+    All nodes: id, name, node_type, trace_reqs (>=1 req ID), confidence, description (3-10 words)
+    call nodes: also rte_call, port, element
+    function_call nodes: also callee (function name only, no parentheses)
+    decision nodes: >=2 outgoing edges each with a guard
 
-  STANDARD FLOW ORDER: INITIAL -> CALL(reads) -> DECISION(validate) -> ACTION(compute) -> CALL(writes) -> FINAL
+  STANDARD FLOW ORDER: INITIAL → CALL(reads) → DECISION(validate) → ACTION/FUNCTION_CALL(compute) → CALL(writes) → FINAL
 
-  SUB-DIAGRAMS (for static helper functions in the same module):
-    If the runnable calls a private function for complex logic, use a "function_call" node
-    in the parent and add a child flowchart in sub_diagrams[].
-    Child schema: { "diagram_type":"activity", "function_name":"FuncName",
-                    "parent_diagram":"RE_Name Code Flow", "nodes":[...], "edges":[...] }
-    Keep children small (3-8 nodes). Leave sub_diagrams:[] if no helpers needed.
-
-  Activity label style: {{ activity_label_style | default("pseudocode") }}.
+  Activity label style: {{ activity_label_style | default("c_pseudocode") }}.
   OUTPUT: Return ONE JSON object. Output ONLY JSON — no markdown, no explanation.
-  Keep diagrams concise: aim for 5-15 nodes per runnable.
+  Aim for 5-15 nodes per function chart.
 
   {{ output_schema }}
 
@@ -81,38 +111,43 @@ output_schema: |
       "source_requirements": ["REQ-001"],
       "nodes": [
         {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point"},
-        {"id":"N_02","name":"Read input value","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Rte_Read_RP_Port_Elem(&l_f32Var)","trace_reqs":["REQ-001"],"confidence":0.95}
+        {"id":"N_02","name":"Rte_Read_RP_Port_Elem(&l_f32Var)","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Read sensor value","trace_reqs":["REQ-001"],"confidence":0.95}
       ],
       "edges": [
         {"id":"E_01","source":"N_01","target":"N_02"}
       ],
       "sub_diagrams": [],
-      "provenance": {"version":"2.4","confidence":0.90}
+      "provenance": {"version":"3.0","confidence":0.90}
     }],
     "analyzed_requirements": ["REQ-001"]
   }
 
 user_prompt: |
-  Generate an activity flowchart for {{ module_context or "the SWC" }}.
+  Generate activity flowcharts for {{ module_context or "the SWC" }}.
 
-  Label style: {{ activity_label_style | default("pseudocode") }}.
-  For EACH runnable, show its internal logic as a pseudocode flowchart:
-  1. RTE input reads (Rte_Read per port) — use semantic step names
-  2. Validation / range checks (decision nodes) — concise condition text
-  3. Core algorithm (action nodes) — concise compute/update steps
-  4. Safety checks if required (exception nodes for fault paths)
-  5. RTE output writes (Rte_Write per port) — semantic write step names
-  6. If a helper function is needed, use "function_call" node and optionally provide sub_diagrams
+  Style: C-pseudocode — node names must be C expressions, not English sentences.
+  For EACH runnable, produce one parent flowchart. For EACH called helper function,
+  produce a sub_diagram inside the parent (or inside the calling function's sub_diagrams[]).
+
+  Layout per function chart:
+  1. INITIAL node ("Start")
+  2. CALL nodes for RTE reads: "Rte_Read_RP_Port_Element(&l_var)"
+  3. DECISION nodes for validation: "l_f32Val > MAX_LIMIT" (C boolean, no "if")
+  4. ACTION nodes for computation: "l_f32Out = GAIN * l_f32In" (C assignment)
+  5. FUNCTION_CALL nodes for helper calls: "l_f32R = Func(l_f32Arg)" → MUST have sub_diagram
+  6. CALL nodes for RTE writes: "Rte_Write_PP_Port_Element(l_var)"
+  7. FINAL node ("End")
 
   REQUIREMENTS ({{ requirement_count }} total):
   {{ requirements }}
 
-  Output ONE JSON only. No text before or after. Aim for 5-15 nodes per runnable.
+  Output ONE JSON only. No text before or after.
 
 few_shot_examples:
+  # ── Example 1: Simple sensor read → validate → compute → write ──────────────
   - input: |
       REQ-001: SWC_Example shall contain RE_Process triggered every 10ms.
-      REQ-002: RE_Process reads sensor from RP_Sensor, validates range, computes output, writes to PP_Output.
+      REQ-002: RE_Process reads sensor from RP_Sensor, validates range [0, 100], computes output = sensor * GAIN_FACTOR, writes to PP_Output.
     output: |
       {
         "diagrams": [{
@@ -123,32 +158,34 @@ few_shot_examples:
           "source_requirements": ["REQ-001","REQ-002"],
           "nodes": [
             {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point 10ms cycle"},
-            {"id":"N_02","name":"Read sensor input","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","trace_reqs":["REQ-002"],"confidence":0.95},
-            {"id":"N_03","name":"Sensor value exceeds max limit?","node_type":"decision","description":"Validate input range","trace_reqs":["REQ-002"],"confidence":0.90},
-            {"id":"N_04","name":"Compute output value","node_type":"action","description":"l_f32Output = l_f32Sensor * GAIN_FACTOR","trace_reqs":["REQ-002"],"confidence":0.85},
-            {"id":"N_05","name":"Set output to safe default","node_type":"action","description":"l_f32Output = 0.0F","trace_reqs":["REQ-002"],"confidence":0.85},
-            {"id":"N_06","name":"Write output value","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Rte_Write_PP_Output_OutputValue(l_f32Output)","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_02","name":"Rte_Read_RP_Sensor_SensorValue(&l_f32Sensor)","node_type":"call","rte_call":"Rte_Read","port":"RP_Sensor","element":"SensorValue","description":"Read sensor input value","trace_reqs":["REQ-002"],"confidence":0.95},
+            {"id":"N_03","name":"l_f32Sensor > SENSOR_MAX_VAL","node_type":"decision","description":"Validate sensor range upper bound","trace_reqs":["REQ-002"],"confidence":0.90},
+            {"id":"N_04","name":"l_f32Output = l_f32Sensor * GAIN_FACTOR","node_type":"action","description":"Compute scaled output","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_05","name":"l_f32Output = 0.0F","node_type":"action","description":"Set safe default on out-of-range","trace_reqs":["REQ-002"],"confidence":0.85},
+            {"id":"N_06","name":"Rte_Write_PP_Output_OutputValue(l_f32Output)","node_type":"call","rte_call":"Rte_Write","port":"PP_Output","element":"OutputValue","description":"Write computed output","trace_reqs":["REQ-002"],"confidence":0.95},
             {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Exit point"}
           ],
           "edges": [
             {"id":"E_01","source":"N_01","target":"N_02"},
             {"id":"E_02","source":"N_02","target":"N_03"},
-            {"id":"E_03a","source":"N_03","target":"N_05","guard":"[l_f32Sensor > MAX_LIMIT]"},
-            {"id":"E_03b","source":"N_03","target":"N_04","guard":"[l_f32Sensor <= MAX_LIMIT]"},
+            {"id":"E_03a","source":"N_03","target":"N_05","guard":"[l_f32Sensor > SENSOR_MAX_VAL]"},
+            {"id":"E_03b","source":"N_03","target":"N_04","guard":"[l_f32Sensor <= SENSOR_MAX_VAL]"},
             {"id":"E_04","source":"N_04","target":"N_06"},
             {"id":"E_05","source":"N_05","target":"N_06"},
             {"id":"E_06","source":"N_06","target":"N_07"}
           ],
           "sub_diagrams": [],
-          "provenance": {"version":"2.4","confidence":0.90}
+          "provenance": {"version":"3.0","confidence":0.90}
         }],
         "analyzed_requirements": ["REQ-001","REQ-002"]
       }
 
+  # ── Example 2: Fault detection with DEM reporting ───────────────────────────
   - input: |
       REQ-010: SWC_BrakeCtrl shall contain RE_CheckBrake.
-      REQ-011: RE_CheckBrake reads brake pressure from RP_BrakePressure, monitors fault status, raises DEM event on critical failure.
-      REQ-012: If pressure exceeds CRITICAL_PRESSURE_BAR, set l_bFault = TRUE and report via Dem_SetEventStatus.
+      REQ-011: RE_CheckBrake reads brake pressure from RP_BrakePressure.
+      REQ-012: If l_f32Pressure > CRITICAL_PRESSURE_BAR, set l_bFault = TRUE and call Dem_SetEventStatus. Otherwise l_bFault = FALSE.
+      REQ-013: RE_CheckBrake writes fault status to PP_BrakeStatus.
     output: |
       {
         "diagrams": [{
@@ -156,16 +193,16 @@ few_shot_examples:
           "name": "RE_CheckBrake Code Flow",
           "owner_swc": "SWC_BrakeCtrl",
           "owner_runnable": "RE_CheckBrake",
-          "source_requirements": ["REQ-010","REQ-011","REQ-012"],
+          "source_requirements": ["REQ-010","REQ-011","REQ-012","REQ-013"],
           "nodes": [
             {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-010"],"confidence":0.95,"description":"Entry point"},
             {"id":"N_02","name":"Rte_Read_RP_BrakePressure_Pressure(&l_f32Pressure)","node_type":"call","rte_call":"Rte_Read","port":"RP_BrakePressure","element":"Pressure","description":"Read brake pressure","trace_reqs":["REQ-011"],"confidence":0.95},
             {"id":"N_03","name":"l_f32Pressure > CRITICAL_PRESSURE_BAR","node_type":"decision","description":"Check critical pressure threshold","trace_reqs":["REQ-012"],"confidence":0.90},
-            {"id":"N_04","name":"l_bFault = TRUE","node_type":"action","description":"Set fault flag","trace_reqs":["REQ-012"],"confidence":0.90},
+            {"id":"N_04","name":"l_bFault = TRUE","node_type":"action","description":"Set fault flag active","trace_reqs":["REQ-012"],"confidence":0.90},
             {"id":"N_05","name":"Dem_SetEventStatus(DTC_BRAKE_OVERPRESSURE, DEM_EVENT_STATUS_FAILED)","node_type":"exception","description":"Report critical DEM event","trace_reqs":["REQ-012"],"confidence":0.85},
-            {"id":"N_06","name":"l_bFault = FALSE","node_type":"action","description":"Clear fault flag","trace_reqs":["REQ-011"],"confidence":0.85},
-            {"id":"N_07","name":"merge","node_type":"merge","description":"Rejoin after decision","trace_reqs":["REQ-011"],"confidence":0.90},
-            {"id":"N_08","name":"Rte_Write_PP_BrakeStatus_FaultActive(l_bFault)","node_type":"call","rte_call":"Rte_Write","port":"PP_BrakeStatus","element":"FaultActive","description":"Write fault status output","trace_reqs":["REQ-011"],"confidence":0.95},
+            {"id":"N_06","name":"l_bFault = FALSE","node_type":"action","description":"Clear fault flag","trace_reqs":["REQ-012"],"confidence":0.85},
+            {"id":"N_07","name":"merge","node_type":"merge","description":"Rejoin after fault decision","trace_reqs":["REQ-012"],"confidence":0.90},
+            {"id":"N_08","name":"Rte_Write_PP_BrakeStatus_FaultActive(l_bFault)","node_type":"call","rte_call":"Rte_Write","port":"PP_BrakeStatus","element":"FaultActive","description":"Write fault status output","trace_reqs":["REQ-013"],"confidence":0.95},
             {"id":"N_09","name":"End","node_type":"final","trace_reqs":["REQ-010"],"confidence":0.95,"description":"Exit point"}
           ],
           "edges": [
@@ -180,15 +217,16 @@ few_shot_examples:
             {"id":"E_08","source":"N_08","target":"N_09"}
           ],
           "sub_diagrams": [],
-          "provenance": {"version":"2.4","confidence":0.90}
+          "provenance": {"version":"3.0","confidence":0.90}
         }],
-        "analyzed_requirements": ["REQ-010","REQ-011","REQ-012"]
+        "analyzed_requirements": ["REQ-010","REQ-011","REQ-012","REQ-013"]
       }
 
+  # ── Example 3: ONE function_call → ONE sub_diagram (PID helper) ─────────────
   - input: |
       REQ-020: SWC_MotorCtrl shall contain RE_ControlMotor triggered every 5ms.
-      REQ-021: RE_ControlMotor reads speed from RP_MotorSpeed and calls static helper MotorCtrl_CalcPWM to compute PWM duty cycle.
-      REQ-022: MotorCtrl_CalcPWM applies PID control: error = setpoint - actual, integral += error * dt, output = Kp*error + Ki*integral.
+      REQ-021: RE_ControlMotor reads speed from RP_MotorSpeed and calls MotorCtrl_CalcPWM to compute PWM duty cycle.
+      REQ-022: MotorCtrl_CalcPWM: l_f32Error = l_f32Setpoint - l_f32Actual. l_f32Integral += l_f32Error * DT_005. l_f32Output = Kp*l_f32Error + Ki*l_f32Integral.
     output: |
       {
         "diagrams": [{
@@ -201,7 +239,7 @@ few_shot_examples:
             {"id":"N_01","name":"Start (5ms)","node_type":"initial","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Entry point 5ms cycle"},
             {"id":"N_02","name":"Rte_Read_RP_MotorSpeed_ActualSpeed(&l_f32Speed)","node_type":"call","rte_call":"Rte_Read","port":"RP_MotorSpeed","element":"ActualSpeed","description":"Read motor speed","trace_reqs":["REQ-021"],"confidence":0.95},
             {"id":"N_03","name":"l_f32Duty = MotorCtrl_CalcPWM(l_f32Speed, l_f32Setpoint)","node_type":"function_call","callee":"MotorCtrl_CalcPWM","description":"Compute PWM via PID helper","trace_reqs":["REQ-021","REQ-022"],"confidence":0.90},
-            {"id":"N_04","name":"Rte_Write_PP_MotorPWM_DutyCycle(l_f32Duty)","node_type":"call","rte_call":"Rte_Write","port":"PP_MotorPWM","element":"DutyCycle","description":"Write PWM duty cycle","trace_reqs":["REQ-021"],"confidence":0.95},
+            {"id":"N_04","name":"Rte_Write_PP_MotorPWM_DutyCycle(l_f32Duty)","node_type":"call","rte_call":"Rte_Write","port":"PP_MotorPWM","element":"DutyCycle","description":"Write PWM duty cycle output","trace_reqs":["REQ-021"],"confidence":0.95},
             {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Exit point"}
           ],
           "edges": [
@@ -219,7 +257,7 @@ few_shot_examples:
             "source_requirements": ["REQ-022"],
             "nodes": [
               {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-022"],"confidence":0.95,"description":"Entry point"},
-              {"id":"N_02","name":"l_f32Error = l_f32Setpoint - l_f32Actual","node_type":"action","description":"Compute PID error","trace_reqs":["REQ-022"],"confidence":0.90},
+              {"id":"N_02","name":"l_f32Error = l_f32Setpoint - l_f32Actual","node_type":"action","description":"Compute PID error term","trace_reqs":["REQ-022"],"confidence":0.90},
               {"id":"N_03","name":"l_f32Integral += l_f32Error * DT_005","node_type":"action","description":"Accumulate integral term","trace_reqs":["REQ-022"],"confidence":0.85},
               {"id":"N_04","name":"l_f32Output = KP * l_f32Error + KI * l_f32Integral","node_type":"action","description":"Compute PID output","trace_reqs":["REQ-022"],"confidence":0.85},
               {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-022"],"confidence":0.95,"description":"Return l_f32Output"}
@@ -231,12 +269,127 @@ few_shot_examples:
               {"id":"E_04","source":"N_04","target":"N_05"}
             ],
             "sub_diagrams": [],
-            "provenance": {"version":"2.4","confidence":0.85}
+            "provenance": {"version":"3.0","confidence":0.85}
           }],
-          "provenance": {"version":"2.4","confidence":0.90}
+          "provenance": {"version":"3.0","confidence":0.90}
         }],
         "analyzed_requirements": ["REQ-020","REQ-021","REQ-022"]
       }
 
-
-
+  # ── Example 4: MULTIPLE function_calls → MULTIPLE sub_diagrams (NESTED) ─────
+  # This is the key pattern: each global function is its own separate flowchart.
+  # A runnable calling 2 helpers produces 3 charts total (1 parent + 2 children).
+  # A helper calling another helper adds a grandchild chart (nested sub_diagram).
+  - input: |
+      REQ-030: SWC_EPS shall contain RE_ControlTorque triggered every 10ms.
+      REQ-031: RE_ControlTorque reads driver torque from RP_SteerTorque and vehicle speed from RP_VehicleSpeed.
+      REQ-032: RE_ControlTorque calls EPS_CalcAssistTorque(l_f32DriverTorque, l_f32Speed) to compute the speed-dependent assist torque.
+      REQ-033: EPS_CalcAssistTorque: l_f32BoostFactor = EPS_GetBoostFactor(l_f32Speed). l_f32Assist = ASSIST_GAIN * l_f32DriverTorque / (1.0F + SPEED_COEFF * l_f32Speed). l_f32Assist *= l_f32BoostFactor.
+      REQ-034: EPS_GetBoostFactor: l_u8Idx = EPS_FindMapIndex(l_f32Speed). l_f32Ratio = interpolation ratio. l_f32Factor = linear interpolation from BOOST_MAP.
+      REQ-035: RE_ControlTorque calls EPS_LimitOutput(l_f32AssistTorque) to clamp to [TORQUE_MIN_NM, TORQUE_MAX_NM].
+      REQ-036: RE_ControlTorque writes l_f32FinalTorque to PP_AssistTorque.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "RE_ControlTorque Code Flow",
+          "owner_swc": "SWC_EPS",
+          "owner_runnable": "RE_ControlTorque",
+          "source_requirements": ["REQ-030","REQ-031","REQ-032","REQ-033","REQ-034","REQ-035","REQ-036"],
+          "nodes": [
+            {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-030"],"confidence":0.95,"description":"Entry point 10ms cyclic"},
+            {"id":"N_02","name":"Rte_Read_RP_SteerTorque_Torque(&l_f32DriverTorque)","node_type":"call","rte_call":"Rte_Read","port":"RP_SteerTorque","element":"Torque","description":"Read driver steering torque","trace_reqs":["REQ-031"],"confidence":0.95},
+            {"id":"N_03","name":"Rte_Read_RP_VehicleSpeed_Speed(&l_f32Speed)","node_type":"call","rte_call":"Rte_Read","port":"RP_VehicleSpeed","element":"Speed","description":"Read current vehicle speed","trace_reqs":["REQ-031"],"confidence":0.95},
+            {"id":"N_04","name":"l_f32AssistTorque = EPS_CalcAssistTorque(l_f32DriverTorque, l_f32Speed)","node_type":"function_call","callee":"EPS_CalcAssistTorque","description":"Compute speed-dependent assist torque","trace_reqs":["REQ-032","REQ-033"],"confidence":0.90},
+            {"id":"N_05","name":"l_f32FinalTorque = EPS_LimitOutput(l_f32AssistTorque)","node_type":"function_call","callee":"EPS_LimitOutput","description":"Clamp torque within hardware limits","trace_reqs":["REQ-035"],"confidence":0.90},
+            {"id":"N_06","name":"Rte_Write_PP_AssistTorque_Torque(l_f32FinalTorque)","node_type":"call","rte_call":"Rte_Write","port":"PP_AssistTorque","element":"Torque","description":"Write final assist torque","trace_reqs":["REQ-036"],"confidence":0.95},
+            {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-030"],"confidence":0.95,"description":"Exit point"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03","source":"N_03","target":"N_04"},
+            {"id":"E_04","source":"N_04","target":"N_05"},
+            {"id":"E_05","source":"N_05","target":"N_06"},
+            {"id":"E_06","source":"N_06","target":"N_07"}
+          ],
+          "sub_diagrams": [
+            {
+              "diagram_type": "activity",
+              "name": "EPS_CalcAssistTorque Code Flow",
+              "function_name": "EPS_CalcAssistTorque",
+              "parent_diagram": "RE_ControlTorque Code Flow",
+              "owner_swc": "SWC_EPS",
+              "source_requirements": ["REQ-032","REQ-033","REQ-034"],
+              "nodes": [
+                {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-032"],"confidence":0.95,"description":"Entry point"},
+                {"id":"N_02","name":"l_f32BoostFactor = EPS_GetBoostFactor(l_f32Speed)","node_type":"function_call","callee":"EPS_GetBoostFactor","description":"Lookup boost factor from calibration map","trace_reqs":["REQ-033","REQ-034"],"confidence":0.90},
+                {"id":"N_03","name":"l_f32Assist = ASSIST_GAIN * l_f32DriverTorque / (1.0F + SPEED_COEFF * l_f32Speed)","node_type":"action","description":"Compute base assist torque","trace_reqs":["REQ-033"],"confidence":0.90},
+                {"id":"N_04","name":"l_f32Assist *= l_f32BoostFactor","node_type":"action","description":"Apply boost map scaling factor","trace_reqs":["REQ-033"],"confidence":0.85},
+                {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-032"],"confidence":0.95,"description":"Return l_f32Assist"}
+              ],
+              "edges": [
+                {"id":"E_01","source":"N_01","target":"N_02"},
+                {"id":"E_02","source":"N_02","target":"N_03"},
+                {"id":"E_03","source":"N_03","target":"N_04"},
+                {"id":"E_04","source":"N_04","target":"N_05"}
+              ],
+              "sub_diagrams": [{
+                "diagram_type": "activity",
+                "name": "EPS_GetBoostFactor Code Flow",
+                "function_name": "EPS_GetBoostFactor",
+                "parent_diagram": "EPS_CalcAssistTorque Code Flow",
+                "owner_swc": "SWC_EPS",
+                "source_requirements": ["REQ-034"],
+                "nodes": [
+                  {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-034"],"confidence":0.95,"description":"Entry point"},
+                  {"id":"N_02","name":"l_u8Idx = EPS_FindMapIndex(l_f32Speed, BOOST_MAP_SPEED, MAP_SIZE)","node_type":"action","description":"Find lower-bound index in speed map","trace_reqs":["REQ-034"],"confidence":0.90},
+                  {"id":"N_03","name":"l_f32Ratio = (l_f32Speed - BOOST_MAP_SPEED[l_u8Idx]) / (BOOST_MAP_SPEED[l_u8Idx + 1U] - BOOST_MAP_SPEED[l_u8Idx])","node_type":"action","description":"Compute linear interpolation ratio","trace_reqs":["REQ-034"],"confidence":0.85},
+                  {"id":"N_04","name":"l_f32Factor = BOOST_MAP_VAL[l_u8Idx] + l_f32Ratio * (BOOST_MAP_VAL[l_u8Idx + 1U] - BOOST_MAP_VAL[l_u8Idx])","node_type":"action","description":"Interpolate boost factor","trace_reqs":["REQ-034"],"confidence":0.85},
+                  {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-034"],"confidence":0.95,"description":"Return l_f32Factor"}
+                ],
+                "edges": [
+                  {"id":"E_01","source":"N_01","target":"N_02"},
+                  {"id":"E_02","source":"N_02","target":"N_03"},
+                  {"id":"E_03","source":"N_03","target":"N_04"},
+                  {"id":"E_04","source":"N_04","target":"N_05"}
+                ],
+                "sub_diagrams": [],
+                "provenance": {"version":"3.0","confidence":0.85}
+              }],
+              "provenance": {"version":"3.0","confidence":0.88}
+            },
+            {
+              "diagram_type": "activity",
+              "name": "EPS_LimitOutput Code Flow",
+              "function_name": "EPS_LimitOutput",
+              "parent_diagram": "RE_ControlTorque Code Flow",
+              "owner_swc": "SWC_EPS",
+              "source_requirements": ["REQ-035"],
+              "nodes": [
+                {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-035"],"confidence":0.95,"description":"Entry point"},
+                {"id":"N_02","name":"l_f32Torque > TORQUE_MAX_NM","node_type":"decision","description":"Check upper hardware clamp limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_03","name":"l_f32Torque = TORQUE_MAX_NM","node_type":"action","description":"Clamp to maximum hardware limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_04","name":"l_f32Torque < TORQUE_MIN_NM","node_type":"decision","description":"Check lower hardware clamp limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_05","name":"l_f32Torque = TORQUE_MIN_NM","node_type":"action","description":"Clamp to minimum hardware limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_06","name":"merge","node_type":"merge","description":"Rejoin after clamping branches","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-035"],"confidence":0.95,"description":"Return l_f32Torque"}
+              ],
+              "edges": [
+                {"id":"E_01","source":"N_01","target":"N_02"},
+                {"id":"E_02a","source":"N_02","target":"N_03","guard":"[l_f32Torque > TORQUE_MAX_NM]"},
+                {"id":"E_02b","source":"N_02","target":"N_04","guard":"[l_f32Torque <= TORQUE_MAX_NM]"},
+                {"id":"E_03","source":"N_03","target":"N_04"},
+                {"id":"E_04a","source":"N_04","target":"N_05","guard":"[l_f32Torque < TORQUE_MIN_NM]"},
+                {"id":"E_04b","source":"N_04","target":"N_06","guard":"[l_f32Torque >= TORQUE_MIN_NM]"},
+                {"id":"E_05","source":"N_05","target":"N_06"},
+                {"id":"E_06","source":"N_06","target":"N_07"}
+              ],
+              "sub_diagrams": [],
+              "provenance": {"version":"3.0","confidence":0.88}
+            }
+          ],
+          "provenance": {"version":"3.0","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-030","REQ-031","REQ-032","REQ-033","REQ-034","REQ-035","REQ-036"]
+      }

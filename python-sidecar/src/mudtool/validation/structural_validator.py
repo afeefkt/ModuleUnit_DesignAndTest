@@ -443,3 +443,27 @@ class StructuralValidator:
                     element_id=node.id,
                     diagram_name=diagram.name,
                 ))
+
+        # STR-024: Every FUNCTION_CALL node must have a matching sub_diagram.
+        # This enforces the "one chart per global function" design: each callee
+        # must appear as a sub_diagram with function_name == callee.
+        sub_fn_names = {s.function_name for s in diagram.sub_diagrams if s.function_name}
+        for node in diagram.nodes:
+            if node.node_type == ActivityNodeType.FUNCTION_CALL and node.callee:
+                if node.callee not in sub_fn_names:
+                    report.add_issue(ValidationIssue(
+                        rule_id="STR-024",
+                        severity=ValidationSeverity.ERROR,
+                        category="Structural",
+                        message=(
+                            f"FUNCTION_CALL node '{node.id}' calls '{node.callee}' "
+                            f"but no sub_diagram with function_name='{node.callee}' was provided. "
+                            f"Add a sub_diagram showing {node.callee}() body."
+                        ),
+                        element_id=node.id,
+                        diagram_name=diagram.name,
+                        suggestion=(
+                            f"Add sub_diagrams entry: {{\"function_name\":\"{node.callee}\", "
+                            f"\"nodes\":[...], \"edges\":[...]}}"
+                        ),
+                    ))

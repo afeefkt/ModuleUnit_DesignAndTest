@@ -152,38 +152,50 @@ class MermaidExporter:
         lines = ["stateDiagram-v2"]
 
         if diagram.name:
+            safe_diag_name = diagram.name.replace(chr(10), ' ').replace(chr(13), '')
             # "title" keyword is NOT valid in stateDiagram-v2 — use a comment
-            lines.append(f"    %% {diagram.name}")
+            lines.append(f"    %% {safe_diag_name}")
         if diagram.owner_swc:
-            lines.append(f"    %% Owner SWC: {diagram.owner_swc}")
+            safe_swc = diagram.owner_swc.replace(chr(10), ' ').replace(chr(13), '')
+            lines.append(f"    %% Owner SWC: {safe_swc}")
 
         lines.append("")
+
+        import re
+        def _safe_state(sid: str, name: str) -> str:
+            s_name = name or sid
+            # Scrape out LLM-hallucinated mermaid aliases (e.g. state "..." as ID)
+            if '" as ' in s_name:
+                s_name = s_name.split('" as ')[0].replace('"', '')
+            if "' as " in s_name:
+                s_name = s_name.split("' as ")[0].replace("'", "")
+            return re.sub(r'[^a-zA-Z0-9_]', '_', s_name).strip('_')
+
+        # Provide a mapping array for transitions
+        state_map = {}
+        for state in diagram.states:
+            state_map[state.id] = _safe_state(state.id, state.name)
 
         # States
         for state in diagram.states:
             if state.is_initial or state.is_final:
                 continue  # [*] is implicit in Mermaid
 
-            # Mermaid stateDiagram-v2 only accepts "entry:" and "exit:" inside
-            # a "state Name {}" block.  "do:" is UML-valid but NOT Mermaid-valid
-            # and causes "AUe[s.shape] is not a function" at runtime.
-            # Render "do" actions as a note below the state instead.
+            safe_name = state_map[state.id]
             inline_actions = [a for a in state.actions
                               if a.action_type in ("entry", "exit")]
             note_actions   = [a for a in state.actions
                               if a.action_type not in ("entry", "exit")]
 
             if inline_actions:
-                lines.append(f"    state {state.name} {{")
+                lines.append(f"    state {safe_name} {{")
                 for action in inline_actions:
-                    lines.append(f"        {action.action_type}: {action.description}")
+                    safe_desc = action.description.replace(chr(10), ' ').replace(chr(13), '')
+                    lines.append(f"        {action.action_type}: {safe_desc}")
                 lines.append("    }")
             else:
-                lines.append(f"    {state.name}")
+                lines.append(f"    state {safe_name}")
 
-            # Emit "do" actions and trace info as %% comments (NOT "note right of").
-            # "note right of" combined with "state { entry: }" blocks causes
-            # "AUe[s.shape] is not a function" in Mermaid v10.
             note_lines = [
                 f"{a.action_type}: {a.description.replace(chr(10), ' ').replace(chr(13), '')}"
                 for a in note_actions
@@ -200,12 +212,11 @@ class MermaidExporter:
             source = trans.source
             target = trans.target
 
-            # Resolve state names from IDs
             source_state = next((s for s in diagram.states if s.id == source), None)
             target_state = next((s for s in diagram.states if s.id == target), None)
 
-            source_name = source_state.name if source_state else source
-            target_name = target_state.name if target_state else target
+            source_name = state_map.get(source, _safe_state(source, source))
+            target_name = state_map.get(target, _safe_state(target, target))
 
             if source_state and source_state.is_initial:
                 source_name = "[*]"
@@ -221,8 +232,10 @@ class MermaidExporter:
                 label_parts.append(f"/ {trans.action}")
 
             label = " ".join(label_parts)
-            if label:
-                lines.append(f"    {source_name} --> {target_name} : {label}")
+            safe_label = label.replace(chr(10), ' ').replace(chr(13), '')
+            
+            if safe_label:
+                lines.append(f"    {source_name} --> {target_name} : {safe_label}")
             else:
                 lines.append(f"    {source_name} --> {target_name}")
 
@@ -439,6 +452,9 @@ class MermaidExporter:
                     func_label = node.description
                 lines.append(f"    %% → see sub-diagram: {callee_name}")
                 lines.append(f"    {nid}[[{_q(func_label)}]]")
+                # Mermaid click callback — navigates to the sub-diagram card in the Web UI.
+                # Requires securityLevel:'loose' (already set in the Web UI's mermaid.initialize).
+                lines.append(f'    click {nid} navigateToSubDiagram "{callee_name}"')
 
             elif node.node_type == ActivityNodeType.EXCEPTION:
                 # Keep short: just the node name (description may contain parens that confuse parser)

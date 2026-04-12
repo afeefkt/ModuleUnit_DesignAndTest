@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # AI Backend Selection
     ai_backend: AIBackend = AIBackend.CLOUD
-    confidence_threshold: float = 0.6
+    confidence_threshold: float = 0.8
     max_retries: int = 3
 
     # Cloud AI - Anthropic

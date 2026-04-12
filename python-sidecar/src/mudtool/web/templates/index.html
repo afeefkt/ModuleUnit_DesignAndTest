@@ -871,6 +871,25 @@
     const API = '/api/v1';
     mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
+    // ── Sub-diagram navigation (called by Mermaid click directives) ─────────
+    // Each FUNCTION_CALL node emits:  click NODE_ID navigateToSubDiagram "callee"
+    // This function finds the child diagram card whose key ends with __fn__<callee>
+    // and scrolls it into view with a brief highlight.
+    window.navigateToSubDiagram = function(callee) {
+      const cards = document.querySelectorAll('[data-key]');
+      for (const card of cards) {
+        const key = card.getAttribute('data-key') || '';
+        if (key.includes('__fn__' + callee)) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('ring-2', 'ring-blue-400');
+          setTimeout(() => card.classList.remove('ring-2', 'ring-blue-400'), 2000);
+          return;
+        }
+      }
+      // No card found — callee sub-diagram was not generated
+      toast('Sub-diagram for ' + callee + '() not found — it may not have been generated.');
+    };
+
     // ── State ───────────────────────────────────────────────
     let state = {
       requirements: null,     // RequirementSet from last import

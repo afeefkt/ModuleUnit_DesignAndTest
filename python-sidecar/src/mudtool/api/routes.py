@@ -1198,6 +1198,24 @@ async def clear_guidelines_cache():
     }
 
 
+@router.post("/prompts/reload")
+async def reload_prompts():
+    """Reload all prompt YAML templates from disk without restarting the server.
+
+    Call this after editing any file under prompts/ to pick up changes immediately.
+    Returns the list of template keys that were loaded.
+    """
+    from mudtool.api.dependencies import get_orchestrator
+    orchestrator = get_orchestrator()
+    orchestrator.prompt_engine.load_templates()
+    keys = list(orchestrator.prompt_engine._templates.keys())
+    return {
+        "reloaded": len(keys),
+        "templates": keys,
+        "message": f"Reloaded {len(keys)} prompt template(s) from disk",
+    }
+
+
 def _write_env_updates(updates: dict[str, str]) -> None:
     """Write key=value pairs into the .env file (updating existing keys in-place)."""
     import os

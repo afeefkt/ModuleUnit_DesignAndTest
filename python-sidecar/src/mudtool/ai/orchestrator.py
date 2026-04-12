@@ -22,6 +22,7 @@ from mudtool.validation.structural_validator import StructuralValidator
 from mudtool.validation.autosar_validator import AUTOSARValidator
 from mudtool.models.json_uml import (
     ActivityDiagram,
+    ActivityNodeType,
     ClassDiagram,
     ComponentDiagram,
     DiagramType,
@@ -318,6 +319,30 @@ class AIOrchestrator:
                             f"uncovered={uncovered}"
                         )
 
+                    # G: Confidence-gated retry — if computed confidence is below
+                    # the configured threshold, ask the AI to improve quality.
+                    # This wires settings.confidence_threshold into the retry loop
+                    # (previously it was only displayed in the UI but never enforced).
+                    interim_conf = self._compute_confidence(
+                        result, [r.req_id for r in requirements]
+                    )
+                    conf_threshold = self.settings.confidence_threshold
+                    if interim_conf < conf_threshold and not needs_retry:
+                        retry_parts.append(
+                            f"QUALITY GATE: Confidence {interim_conf:.0%} is below "
+                            f"the required {conf_threshold:.0%} threshold.\n"
+                            "To improve confidence:\n"
+                            "  1. Add trace_reqs to every node and edge that lacks them.\n"
+                            "  2. Ensure every node has a non-empty description.\n"
+                            "  3. Use AUTOSAR-compliant names (SWC_*, RE_*, PP_*, RP_*).\n"
+                            "  4. Fix any structural issues (missing branches, unreachable nodes)."
+                        )
+                        needs_retry = True
+                        logger.info(
+                            f"Attempt {attempt}: confidence {interim_conf:.3f} < "
+                            f"threshold {conf_threshold:.3f} — retrying for quality"
+                        )
+
                     if needs_retry:
                         logger.info(
                             f"Attempt {attempt} parsed OK but has "
@@ -546,7 +571,7 @@ class AIOrchestrator:
         Checks:
           1. Has at least one diagram
           2. Coverage > 50%
-          3. Computed confidence > 0.35
+          3. Computed confidence >= settings.confidence_threshold
           4. No structural ERROR-level issues
 
         If any check fails, auto-regenerates ONCE with a slightly higher
@@ -582,8 +607,8 @@ class AIOrchestrator:
         reasons: list[str] = []
         if coverage_pct < 50:
             reasons.append(f"coverage={coverage_pct:.0f}%")
-        if confidence < 0.35:
-            reasons.append(f"confidence={confidence:.2f}")
+        if confidence < self.settings.confidence_threshold:
+            reasons.append(f"confidence={confidence:.2f} < threshold={self.settings.confidence_threshold:.2f}")
         if str_errors > 0:
             reasons.append(f"{str_errors} structural errors")
 
@@ -769,6 +794,26 @@ Output valid JSON with this structure:
                         if not sub.provenance:
                             sub.provenance = diagram.provenance
                         result.diagrams.append(sub)
+
+                # Warn about FUNCTION_CALL nodes whose callee has no matching sub-diagram
+                if isinstance(diagram, ActivityDiagram):
+                    sub_fn_names = {
+                        s.function_name for s in diagram.sub_diagrams if s.function_name
+                    }
+                    for node in diagram.nodes:
+                        if (
+                            node.node_type == ActivityNodeType.FUNCTION_CALL
+                            and node.callee
+                            and node.callee not in sub_fn_names
+                        ):
+                            result.warnings.append(
+                                f"FUNCTION_CALL node '{node.id}' references callee "
+                                f"'{node.callee}' but no matching sub-diagram was generated."
+                            )
+                            logger.warning(
+                                f"Diagram '{diagram.name}': missing sub-diagram for callee "
+                                f"'{node.callee}' (node {node.id})"
+                            )
 
             except Exception as e:
                 result.errors.append(f"Failed to parse diagram {i}: {e}")
@@ -1048,6 +1093,50 @@ Output valid JSON with this structure:
             nodes.append(final_node)
             edges.append(ActivityEdge(id="E_FINAL", source=last.id, target=final_id))
             logger.info(f"Activity diagram '{diagram.name}': auto-injected FINAL node from {last.id}")
+
+        # ── D: Remove dangling edges (STR-022) ───────────────────────────────
+        # Edges whose source or target does not reference an existing node ID
+        # cause parse failures and validation errors. Drop them silently and log.
+        node_id_set = {n.id for n in nodes}
+        valid_edges = []
+        for e in edges:
+            if e.source not in node_id_set or e.target not in node_id_set:
+                logger.warning(
+                    f"Activity diagram '{diagram.name}': removing dangling edge "
+                    f"'{e.id}' ({e.source} → {e.target}) — node(s) do not exist"
+                )
+            else:
+                valid_edges.append(e)
+        edges = valid_edges
+
+        # ── E: Fix decision nodes with < 2 outgoing edges (STR-021) ─────────
+        # A DECISION/MERGE node must fan out to ≥ 2 targets.  If the AI only
+        # generated one branch, add a synthetic "else → next node" edge so the
+        # diagram renders and validation passes.
+        out_edges: dict[str, list] = {}
+        for e in edges:
+            out_edges.setdefault(e.source, []).append(e)
+
+        for node in nodes:
+            if node.node_type == ActivityNodeType.DECISION and len(out_edges.get(node.id, [])) < 2:
+                # Find a reasonable "else" target: the first node that is not already
+                # a target of this decision node and is not the decision itself.
+                existing_targets = {e.target for e in out_edges.get(node.id, [])}
+                else_target = next(
+                    (n.id for n in nodes
+                     if n.id != node.id and n.id not in existing_targets),
+                    None,
+                )
+                if else_target:
+                    synth_id = f"E_ELSE_{node.id}"
+                    while synth_id in {e.id for e in edges}:
+                        synth_id += "_0"
+                    edges.append(ActivityEdge(id=synth_id, source=node.id, target=else_target, guard="else"))
+                    out_edges.setdefault(node.id, []).append(edges[-1])
+                    logger.info(
+                        f"Activity diagram '{diagram.name}': auto-added else-edge "
+                        f"'{synth_id}' from DECISION '{node.id}' → '{else_target}'"
+                    )
 
         # Return rebuilt diagram with repaired node/edge lists
         return diagram.model_copy(update={"nodes": nodes, "edges": edges})
