@@ -37,7 +37,11 @@
       "Bash(grep -rn \"NotImplemented\\\\|pass$\\\\|raise NotImplemented\\\\|@skip\\\\|@xfail\" /d/AI_Learnigns/moduleunitdesign/python-sidecar/src/mudtool --include=\"*.py\")",
       "Bash(python3 -c ':*)",
       "Bash(find src/mudtool/ai -name \"elaborator.cpython*.pyc\" -delete)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_elaborator_enhanced.py::test_build_enriched_context -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_elaborator_enhanced.py::test_build_enriched_context -v)",
+      "Bash(xargs grep *)",
+      "Bash(.venv/Scripts/python.exe -c \"from mudtool.ai.chunked_elaborator import ChunkedElaborator; print\\('OK'\\)\")",
+      "Bash(.venv/Scripts/python.exe -c \"from mudtool.config.settings import Settings; s = Settings\\(\\); print\\('elaboration_mode =', s.elaboration_mode\\)\")",
+      "Bash(.venv/Scripts/python.exe -c ' *)"
     ]
   }
 }

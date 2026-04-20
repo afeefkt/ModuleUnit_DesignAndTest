@@ -116,6 +116,17 @@ class Settings(BaseSettings):
     # MUD_VISUAL_QA_MIN_SCORE  → approve diagram if vision score >= this (0.0–1.0)
     visual_qa_min_score: float = 0.70
 
+    # ── Elaboration mode ─────────────────────────────────────────────────────
+    # MUD_ELABORATION_MODE: "single_shot" (default, 7B+ models) or "chunked"
+    # (2–3B models like Qwen 2.5 2B/3B).
+    #
+    # single_shot — one large prompt → one large JSON document (current behaviour).
+    #               Reliable for 7B+ models; drifts/hallucinates on 2–3B.
+    # chunked     — three small focused prompts assembled by Python code.
+    #               Each call targets ≤ 500 tokens output, well within 2–3B
+    #               reliable range.  More API calls but far higher reliability.
+    elaboration_mode: str = "single_shot"
+
     # ── Guidelines RAG (design document injection) ────────────────────────────
     # MUD_GUIDELINES_ENABLED=true  -> load docs from guidelines_dir before generation
     guidelines_enabled: bool = True

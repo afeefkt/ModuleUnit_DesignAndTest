@@ -237,16 +237,34 @@ async def import_requirements_text(
         tmp_path.unlink(missing_ok=True)
 
 
+def _make_elaborator(settings, backend):
+    """Return the elaborator instance matching MUD_ELABORATION_MODE.
+
+    "chunked"     → ChunkedElaborator  (2–3B models; multiple small calls)
+    "single_shot" → RequirementElaborator  (7B+ models; one large call)
+    """
+    mode = (settings.elaboration_mode or "single_shot").strip().lower()
+    if mode == "chunked":
+        from mudtool.ai.chunked_elaborator import ChunkedElaborator
+        logger.info("Elaboration mode: chunked (small-model optimised)")
+        return ChunkedElaborator(settings, backend)
+    from mudtool.ai.elaborator import RequirementElaborator
+    logger.info("Elaboration mode: single_shot")
+    return RequirementElaborator(settings, backend)
+
+
 @router.post("/elaborate")
 async def elaborate_requirements(request: AnalyzeRequest):
-    """Elaborate requirements using AI chain-of-thought reasoning.
+    """Elaborate requirements using AI reasoning.
 
-    Pre-processes requirements into structured AUTOSAR-specific JSON
-    with AI "thinking" steps. Results are cached for reuse.
+    Pre-processes requirements into structured AUTOSAR-specific JSON.
+    Mode is controlled by MUD_ELABORATION_MODE:
+      single_shot (default) — one large prompt, best for 7B+ models.
+      chunked               — multiple small focused prompts, reliable on 2–3B.
+    Results are cached for reuse.
 
     Returns: {thinking: [...], elaborated: [...], req_hash: "..."}
     """
-    from mudtool.ai.elaborator import RequirementElaborator
     from mudtool.api.dependencies import get_orchestrator
 
     orchestrator = get_orchestrator()
@@ -256,7 +274,7 @@ async def elaborate_requirements(request: AnalyzeRequest):
 
     backend = orchestrator._get_backend()
     settings = get_settings()
-    elaborator = RequirementElaborator(settings, backend)
+    elaborator = _make_elaborator(settings, backend)
     result = await elaborator.elaborate(
         request.requirements.requirements, force_refresh=False
     )
@@ -265,8 +283,10 @@ async def elaborate_requirements(request: AnalyzeRequest):
 
 @router.post("/elaborate/refresh")
 async def elaborate_requirements_refresh(request: AnalyzeRequest):
-    """Force-refresh requirement elaboration and overwrite existing cache."""
-    from mudtool.ai.elaborator import RequirementElaborator
+    """Force-refresh requirement elaboration and overwrite existing cache.
+
+    Mode is controlled by MUD_ELABORATION_MODE (see /elaborate).
+    """
     from mudtool.api.dependencies import get_orchestrator
 
     orchestrator = get_orchestrator()
@@ -276,7 +296,7 @@ async def elaborate_requirements_refresh(request: AnalyzeRequest):
 
     backend = orchestrator._get_backend()
     settings = get_settings()
-    elaborator = RequirementElaborator(settings, backend)
+    elaborator = _make_elaborator(settings, backend)
     result = await elaborator.elaborate(
         request.requirements.requirements, force_refresh=True
     )
@@ -308,17 +328,138 @@ async def _ensure_elaboration_data(
     requirements: list,
     progress_callback: Optional[callable] = None,
 ) -> dict:
-    """Ensure valid elaboration context exists (cache hit or regenerated)."""
-    from mudtool.ai.elaborator import RequirementElaborator
+    """Ensure valid elaboration context exists (cache hit or regenerated).
 
+    Respects MUD_ELABORATION_MODE:
+      single_shot — RequirementElaborator (one large prompt, 7B+ models)
+      chunked     — ChunkedElaborator    (small focused prompts, 2–3B models)
+    """
     backend = orchestrator._get_backend()
     settings = get_settings()
-    elaborator = RequirementElaborator(settings, backend)
+    elaborator = _make_elaborator(settings, backend)
     return await elaborator.elaborate(
         requirements=requirements,
         progress_callback=progress_callback,
         force_refresh=False,
     )
+
+
+async def _generate_activity_per_swc(
+    orchestrator,
+    all_requirements: list,
+    elaboration_data: dict,
+    pipeline_orch,
+    pipeline_config,
+    module_context: Optional[str],
+    existing_swcs: Optional[list],
+    effective_mode,
+    req_ids: list[str],
+    progress_callback: Optional[callable] = None,
+) -> "GenerationResult":
+    """Generate one activity diagram per SWC when chunked elaboration is active.
+
+    When `elaboration_data` contains a `swc_list` (produced by ChunkedElaborator),
+    this function iterates over each SWC, filters its requirements, and generates
+    an individual activity diagram.  All per-SWC results are merged into one
+    GenerationResult.
+
+    Falls back to a single call over all requirements if swc_list is absent
+    (single_shot elaboration path).
+    """
+    from mudtool.ai.pipeline import PipelineMode, merge_pipeline_results
+    from mudtool.models.json_uml import DiagramType, GenerationResult
+
+    swc_list = elaboration_data.get("swc_list", [])
+    req_map = {r.req_id: r for r in all_requirements}
+    merged = GenerationResult(analyzed_requirements=req_ids)
+
+    if not swc_list:
+        # No SWC breakdown available — fall through to single call
+        swc_list = [{"name": module_context or "SWC_Main",
+                     "req_ids": req_ids,
+                     "purpose": "All requirements"}]
+
+    for idx, swc in enumerate(swc_list, start=1):
+        swc_name = swc.get("name", f"SWC_{idx}")
+        swc_req_ids = swc.get("req_ids", [])
+        swc_reqs = [req_map[rid] for rid in swc_req_ids if rid in req_map]
+
+        if not swc_reqs:
+            logger.warning(f"[PerSWC] {swc_name}: no matched requirements, skipping")
+            continue
+
+        swc_context = swc_name
+        if module_context:
+            swc_context = f"{module_context} / {swc_name}"
+
+        # Build a narrowed elaboration_data copy for this SWC's requirements
+        swc_elaborated = [
+            e for e in elaboration_data.get("elaborated", [])
+            if e.get("req_id") in {r.req_id for r in swc_reqs}
+        ]
+        swc_elab_data = {
+            **elaboration_data,
+            "elaborated": swc_elaborated,
+            "swc_ports": {swc_name: elaboration_data.get("swc_ports", {}).get(swc_name, [])},
+            "swc_runnables": {swc_name: elaboration_data.get("swc_runnables", {}).get(swc_name, [])},
+        }
+
+        if progress_callback:
+            progress_callback({
+                "stage": "start",
+                "diagram_type": "activity",
+                "swc_name": swc_name,
+                "req_count": len(swc_reqs),
+                "swc_index": idx,
+                "swc_total": len(swc_list),
+                "message": (
+                    f"[{idx}/{len(swc_list)}] Generating activity diagram "
+                    f"for {swc_name} ({len(swc_reqs)} req(s))..."
+                ),
+            })
+
+        try:
+            from mudtool.ai.pipeline import PipelineMode
+            if effective_mode == PipelineMode.SINGLE_PASS or pipeline_config is None:
+                # Single-pass or no config available: one direct call per SWC
+                swc_result = await orchestrator.generate_diagram(
+                    DiagramType.ACTIVITY,
+                    swc_reqs,
+                    module_context=swc_context,
+                    existing_swcs=existing_swcs,
+                    elaborated_data=swc_elab_data,
+                    progress_callback=progress_callback,
+                )
+            else:
+                import dataclasses
+                from mudtool.ai.pipeline import PipelineOrchestrator
+                swc_config = dataclasses.replace(
+                    pipeline_config,
+                    elaborated_data=swc_elab_data,
+                )
+                swc_pipe = PipelineOrchestrator(get_settings(), orchestrator)
+                swc_results = await swc_pipe.generate_with_pipeline(
+                    requirements=swc_reqs,
+                    diagram_types=[DiagramType.ACTIVITY],
+                    config=swc_config,
+                    module_context=swc_context,
+                    existing_swcs=existing_swcs,
+                    progress_callback=progress_callback,
+                )
+                swc_result, _ = merge_pipeline_results(swc_results, swc_req_ids)
+
+            merged.diagrams.extend(swc_result.diagrams)
+            merged.warnings.extend(swc_result.warnings)
+            merged.errors.extend(swc_result.errors)
+            logger.info(
+                f"[PerSWC] {swc_name}: generated {len(swc_result.diagrams)} "
+                f"activity diagram(s)"
+            )
+        except Exception as exc:
+            logger.error(f"[PerSWC] {swc_name} generation failed: {exc}")
+            merged.errors.append(f"Activity diagram for {swc_name} failed: {exc}")
+
+    return merged
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -416,51 +557,85 @@ async def generate_diagrams(request: GenerateRequest):
 
     pipeline_summary: Optional[dict] = None
 
-    if effective_mode == PipelineMode.SINGLE_PASS:
-        # ── Legacy path: unchanged behavior ────────────────────────────────
-        result = await orchestrator.generate_all_diagrams(
-            requirements=request.requirements.requirements,
-            diagram_types=diagram_types,
-            module_context=request.module_context,
-            generation_profile=generation_profile,
-            activity_label_style=request.activity_label_style,
-            autosar_compliant=request.autosar_compliant,
-            elaborated_data=elaboration_data,
-        )
-    else:
-        # ── Multi-stage pipeline path ───────────────────────────────────────
-        # two_model_fast uses llama3.2 as reviewer; two_model uses mistral
-        reviewer = (
-            "llama3.2"
-            if effective_mode == PipelineMode.TWO_MODEL_FAST
-            else settings.pipeline_reviewer_model
-        )
-        config = PipelineConfig(
-            mode=effective_mode,
-            generator_model=settings.pipeline_generator_model,
-            reviewer_model=reviewer,
-            max_passes=request.pipeline_max_passes or settings.pipeline_max_passes,
-            min_confidence=settings.pipeline_confidence_threshold,
-            draft_temperature=request.temperature,
-            generation_profile=generation_profile,
-            activity_label_style=request.activity_label_style,
-            autosar_compliant=request.autosar_compliant,
-            elaborated_data=elaboration_data,
-        )
-        logger.info(
-            f"Pipeline mode={effective_mode.value}, "
-            f"generator={config.generator_model}, reviewer={config.reviewer_model}, "
-            f"max_passes={config.max_passes}"
-        )
-        pipeline_orch = PipelineOrchestrator(settings, orchestrator)
-        pipeline_results = await pipeline_orch.generate_with_pipeline(
-            requirements=request.requirements.requirements,
-            diagram_types=diagram_types,
-            config=config,
+    # Split activity diagrams per-SWC when chunked elaboration produced a swc_list
+    has_swc_list = bool(elaboration_data.get("swc_list"))
+    activity_types = [dt for dt in diagram_types if dt == DiagramType.ACTIVITY]
+    other_types = [dt for dt in diagram_types if dt != DiagramType.ACTIVITY]
+
+    pipeline_config = None
+    result = GenerationResult(analyzed_requirements=req_ids)
+
+    # ── Non-activity diagram types (sequence, state_machine, class, component) ──
+    if other_types:
+        if effective_mode == PipelineMode.SINGLE_PASS:
+            other_result = await orchestrator.generate_all_diagrams(
+                requirements=request.requirements.requirements,
+                diagram_types=other_types,
+                module_context=request.module_context,
+                generation_profile=generation_profile,
+                activity_label_style=request.activity_label_style,
+                autosar_compliant=request.autosar_compliant,
+                elaborated_data=elaboration_data,
+            )
+        else:
+            reviewer = (
+                "llama3.2"
+                if effective_mode == PipelineMode.TWO_MODEL_FAST
+                else settings.pipeline_reviewer_model
+            )
+            pipeline_config = PipelineConfig(
+                mode=effective_mode,
+                generator_model=settings.pipeline_generator_model,
+                reviewer_model=reviewer,
+                max_passes=request.pipeline_max_passes or settings.pipeline_max_passes,
+                min_confidence=settings.pipeline_confidence_threshold,
+                draft_temperature=request.temperature,
+                generation_profile=generation_profile,
+                activity_label_style=request.activity_label_style,
+                autosar_compliant=request.autosar_compliant,
+                elaborated_data=elaboration_data,
+            )
+            logger.info(
+                f"Pipeline mode={effective_mode.value}, "
+                f"generator={pipeline_config.generator_model}, "
+                f"reviewer={pipeline_config.reviewer_model}, "
+                f"max_passes={pipeline_config.max_passes}"
+            )
+            pipeline_orch = PipelineOrchestrator(settings, orchestrator)
+            pipeline_results = await pipeline_orch.generate_with_pipeline(
+                requirements=request.requirements.requirements,
+                diagram_types=other_types,
+                config=pipeline_config,
+                module_context=request.module_context,
+                existing_swcs=request.existing_swcs,
+            )
+            other_result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
+        result.diagrams.extend(other_result.diagrams)
+        result.warnings.extend(other_result.warnings)
+        result.errors.extend(other_result.errors)
+
+    # ── Activity diagrams — one per SWC when swc_list is available ──────────
+    if activity_types:
+        if has_swc_list:
+            logger.info(
+                "[PerSWC] Generating %d activity diagram(s) for %d SWC(s)",
+                len(activity_types),
+                len(elaboration_data["swc_list"]),
+            )
+        activity_result = await _generate_activity_per_swc(
+            orchestrator=orchestrator,
+            all_requirements=request.requirements.requirements,
+            elaboration_data=elaboration_data,
+            pipeline_orch=None,
+            pipeline_config=pipeline_config,
             module_context=request.module_context,
             existing_swcs=request.existing_swcs,
+            effective_mode=effective_mode,
+            req_ids=req_ids,
         )
-        result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
+        result.diagrams.extend(activity_result.diagrams)
+        result.warnings.extend(activity_result.warnings)
+        result.errors.extend(activity_result.errors)
 
     # AUTOSAR mapping (unchanged)
     if request.autosar_compliant and request.apply_autosar_mapping:
@@ -644,46 +819,80 @@ async def generate_diagrams_stream(request: GenerateRequest):
             )
 
             # ── Stage 2: AI Generation ────────────────────────────────────────
-            if effective_mode == PipelineMode.SINGLE_PASS:
-                result = await orchestrator.generate_all_diagrams(
-                    requirements=request.requirements.requirements,
-                    diagram_types=active_diagram_types,
-                    module_context=request.module_context,
-                    progress_callback=progress_callback,
-                    generation_profile=generation_profile,
-                    activity_label_style=request.activity_label_style,
-                    autosar_compliant=request.autosar_compliant,
-                    elaborated_data=elaboration_data,
-                )
-                pipeline_config = None  # single-pass has no pipeline config
-            else:
-                reviewer = (
-                    "llama3.2"
-                    if effective_mode == PipelineMode.TWO_MODEL_FAST
-                    else settings.pipeline_reviewer_model
-                )
-                pipeline_config = PipelineConfig(
-                    mode=effective_mode,
-                    generator_model=settings.pipeline_generator_model,
-                    reviewer_model=reviewer,
-                    max_passes=request.pipeline_max_passes or settings.pipeline_max_passes,
-                    min_confidence=settings.pipeline_confidence_threshold,
-                    draft_temperature=request.temperature,
-                    generation_profile=generation_profile,
-                    activity_label_style=request.activity_label_style,
-                    autosar_compliant=request.autosar_compliant,
-                    elaborated_data=elaboration_data,
-                )
-                pipeline_orch = PipelineOrchestrator(settings, orchestrator)
-                pipeline_results = await pipeline_orch.generate_with_pipeline(
-                    requirements=request.requirements.requirements,
-                    diagram_types=active_diagram_types,
-                    config=pipeline_config,
+            has_swc_list = bool(elaboration_data.get("swc_list"))
+            act_types = [dt for dt in active_diagram_types if dt == DiagramType.ACTIVITY]
+            other_types = [dt for dt in active_diagram_types if dt != DiagramType.ACTIVITY]
+
+            pipeline_config = None
+            result = GenerationResult(analyzed_requirements=req_ids)
+
+            # Non-activity types (sequence, state_machine, class, component)
+            if other_types:
+                if effective_mode == PipelineMode.SINGLE_PASS:
+                    other_result = await orchestrator.generate_all_diagrams(
+                        requirements=request.requirements.requirements,
+                        diagram_types=other_types,
+                        module_context=request.module_context,
+                        progress_callback=progress_callback,
+                        generation_profile=generation_profile,
+                        activity_label_style=request.activity_label_style,
+                        autosar_compliant=request.autosar_compliant,
+                        elaborated_data=elaboration_data,
+                    )
+                else:
+                    reviewer = (
+                        "llama3.2"
+                        if effective_mode == PipelineMode.TWO_MODEL_FAST
+                        else settings.pipeline_reviewer_model
+                    )
+                    pipeline_config = PipelineConfig(
+                        mode=effective_mode,
+                        generator_model=settings.pipeline_generator_model,
+                        reviewer_model=reviewer,
+                        max_passes=request.pipeline_max_passes or settings.pipeline_max_passes,
+                        min_confidence=settings.pipeline_confidence_threshold,
+                        draft_temperature=request.temperature,
+                        generation_profile=generation_profile,
+                        activity_label_style=request.activity_label_style,
+                        autosar_compliant=request.autosar_compliant,
+                        elaborated_data=elaboration_data,
+                    )
+                    pipeline_orch = PipelineOrchestrator(settings, orchestrator)
+                    pipeline_results = await pipeline_orch.generate_with_pipeline(
+                        requirements=request.requirements.requirements,
+                        diagram_types=other_types,
+                        config=pipeline_config,
+                        module_context=request.module_context,
+                        existing_swcs=request.existing_swcs,
+                        progress_callback=progress_callback,
+                    )
+                    other_result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
+                result.diagrams.extend(other_result.diagrams)
+                result.warnings.extend(other_result.warnings)
+                result.errors.extend(other_result.errors)
+
+            # Activity diagrams — one per SWC when swc_list is available
+            if act_types:
+                if has_swc_list:
+                    logger.info(
+                        "[PerSWC] Generating activity diagrams for %d SWC(s)",
+                        len(elaboration_data["swc_list"]),
+                    )
+                activity_result = await _generate_activity_per_swc(
+                    orchestrator=orchestrator,
+                    all_requirements=request.requirements.requirements,
+                    elaboration_data=elaboration_data,
+                    pipeline_orch=None,
+                    pipeline_config=pipeline_config,
                     module_context=request.module_context,
                     existing_swcs=request.existing_swcs,
+                    effective_mode=effective_mode,
+                    req_ids=req_ids,
                     progress_callback=progress_callback,
                 )
-                result, pipeline_summary = merge_pipeline_results(pipeline_results, req_ids)
+                result.diagrams.extend(activity_result.diagrams)
+                result.warnings.extend(activity_result.warnings)
+                result.errors.extend(activity_result.errors)
 
             # ── Stage 3: AUTOSAR Mapping ──────────────────────────────────────
             if request.autosar_compliant and request.apply_autosar_mapping:
