@@ -57,6 +57,18 @@ system_prompt: |
                   description = full DEM call + safe-state assignment.
   "fork" / "join" Parallel split/join (only when requirements state explicit parallelism).
 
+  IRV / EXCLUSIVE AREA ACCESS PATTERNS
+  When a runnable reads or writes an InterRunnableVariable (IRV):
+    Use an "action" node: name = "Rte_IrvWrite_<Runnable>_<IrvName>(&l_<var>)"
+                       or name = "l_<var> = Rte_IrvRead_<Runnable>_<IrvName>()"
+  When an ExclusiveArea must protect the IRV (different OS tasks):
+    Add "action" nodes immediately before and after:
+      name = "Rte_Enter_EA_<AreaName>()"
+      [IRV access action node]
+      name = "Rte_Exit_EA_<AreaName>()"
+  Calibration parameter access:
+    Use a "call" node: name = "l_<var> = Rte_CData_<CalPrmName>()"
+
   MULTIPLE FUNCTIONS -- ONE FLOWCHART EACH  (C-FILE MENTAL MODEL)
   Think of the output like separate C functions, each with its own flowchart:
     void RE_ControlTorque(void)     -> parent ActivityDiagram

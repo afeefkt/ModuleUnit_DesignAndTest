@@ -42,7 +42,7 @@ _DIAGRAM_VOCAB: dict[str, str] = {
 }
 
 # Supported file extensions
-_SUPPORTED_EXTS = {".html", ".htm", ".pdf", ".docx", ".txt", ".md"}
+_SUPPORTED_EXTS = {".html", ".htm", ".pdf", ".docx", ".txt", ".md", ".xlsx", ".xls"}
 
 
 # ── Data Classes ──────────────────────────────────────────────────────────────
@@ -361,6 +361,8 @@ class GuidelinesReader:
             return self._parse_pdf(path)
         elif suffix == ".docx":
             return self._parse_docx(path)
+        elif suffix in {".xlsx", ".xls"}:
+            return self._parse_excel(path)
         else:  # .txt, .md
             return self._parse_plaintext(path)
 
@@ -494,6 +496,50 @@ class GuidelinesReader:
             return []
         except Exception as exc:
             logger.warning("[Guidelines] DOCX parse error %s: %s", path.name, exc)
+            return []
+
+    def _parse_excel(self, path: Path) -> list[tuple[str, str]]:
+        """Extract sections from Excel by treating each sheet as a section.
+
+        Each row is converted to 'col1: val1 | col2: val2 ...' text so the
+        content is searchable by the RAG retriever.
+        """
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+            sections: list[tuple[str, str]] = []
+
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                if not rows:
+                    continue
+
+                # First row as headers (fall back to column letters if empty)
+                headers = [str(h).strip() if h else f"Col{i}" for i, h in enumerate(rows[0])]
+
+                lines: list[str] = []
+                for row in rows[1:]:
+                    parts = []
+                    for header, cell in zip(headers, row):
+                        if cell is not None and str(cell).strip():
+                            parts.append(f"{header}: {str(cell).strip()}")
+                    if parts:
+                        lines.append(" | ".join(parts))
+
+                if lines:
+                    body = "\n".join(lines)
+                    sections.append((f"{path.stem} — {sheet_name}", body))
+
+            wb.close()
+            if not sections:
+                sections = [(path.stem, "Empty workbook")]
+            return sections
+        except ImportError:
+            logger.warning("[Guidelines] openpyxl not installed - cannot parse Excel files")
+            return []
+        except Exception as exc:
+            logger.warning("[Guidelines] Excel parse error %s: %s", path.name, exc)
             return []
 
     def _parse_plaintext(self, path: Path) -> list[tuple[str, str]]:

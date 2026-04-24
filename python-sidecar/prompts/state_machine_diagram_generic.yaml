@@ -1,24 +1,135 @@
 name: Generic C State Machine Generator
-version: "1.0"
+version: "2.0"
 diagram_type: "state_machine"
 profile: "generic_c"
 
 system_prompt: |
   You are a software architect generating state machine diagrams for generic C systems.
-  Model operational modes, transitions, triggers, and guards.
+  Model operational modes, error handling, and lifecycle behaviour.
 
-  Rules:
-  - Use meaningful state names tied to requirements.
-  - Include exactly one initial state and at least one terminal path.
-  - Keep trigger/guard expressions implementation-oriented.
-  - Return valid JSON only.
+  STATE MACHINE RULES:
+  - Exactly ONE initial pseudo-state (is_initial: true, name: "INITIAL")
+  - Use UPPER_CASE for state names (e.g. IDLE, RUNNING, ERROR, SHUTDOWN)
+  - Every transition must have a trigger and/or guard — no unlabelled transitions
+  - Entry/exit/do actions map to C function calls or assignments
+  - At least one state must be reachable as a terminal / shutdown state (is_final: true)
+  - At least one error-handling path must exist when requirements mention failure modes
+
+  COMMON LIFECYCLE PATTERNS:
+    Basic:    INITIAL → INIT → IDLE → RUNNING → SHUTDOWN
+    Fault:    RUNNING → ERROR → RECOVERY → RUNNING  (or → SHUTDOWN on unrecoverable)
+    Degraded: NORMAL → DEGRADED → SAFE_STATE (output held at safe value)
+
+  ACTION TYPES:
+    "entry" — called immediately on entering the state, e.g. "Module_Init()"
+    "do"    — runs continuously while in state, e.g. "ProcessData() every 10 ms"
+    "exit"  — called immediately before leaving the state, e.g. "Cleanup()"
+
+  TRANSITION FIELD RULES:
+    - trigger: event or function call that causes the transition, e.g. "InitComplete", "CrcError"
+    - guard:   optional boolean condition object, e.g. {"condition": "elapsed_ms >= TIMEOUT_MS"}
+    - action:  optional C statement executed during the transition, e.g. "Module_Reset()"
+
+  JSON FIELD RULES:
+    - Every state needs: id, name, is_initial, is_final, actions[], trace_reqs, confidence
+    - Every transition needs: id, source, target, trigger, trace_req, confidence
+    - guard and action are optional but strongly preferred when requirements specify conditions
+    - Return ONLY valid JSON — no markdown, no explanation
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagram_type": "state_machine",
+    "name": "ModuleName_StateMachine",
+    "source_requirements": ["REQ-001"],
+    "states": [
+      {"id": "s_0", "name": "INITIAL",  "is_initial": true,  "is_final": false, "actions": [], "trace_reqs": []},
+      {"id": "s_1", "name": "IDLE",     "is_initial": false, "is_final": false,
+       "actions": [{"action_type": "entry", "description": "Module_Init()"}],
+       "trace_reqs": ["REQ-001"], "confidence": 0.90},
+      {"id": "s_2", "name": "SHUTDOWN", "is_initial": false, "is_final": true, "actions": [], "trace_reqs": ["REQ-001"], "confidence": 0.90}
+    ],
+    "transitions": [
+      {"id": "t_1", "source": "s_0", "target": "s_1", "trigger": "PowerOn",
+       "trace_req": "REQ-001", "confidence": 0.92}
+    ],
+    "provenance": {"version": "2.0", "confidence": 0.88}
+  }
 
 user_prompt: |
   Generate a state machine diagram JSON from these requirements:
 
+  REQUIREMENTS:
   {{ requirements }}
 
   Context: {{ module_context }}
   Existing modules: {{ existing_swcs | join(", ") }}
 
-  Output only JSON that matches the state_machine schema.
+  Identify all operational states, lifecycle phases, and error modes.
+  Include exactly one INITIAL pseudo-state and at least one final/shutdown state.
+  Model all transitions with triggers and guards where conditions are stated.
+  Output only JSON matching the state_machine schema.
+
+few_shot_examples:
+  - input: |
+      REQ-SM01: CommDriver shall initialize hardware on startup and transition to IDLE
+                after init completes successfully.
+      REQ-SM02: CommDriver transitions to ACTIVE on receiving a StartComm command.
+      REQ-SM03: If a CRC error occurs during ACTIVE, CommDriver transitions to ERROR
+                and calls CommDriver_ReportError().
+      REQ-SM04: CommDriver retries automatically after ERROR_TIMEOUT_MS and transitions
+                back to ACTIVE if hardware is responsive; otherwise stays in ERROR.
+      REQ-SM05: CommDriver transitions to SHUTDOWN on receiving a StopComm command
+                from IDLE or ACTIVE; releases all resources on entry to SHUTDOWN.
+    output: |
+      {
+        "diagram_type": "state_machine",
+        "name": "CommDriver_StateMachine",
+        "source_requirements": ["REQ-SM01","REQ-SM02","REQ-SM03","REQ-SM04","REQ-SM05"],
+        "states": [
+          {"id": "s_0", "name": "INITIAL", "is_initial": true, "is_final": false,
+           "actions": [], "trace_reqs": []},
+          {"id": "s_1", "name": "INIT", "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "entry", "description": "CommDriver_HwInit()"}],
+           "trace_reqs": ["REQ-SM01"], "confidence": 0.93},
+          {"id": "s_2", "name": "IDLE", "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "do", "description": "Poll for StartComm command"}],
+           "trace_reqs": ["REQ-SM01"], "confidence": 0.92},
+          {"id": "s_3", "name": "ACTIVE", "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "do", "description": "CommDriver_ProcessFrames() cyclic"}],
+           "trace_reqs": ["REQ-SM02"], "confidence": 0.92},
+          {"id": "s_4", "name": "ERROR", "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "entry", "description": "CommDriver_ReportError()"}],
+           "trace_reqs": ["REQ-SM03"], "confidence": 0.88},
+          {"id": "s_5", "name": "SHUTDOWN", "is_initial": false, "is_final": true,
+           "actions": [{"action_type": "entry", "description": "CommDriver_ReleaseResources()"}],
+           "trace_reqs": ["REQ-SM05"], "confidence": 0.93}
+        ],
+        "transitions": [
+          {"id": "t_1", "source": "s_0", "target": "s_1",
+           "trigger": "PowerOn", "trace_req": "REQ-SM01", "confidence": 0.95},
+          {"id": "t_2", "source": "s_1", "target": "s_2",
+           "trigger": "InitComplete", "guard": {"condition": "HW_OK == true"},
+           "trace_req": "REQ-SM01", "confidence": 0.90},
+          {"id": "t_3", "source": "s_2", "target": "s_3",
+           "trigger": "StartComm", "trace_req": "REQ-SM02", "confidence": 0.92},
+          {"id": "t_4", "source": "s_3", "target": "s_4",
+           "trigger": "CrcError", "trace_req": "REQ-SM03", "confidence": 0.88},
+          {"id": "t_5", "source": "s_4", "target": "s_3",
+           "trigger": "RetryTimeout",
+           "guard": {"condition": "elapsed_ms >= ERROR_TIMEOUT_MS AND HW_OK"},
+           "action": "CommDriver_Reinit()",
+           "trace_req": "REQ-SM04", "confidence": 0.86},
+          {"id": "t_6", "source": "s_2", "target": "s_5",
+           "trigger": "StopComm", "trace_req": "REQ-SM05", "confidence": 0.92},
+          {"id": "t_7", "source": "s_3", "target": "s_5",
+           "trigger": "StopComm", "trace_req": "REQ-SM05", "confidence": 0.92},
+          {"id": "t_8", "source": "s_4", "target": "s_5",
+           "trigger": "StopComm", "trace_req": "REQ-SM05", "confidence": 0.90}
+        ],
+        "provenance": {"version": "2.0", "confidence": 0.91}
+      }

@@ -1,10 +1,13 @@
-version: "1.1"
+version: "1.2"
 diagram_type: elaboration
 description: >
   Pre-processing step that enriches raw requirements into structured
   AUTOSAR-specific JSON. Uses chain-of-thought reasoning to extract
-  entities, timing, safety levels, and diagram hints before generation.
+  entities, timing, safety levels, IRVs, ExclusiveAreas, calibration
+  parameters, and diagram hints before generation.
   v1.1: JSON-mode compatible — thinking is inside the JSON object.
+  v1.2: Added safety step (ASIL), data step (IRV/ExclusiveArea/CalPrm),
+        implicit communication flag, class and state_machine diagram hints.
 
 system_prompt: |
   You are an AUTOSAR software architecture expert.
@@ -17,9 +20,28 @@ system_prompt: |
   Put your reasoning as an array of strings in the "thinking" key.
   Reason about:
   1. **Entities**: What SWCs, Runnables, Ports, and Interfaces are needed?
-  2. **Behavior**: Is this periodic? Is it triggered by an event? What is the internal logic flow?
-  3. **Relationships**: How does this requirement relate to others already mentioned? Do they share a component?
-  4. **Diagram Strategy**: How should this be visualized? (e.g., "This needs a sequence diagram showing the handshake between X and Y").
+     Use AUTOSAR naming: SWC_PascalCase, RE_PascalCase, PP_/RP_ prefix on ports,
+     IF_SR_Name for sender-receiver, IF_CS_Name for client-server interfaces.
+  2. **Behaviour**: Is this periodic (TimingEvent)? Event-triggered (DataReceivedEvent)?
+     Init (InitEvent)? Mode-switch (ModeSwitchEvent)? What is the internal logic flow?
+  3. **Relationships**: How does this requirement relate to others already mentioned?
+     Do they share a component? Are there IRVs passing data between runnables internally?
+  4. **Diagram Strategy**: How should this be visualised?
+     (e.g., "This needs a sequence diagram showing the CS handshake between X and Y").
+  5. **Safety**: What ASIL level applies (QM / ASIL-A / ASIL-B / ASIL-C / ASIL-D)?
+     - ASIL-C/D runnables require: redundant sensor cross-check (DECISION node),
+       DEM event reporting (EXCEPTION node), and gradient/rate-limit clamp (ACTION node).
+     - Safety state machines must include a SAFE_STATE with entry action calling
+       Dem_SetEventStatus for all active faults.
+  6. **Data Architecture**: Identify internal data elements:
+     - IRVs (InterRunnableVariables): data shared between runnables of the SAME SWC.
+       Needed when one runnable produces a value consumed by another in the same SWC.
+     - ExclusiveAreas: required when IRVs are accessed by runnables in DIFFERENT OS tasks.
+       Generated as Rte_Enter_<AreaName>() / Rte_Exit_<AreaName>() wrapping the access.
+     - CalPrm (Calibration Parameters): tunable constants accessed via Rte_CData.
+       Recognise keywords: "calibration", "tunable", "gain", "threshold", "lookup table".
+     - Implicit communication: use Rte_IRead/Rte_IWrite (implicit_comm: true) ONLY for
+       purely cyclic runnables with a fixed, known I/O set and no conditional port access.
 
   ### OUTPUT FORMAT
   Output ONLY a single JSON object. No markdown, no tags, no explanation outside JSON.
@@ -27,7 +49,11 @@ system_prompt: |
   {
     "thinking": [
       "Step 1: REQ-001 mentions SWC_SensorFusion — this is a top-level ApplicationSWC...",
-      "Step 2: REQ-002 describes a periodic runnable RE_FuseData with 10ms trigger..."
+      "Step 2: REQ-002 describes a periodic runnable RE_FuseData with 10ms trigger...",
+      "Step 3: REQ-003 relates to REQ-002 — both operate on SWC_SensorFusion...",
+      "Step 4: Sequence diagram needed to show Rte_Write flow from SWC_SensorFusion to SWC_VehicleControl...",
+      "Step 5: Safety — REQ-004 specifies ASIL-D; redundant sensor cross-check DECISION required...",
+      "Step 6: Data — RE_FuseData writes irvFusedResult; RE_OutputData reads it; ExclusiveArea needed if different OS tasks..."
     ],
     "architecture_summary": "High-level summary of the identified components and their interactions.",
     "elaborated": [
@@ -37,16 +63,25 @@ system_prompt: |
           "swc": "SWC_Name",
           "runnables": ["RE_Name"],
           "ports": ["PP_Name", "RP_Name"],
-          "interfaces": ["IF_SR_Name"]
+          "interfaces": ["IF_SR_Name"],
+          "irv": ["irvFusedResult"],
+          "exclusive_areas": ["EA_SharedData"],
+          "calibration_params": ["CalPrm_AssistGain", "CalPrm_SpeedThreshold"]
         },
         "logic_flow": "Step-by-step internal logic description for activity diagrams.",
-        "timing": {"trigger": "periodic|event|init|null", "period_ms": 10},
+        "timing": {
+          "trigger": "periodic|event|init|mode_switch|null",
+          "period_ms": 10,
+          "implicit_comm": false
+        },
         "safety": "QM|ASIL-A|ASIL-B|ASIL-C|ASIL-D|null",
         "related_reqs": ["REQ-002"],
         "diagram_hints": {
-          "activity": "Specific flow steps, branching conditions, and RTE calls.",
-          "sequence": "Interaction partners and message names.",
-          "component": "Port connections and delegation."
+          "activity": "Specific flow steps, branching conditions, and RTE calls. For ASIL-C/D add: redundant sensor DECISION, DEM EXCEPTION, rate-limit ACTION.",
+          "sequence": "Interaction partners, message names, and whether CS or SR communication pattern. Note any Rte_IrvRead/Rte_IrvWrite self-messages.",
+          "component": "Port connections, interface types, and delegation to sub-SWCs if CompositionSWC. Note ASIL-D port safety annotations.",
+          "class": "List IRVs as private attributes (suffix _irv, e.g. irvFusedResult: float32). List CalPrm as constant attributes (CalPrm_ prefix). Note ExclusiveAreas in class description. Runnables as operations with trigger_type.",
+          "state_machine": "States, trigger events, and mode-switch actions (Rte_Switch). ASIL-C/D must include SAFE_STATE with Dem_SetEventStatus entry action."
         }
       }
     ]
@@ -54,9 +89,14 @@ system_prompt: |
 
   RULES:
   - Output ONLY valid JSON — no markdown, no tags, no text before or after.
-  - Include "thinking" array with your step-by-step reasoning.
-  - Use AUTOSAR naming conventions: SWC_PascalCase, RE_PascalCase, PP_/RP_ ports.
-  - Ensure every requirement is accounted for in the "elaborated" array.
+  - Include "thinking" array with all 6 reasoning steps as strings.
+  - Use AUTOSAR naming conventions: SWC_PascalCase, RE_PascalCase, PP_/RP_ ports,
+    IF_SR_/IF_CS_ interfaces, irvCamelCase for IRVs, EA_PascalCase for ExclusiveAreas,
+    CalPrm_PascalCase for calibration parameters.
+  - Ensure every requirement appears in the "elaborated" array.
+  - For ASIL-C/D requirements, always populate the safety field and enrich the
+    activity diagram_hint with the three mandatory safety checks.
+  - Set implicit_comm: true ONLY for purely cyclic runnables with a fixed, known I/O set.
 
 user_prompt_template: |
   Elaborate these {req_count} AUTOSAR requirements into structured data.
@@ -64,4 +104,12 @@ user_prompt_template: |
   REQUIREMENTS:
   {requirements_text}
 
-  Output a single JSON object with "thinking", "architecture_summary", and "elaborated" arrays. No markdown, no tags — ONLY JSON.
+  For each requirement extract:
+  - SWCs, Runnables, Ports, Interfaces (use AUTOSAR naming conventions)
+  - IRVs (inter-runnable data within same SWC), ExclusiveAreas, CalPrm (calibration params)
+  - Timing trigger type, period, and whether implicit communication applies
+  - ASIL safety level (if stated or implied)
+  - Diagram-type-specific hints for activity, sequence, component, class, and state_machine
+
+  Output a single JSON object with "thinking" (6 steps), "architecture_summary",
+  and "elaborated" arrays. No markdown, no tags — ONLY JSON.

@@ -1,0 +1,20 @@
+﻿Signal / Port Pair,From Component,From Port,Interface,Direction,To Component,To Port,Rate,Data Type,Physical Range,Description
+SpdRef → SpdCtrl,AppMgr,SpdCmdOut,SpdN1,→,SpdCtrl,SpdRef,10 ms,uint16,0–12000 rpm,Operator speed command
+SpdFbk → SpdCtrl,SpeedObs,SpdOut,SpdN1,→,SpdCtrl,SpdFbk,1 ms,uint16,0–15000 rpm,Actual speed feedback
+SpdFbk → MtrMon,SpeedObs,SpdOut,SpdN1,→,MtrMon,SpdMon,1 ms,uint16,0–15000 rpm,Speed for overspeed check
+IqMaxOut → SpdCtrl,MtrMon,IqMaxOut,MtrIqMax1,→,SpdCtrl,IqMaxIn,10 ms,float32,0–160 A,Protection-derived Iq limit
+IqRef → CurrCtrl,SpdCtrl,IqRef,MtrIq1,→,CurrCtrl,IqRef,1 ms,float32,−160–+160 A,Speed PI output → current ref
+IdRef → CurrCtrl,MTPA/Const,IdRefOut,MtrId1,→,CurrCtrl,IdRef,1 ms,sint16,−50–+50 A,d-axis ref (0 for SPMSM)
+IdFbk → CurrCtrl,CurrentSens,IdOut,MtrId1,→,CurrCtrl,IdFbk,100 µs,sint16,−160–+160 A,d-axis current feedback
+IqFbk → CurrCtrl,CurrentSens,IqOut,MtrIq1,→,CurrCtrl,IqFbk,100 µs,sint16,−160–+160 A,q-axis current feedback
+VdcBus → CurrCtrl,VdcMeas,VdcOut,VdcBus1,→,CurrCtrl,VdcBus,1 ms,uint16,0–800 V,DC bus for voltage limiting
+VdCmd → PWM,CurrCtrl,VdCmd,MtrVd1,→,SVM/PWM,VdIn,100 µs,sint16,−400–+400 V,d-axis voltage to modulator
+VqCmd → PWM,CurrCtrl,VqCmd,MtrVq1,→,SVM/PWM,VqIn,100 µs,sint16,−400–+400 V,q-axis voltage to modulator
+IdMon → MtrMon,CurrentSens,IdOut,MtrId1,→,MtrMon,IdMon,100 µs,sint16,−160–+160 A,d-axis current monitoring
+IqMon → MtrMon,CurrentSens,IqOut,MtrIq1,→,MtrMon,IqMon,100 µs,sint16,−160–+160 A,q-axis current monitoring
+MtrT → MtrMon,TempSens,MtrTOut,MtrT1,→,MtrMon,MtrT,10 ms,sint16,−40–+200 °C,Motor temperature
+VdcMon → MtrMon,VdcMeas,VdcOut,VdcBus1,→,MtrMon,VdcMon,1 ms,uint16,0–800 V,Vdc monitoring
+MtrProtSt → SysMgr,MtrMon,MtrProtSt,MtrProtSt1,→,SysMgr,MtrProtIn,1 ms,uint8,0–7,Aggregated protection status
+OcSt → SafetyMon,MtrMon,OcSt,MtrOcSt1,→,SafetyMon,OcIn,1 ms,boolean,F/T,Overcurrent active flag
+OtSt → SafetyMon,MtrMon,OtSt,MtrOtSt1,→,SafetyMon,OtIn,10 ms,boolean,F/T,Overtemperature active flag
+OpMod → SpdCtrl,SysMgr,ModOut,OpMod1,→,SpdCtrl,OpMod,Event,uint8,0–4 (enum),Mode switch — resets PI integrator

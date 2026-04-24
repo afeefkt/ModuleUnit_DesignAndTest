@@ -1,0 +1,15 @@
+﻿Signal Name,Interface Used,Data Element,Impl.Type,Unit,Physical Range,Provider SWC,Provider Port,Consumer SWC(s),Consumer Port(s),Update Rate,Description,ASIL,Remarks
+SpdFbk,SpdN1,Val,uint16,rpm,0–15000 rpm,SpeedObserver,SpdOut,"SpdCtrl, MtrMon",SpdFbk / SpdMon,1 ms,Actual motor mechanical speed from encoder-based observer,ASIL-B,Shared interface SpdN1
+SpdRef,SpdN1,Val,uint16,rpm,0–12000 rpm,AppMgr,SpdCmdOut,SpdCtrl,SpdRef,10 ms,Speed command from application state machine,ASIL-B,Rate-limited inside SpdCtrl
+IqRef,MtrIq1,Val,float32,A,−160 to +160 A,SpdCtrl,IqRef,CurrCtrl,IqRef,1 ms,q-axis current reference — output of speed PI controller,ASIL-B,Key inter-loop signal
+IdFbk,MtrId1,Val,sint16,A×100,−160 to +160 A,CurrentSens,IdOut,"CurrCtrl, MtrMon",IdFbk / IdMon,100 µs,d-axis current feedback from ADC + Clarke-Park,ASIL-B,Shared interface MtrId1
+IqFbk,MtrIq1,Val,sint16,A×100,−160 to +160 A,CurrentSens,IqOut,"CurrCtrl, MtrMon",IqFbk / IqMon,100 µs,q-axis current feedback from ADC + Clarke-Park,ASIL-B,Shared interface MtrIq1
+IdRef,MtrId1,Val,sint16,A×100,−50 to +50 A,MTPA / Const,IdRefOut,CurrCtrl,IdRef,1 ms,d-axis current reference (0 for SPMSM; MTPA-computed for IPMSM),ASIL-B,Constant 0 in basic config
+VdcBus,VdcBus1,Val,uint16,V×10,0–800 V,VdcMeas,VdcOut,"CurrCtrl, MtrMon",VdcBus / VdcMon,1 ms,DC bus voltage measurement,ASIL-B,Shared interface VdcBus1
+VdCmd,MtrVd1,Val,sint16,V×100,−400 to +400 V,CurrCtrl,VdCmd,SVM/PWM,VdIn,100 µs,d-axis voltage command to space-vector modulator,ASIL-B,
+VqCmd,MtrVq1,Val,sint16,V×100,−400 to +400 V,CurrCtrl,VqCmd,SVM/PWM,VqIn,100 µs,q-axis voltage command to space-vector modulator,ASIL-B,
+MtrT,MtrT1,Val,sint16,°C,−40 to +200 °C,TempSens,MtrTOut,MtrMon,MtrT,10 ms,Motor winding temperature from NTC,ASIL-B,Slow thermal time constant
+IqMaxOut,MtrIqMax1,Val,float32,A,0–160 A,MtrMon,IqMaxOut,SpdCtrl,IqMaxIn,10 ms,Protection-derived Iq limit — derated by temperature; 0 on fault,ASIL-B,Key protection feedback
+MtrProtSt,MtrProtSt1,St,uint8,—,0–7 (enum),MtrMon,MtrProtSt,"SysMgr, FaultMgr",MtrProtIn,1 ms,Aggregated motor protection status code,ASIL-B,0=OK; higher=more severe
+OcSt,MtrOcSt1,St,boolean,—,FALSE/TRUE,MtrMon,OcSt,SafetyMon,OcIn,1 ms,Overcurrent active flag,ASIL-B,Also triggers inverter shutdown via HW path
+OtSt,MtrOtSt1,St,boolean,—,FALSE/TRUE,MtrMon,OtSt,SafetyMon,OtIn,10 ms,Overtemperature active flag (with hysteresis),ASIL-B,

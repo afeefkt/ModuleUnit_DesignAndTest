@@ -193,6 +193,19 @@ async def import_requirements(
 
         result = ImporterFactory.import_file(tmp_path, column_mapping=mapping, **kwargs)
 
+        if result.errors:
+            logger.warning(
+                "Import errors for %s: %s", file.filename, result.errors
+            )
+        if result.warnings:
+            logger.info(
+                "Import warnings for %s: %s", file.filename, result.warnings
+            )
+        logger.info(
+            "Import result for %s: %d requirements, %d rows processed, success=%s",
+            file.filename, result.requirement_set.count, result.rows_processed, result.success,
+        )
+
         return ImportResponse(
             requirement_set=result.requirement_set,
             warnings=result.warnings,

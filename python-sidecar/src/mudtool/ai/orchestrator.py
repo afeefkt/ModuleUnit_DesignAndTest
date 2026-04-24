@@ -197,6 +197,20 @@ class AIOrchestrator:
         except Exception as exc:
             logger.debug(f"No guidelines context: {exc}")
 
+        # Inject AUTOSAR skill block for activity diagrams (full-document, not chunked)
+        if diagram_type == DiagramType.ACTIVITY and self.settings.skills_enabled:
+            try:
+                from mudtool.ai.skill_loader import SkillLoader
+                skill_block = SkillLoader(self.settings).build_activity_skill_block()
+                if skill_block:
+                    system_prompt = skill_block + "\n\n" + system_prompt
+                    logger.info(
+                        f"Injected skill block ({len(skill_block)} chars) "
+                        f"into activity diagram system prompt"
+                    )
+            except Exception as exc:
+                logger.debug(f"Skill injection skipped: {exc}")
+
         prompt_hash = self.prompt_engine.compute_prompt_hash(system_prompt, user_prompt)
 
         # Attempt generation with retries

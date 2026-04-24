@@ -127,6 +127,12 @@ class Settings(BaseSettings):
     #               reliable range.  More API calls but far higher reliability.
     elaboration_mode: str = "single_shot"
 
+    # ── Skills (full-document injection for activity diagrams) ───────────────
+    # MUD_SKILLS_ENABLED=true  -> prepend skill block to activity diagram system prompts
+    skills_enabled: bool = True
+    # MUD_SKILLS_DIR  -> folder containing non-chunked skill .md files
+    skills_dir: Optional[Path] = None  # default: project_root / "data" / "skills"
+
     # ── Guidelines RAG (design document injection) ────────────────────────────
     # MUD_GUIDELINES_ENABLED=true  -> load docs from guidelines_dir before generation
     guidelines_enabled: bool = True
@@ -140,6 +146,11 @@ class Settings(BaseSettings):
     guidelines_max_chunks: int = 3
     # MUD_GUIDELINES_CHUNK_SIZE  -> target characters per text chunk
     guidelines_chunk_size: int = 800
+
+    def get_skills_dir(self) -> Path:
+        if self.skills_dir:
+            return self.skills_dir
+        return self.project_root / "data" / "skills"
 
     def get_guidelines_dir(self) -> Path:
         if self.guidelines_dir:

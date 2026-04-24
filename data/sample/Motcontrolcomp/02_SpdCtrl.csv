@@ -1,0 +1,31 @@
+﻿SwCType: AtomicSwComponentType  |  Safety: ASIL-B  |  Cycles: Init (once) | 1 ms (TimingEvent) | ModeSwitchEvent  |  Purpose: Outer PI speed control loop — computes Iq reference from speed error,,,,,,,,,,,,,,,
+■  PORTS AND INTERFACES,,,,,,,,,,,,,,,
+REQ-ID,Port ShortName,Direction,Interface ShortName,Interface Type,Data Element,Impl. Type,Phys. Unit,Resolution,Min Value,Max Value,CompuMethod,Comm. Mode,Connected To,Description,ASIL
+SPD-PORT-001,SpdFbk,R-Port,SpdN1,SenderReceiverInterface,Val,uint16,rpm,1 rpm/LSB,0,15000,SpdNIdentcl,Explicit,SpeedObserver SWC (P-Port SpdOut),Actual motor mechanical speed from speed observer,ASIL-B
+SPD-PORT-002,SpdRef,R-Port,SpdN1,SenderReceiverInterface,Val,uint16,rpm,1 rpm/LSB,0,12000,SpdNIdentcl,Explicit,AppMgr SWC (P-Port SpdCmdOut),Speed reference command from application manager,ASIL-B
+SPD-PORT-003,IqMaxIn,R-Port,MtrIqMax1,SenderReceiverInterface,Val,float32,A,0.001 A,0.0,160.0,ALnrl,Explicit,MtrMon (P-Port IqMaxOut),Maximum Iq allowed — set by MtrMon based on protection state,ASIL-B
+SPD-PORT-004,OpMod,R-Port,OpMod1,ModeSwitchInterface,OpModVal,uint8,—,—,0,4,OpMod1 (TEXTTABLE: 0=Init 1=Idle 2=Run 3=Fault 4=CalMode),Mode,SysMgr SWC (Mode Manager),System operation mode — triggers integrator reset on mode change,ASIL-B
+SPD-PORT-005,IqRef,P-Port,MtrIq1,SenderReceiverInterface,Val,float32,A,0.001 A,-160.0,160.0,ALnrl,Explicit,CurrCtrl (R-Port IqRef),q-axis current reference to current controller — output of speed PI,ASIL-B
+■  RUNNABLE ENTITIES,,,,,,,,,,,,,,,
+REQ-ID,Runnable ShortName,RTE Event,Cycle / Condition,Ports Read,Ports Written,CalPrm Used,IRV Read,IRV Written,ExclusiveArea,Init Required,Return Type,Description,ASIL,Timing Budget,Notes
+SPD-RUN-001,SpdCtrl_Init,InitEvent,Once at ECU startup,"SpdRef, SpdFbk",IqRef,SpdCtrlPrm (all),—,SpdCtrlIntgState,—,Yes,void,"Initialize speed PI integrator to zero, ramp state, set IqRef=0.0, read init CalPrm",ASIL-B,<100 µs,Must complete before first TimingEvent fires
+SPD-RUN-002,SpdCtrl_1ms,TimingEvent,1 ms (1000 Hz),"SpdFbk, SpdRef, IqMaxIn",IqRef,"Kp, Ki, AntiWindupLim, SpdErrDz, SpdRampRate",—,—,EA_SpdIntg,No,void,"1. Ramp SpdRef by SpdRampRate (rate limiter)
+2. Compute spdErr = spdRefRamped - SpdFbk
+3. Apply deadzone SpdErrDz
+4. PI: pTerm=Kp*spdErr; iState+=Ki*spdErr*0.001s
+5. Anti-windup: clamp iState to ±AntiWindupLim
+6. IqRef = clamp(pTerm+iState, ±IqMaxIn)",ASIL-B,<50 µs,ExclusiveArea protects iState if future OS task split needed
+SPD-RUN-003,SpdCtrl_OnModSwitch,ModeSwitchEvent on OpMod,On mode transition,OpMod,IqRef,—,—,SpdCtrlIntgState,EA_SpdIntg,No,void,"Reset PI integrator to 0 on transition to Init/Idle/Fault mode.
+Set IqRef = 0.0. Prevents integrator windup on re-enable.",ASIL-B,<20 µs,Triggered by mode manager
+■  CALIBRATION PARAMETERS (CalPrm — ParameterInterface),,,,,,,,,,,,,,,
+REQ-ID,CalPrm ShortName,Long Name,Impl. Type,Unit,Default Value,Min Value,Max Value,Resolution,A2L Access,Online Calibratable,CompuMethod,Used In Runnable,Physical Description,Impact if Wrong,Notes
+SPD-CAL-001,Kp,Speed controller proportional gain,float32,A/rpm,0.5,0.001,10.0,0.001,Yes,Yes,ALnrl,SpdCtrl_1ms,P-gain of speed PI loop,Low: sluggish response. High: oscillation / instability,Tune with step response
+SPD-CAL-002,Ki,Speed controller integral gain,float32,A/(rpm·s),0.1,0.001,5.0,0.001,Yes,Yes,ALnrl,SpdCtrl_1ms,I-gain of speed PI loop; applied per 1ms sample,Low: steady-state error. High: integrator windup / oscillation,
+SPD-CAL-003,AntiWindupLim,Integrator anti-windup saturation limit,float32,A,80.0,1.0,160.0,0.1,Yes,Yes,ALnrl,SpdCtrl_1ms,Maximum absolute value of integrator state,Too low: limits performance. Too high: windup risk during saturation,Must be ≤ IqMax hardware limit
+SPD-CAL-004,SpdErrDz,Speed error deadzone,uint16,rpm,5,0,50,1,Yes,Yes,SpdNIdentcl,SpdCtrl_1ms,Speed error below this is treated as zero (reduces jitter at steady-state),Too high: large steady-state speed error,Set to 0 for precision apps
+SPD-CAL-005,SpdRampRate,Speed reference ramp rate,float32,rpm/s,1000.0,10.0,10000.0,1.0,Yes,Yes,ALnrl,SpdCtrl_1ms,Maximum rate of change of speed reference (rate limiter),Too low: slow accel. Too high: mechanical stress / current spikes,Applies to both accel and decel
+■  INTER-RUNNABLE VARIABLES (IRV) AND EXCLUSIVE AREAS,,,,,,,,,,,,,,,
+REQ-ID,Name,Type,Kind,Written By,Read By,Protected By EA,Data Description,Init Value,Size (bytes),Persistence,ASIL,Notes,,,
+SPD-IRV-001,SpdCtrlIntgState,float32,IRV,"SpdCtrl_1ms, SpdCtrl_OnModSwitch, SpdCtrl_Init",SpdCtrl_1ms,EA_SpdIntg,PI integrator state (accumulated integral term in A),0.0f,4,None (re-init on startup),ASIL-B,ExclusiveArea required if runnables placed in different OS tasks,,,
+SPD-IRV-002,SpdRefRamped,float32,IRV,SpdCtrl_1ms,SpdCtrl_1ms,—,Rate-limited speed reference after ramp processing (rpm),0.0f,4,,ASIL-B,Internal to _1ms only,,,
+SPD-EA-001,EA_SpdIntg,—,ExclusiveArea,—,—,—,Protects SpdCtrlIntgState and SpdRefRamped against concurrent access,—,—,—,ASIL-B,Enter/Exit around IRV read-modify-write only,,,

@@ -1,15 +1,15 @@
 # Prompt Template: Class/Module Diagram Generation
-# Version: 1.0
+# Version: 1.1
 # Generates AUTOSAR SWC internal structure diagrams
 
 name: "AUTOSAR Class/Module Diagram Generator"
-version: "1.0"
+version: "1.1"
 diagram_type: "class"
 
 metadata:
   author: "MUD Tool Team"
   domain: "AUTOSAR"
-  description: "Generates class diagrams representing SWC internal structure with runnables and data"
+  description: "Generates class diagrams representing SWC internal structure with runnables, IRVs, CalPrm, and ExclusiveAreas"
 
 system_prompt: |
   You are an expert AUTOSAR software architect. Generate UML class diagrams
@@ -31,6 +31,27 @@ system_prompt: |
   - Runnable/Operation names: {{ runnable_naming_regex }}
   - Attributes: camelCase with type prefix (e.g., fusedSensorData: FusedDataType)
 
+  INTER-RUNNABLE VARIABLES (IRV):
+  - IRVs are internal typed variables that pass data between runnables WITHIN the same SWC.
+  - They are NOT ports — they are private to the SWC.
+  - Access APIs: Rte_IrvRead_<Runnable>_<IrvName>() / Rte_IrvWrite_<Runnable>_<IrvName>(&val)
+  - In the class diagram, model IRVs as private attributes with description noting "(IRV)".
+  - Example attribute: {"name": "irvAssistTorque", "data_type": "float32", "visibility": "private", "description": "Inter-runnable torque value (IRV)"}
+  - If two runnables in DIFFERENT OS tasks share an IRV, note the ExclusiveArea requirement
+    in the class description field.
+
+  CALIBRATION PARAMETERS (CalPrm):
+  - Calibration parameters are tunable constants accessed via Rte_CData_<CalPrm>().
+  - They appear in requirements as: gains, thresholds, limits, lookup table data.
+  - Model CalPrm as attributes with visibility "constant" and a "(CalPrm)" description note.
+  - Example: {"name": "CalPrm_AssistGain", "data_type": "float32", "visibility": "constant", "description": "Speed-dependent assist gain calibration parameter (CalPrm)"}
+
+  EXCLUSIVE AREAS:
+  - ExclusiveAreas protect shared IRVs when accessed by runnables in different OS tasks.
+  - Generated AUTOSAR APIs: Rte_Enter_<AreaName>() / Rte_Exit_<AreaName>()
+  - Note ExclusiveAreas in the class "description" field, e.g.:
+    "ExclusiveArea EA_TorqueData protects irvAssistTorque between RE_Compute and RE_Output"
+
   OUTPUT RULES:
   1. Each SWC must have at least one runnable (operation)
   2. Cyclic runnables must specify period_ms > 0
@@ -38,6 +59,9 @@ system_prompt: |
   4. All elements must trace to requirement IDs
   5. Include data type definitions where requirements specify them
   6. Associations should indicate port connectivity (label with interface name)
+  7. IRVs → private attributes with "(IRV)" in description
+  8. CalPrm → constant-visibility attributes with "(CalPrm)" in description
+  9. ExclusiveAreas → noted in class description when IRV is shared across OS tasks
 
   {{ few_shot_examples }}
   {{ additional_context }}
@@ -52,7 +76,8 @@ user_prompt: |
   MODULE CONTEXT: {{ module_context }}
   {% endif %}
 
-  Generate a JSON class diagram showing SWC structure, runnables, and data types.
+  Generate a JSON class diagram showing SWC structure, runnables, internal data types,
+  IRVs, CalPrm attributes, and ExclusiveAreas where applicable.
   Output only valid JSON.
 
 output_schema: |
@@ -63,9 +88,17 @@ output_schema: |
     "classes": [
       {
         "id": "cls_1", "name": "SWC_Name", "stereotype": "ApplicationSWC",
-        "attributes": [{"name": "attrName", "data_type": "uint16", "visibility": "private"}],
-        "operations": [{"name": "RE_Runnable", "trigger_type": "cyclic", "period_ms": 10,
-                        "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ID"]}],
+        "description": "Optional: ExclusiveArea EA_Name protects irvName between RE_A and RE_B",
+        "attributes": [
+          {"name": "attrName",        "data_type": "uint16",   "visibility": "private",  "description": "Internal state variable"},
+          {"name": "irvSharedData",   "data_type": "float32",  "visibility": "private",  "description": "Shared inter-runnable value (IRV)"},
+          {"name": "CalPrm_Gain",     "data_type": "float32",  "visibility": "constant", "description": "Tunable gain parameter (CalPrm)"}
+        ],
+        "operations": [
+          {"name": "RE_Runnable", "trigger_type": "cyclic", "period_ms": 10,
+           "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ID"],
+           "description": "Brief runnable description"}
+        ],
         "trace_reqs": ["REQ-ID"], "confidence": 0.9
       }
     ],
@@ -73,7 +106,7 @@ output_schema: |
       {"id": "a_1", "source": "cls_1", "target": "cls_2",
        "association_type": "dependency", "label": "IF_SR_SensorData"}
     ],
-    "provenance": {"ai_model": "model", "prompt_version": "cls-v1.0", "confidence": 0.85}
+    "provenance": {"ai_model": "model", "prompt_version": "cls-v1.1", "confidence": 0.85}
   }
 
 few_shot_examples:
@@ -84,23 +117,30 @@ few_shot_examples:
       [REQ-ARCH-0144] (interface) Sensor Fusion Internal Data
         Description: SWC_SensorFusion shall maintain internal fusion state including
         confidence level (float32) and fusion counter (uint32).
+      [REQ-ARCH-0145] (interface) Sensor Fusion Calibration
+        Description: SWC_SensorFusion shall use a tunable fusion weight CalPrm_FusionWeight
+        (float32) to blend radar and camera contributions.
     output: |
       {
         "diagram_type": "class",
         "name": "SWC_SensorFusion_Design",
-        "source_requirements": ["REQ-ARCH-0142", "REQ-ARCH-0144"],
+        "source_requirements": ["REQ-ARCH-0142", "REQ-ARCH-0144", "REQ-ARCH-0145"],
         "classes": [
           {
             "id": "cls_1", "name": "SWC_SensorFusion", "stereotype": "ApplicationSWC",
+            "description": "Fuses radar and camera data at 10ms. No ExclusiveArea needed — single cyclic runnable.",
             "attributes": [
               {"name": "fusionConfidence", "data_type": "float32", "visibility": "private", "description": "Current fusion confidence level"},
-              {"name": "fusionCounter", "data_type": "uint32", "visibility": "private", "description": "Fusion cycle counter"}
+              {"name": "fusionCounter",    "data_type": "uint32",  "visibility": "private", "description": "Fusion cycle counter"},
+              {"name": "CalPrm_FusionWeight", "data_type": "float32", "visibility": "constant", "description": "Radar/camera blend weight tuning parameter (CalPrm)"}
             ],
             "operations": [
-              {"name": "RE_InitFusion", "trigger_type": "init", "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ARCH-0142"], "description": "Initialize fusion algorithm"},
-              {"name": "RE_FuseSensorData", "trigger_type": "cyclic", "period_ms": 10, "return_type": "void", "visibility": "public", "trace_reqs": ["REQ-ARCH-0142"], "description": "Main fusion processing"}
+              {"name": "RE_InitFusion",    "trigger_type": "init",   "return_type": "void", "visibility": "public",
+               "trace_reqs": ["REQ-ARCH-0142"], "description": "Initialize fusion algorithm and calibration"},
+              {"name": "RE_FuseSensorData","trigger_type": "cyclic", "period_ms": 10, "return_type": "void", "visibility": "public",
+               "trace_reqs": ["REQ-ARCH-0142"], "description": "Fuse radar and camera data; write output via PP_FusedData"}
             ],
-            "trace_reqs": ["REQ-ARCH-0142", "REQ-ARCH-0144"],
+            "trace_reqs": ["REQ-ARCH-0142", "REQ-ARCH-0144", "REQ-ARCH-0145"],
             "confidence": 0.92
           }
         ],
@@ -108,5 +148,5 @@ few_shot_examples:
         "data_types": [
           {"name": "FusedSensorOutput", "category": "record", "fields": ["radarRange: float32", "cameraClass: uint8", "confidence: float32"]}
         ],
-        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "cls-v1.0", "confidence": 0.92}
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "cls-v1.1", "confidence": 0.92}
       }

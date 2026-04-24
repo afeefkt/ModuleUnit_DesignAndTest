@@ -1,0 +1,49 @@
+﻿Document Purpose: Architectural & Unit-Level Requirements for MUD Skill Testing — SpdCtrl | CurrCtrl | MtrMon,,,,,,,,,,,,,
+Document Information,,,,,,,,,,,,,
+Document ID,ARCH-PMSM-FOC-001,,,,,,,,,,,,
+Version,1.0,,,,,,,,,,,,
+AUTOSAR Release,Classic Platform 4.4,,,,,,,,,,,,
+Safety Level,ASIL-B,,,,,,,,,,,,
+Target HW,AURIX TC377 (6-phase IPMSM),,,,,,,,,,,,
+Prepared By,Architecture Team,,,,,,,,,,,,
+Date,2026-04-21,,,,,,,,,,,,
+Status,Draft — For MUD Skill Testing,,,,,,,,,,,,
+Component Summary,,,,,,,,,,,,,
+ID,Component ShortName,Long Name,SwCType,Runnables,R-Ports,P-Ports,CalPrm Count,IRV,ExclusiveArea,ASIL,Cycle Times,Depends On,Notes
+C01,SpdCtrl,Speed controller,AtomicSwComponentType,"SpdCtrl_Init
+SpdCtrl_1ms
+SpdCtrl_OnModSwitch","SpdFbk
+SpdRef
+IqMaxIn
+OpMod",IqRef,5 params,SpdCtrlIntgState,EA_SpdIntg,ASIL-B,Init / 1ms / Event,MtrMon (IqMax),Outer PI loop; anti-windup; mode-aware reset
+C02,CurrCtrl,Current controller,AtomicSwComponentType,"CurrCtrl_Init
+CurrCtrl_100us","IdFbk
+IqFbk
+IdRef
+IqRef
+VdcBus","VdCmd
+VqCmd",9 params,"IdIntgState
+IqIntgState",EA_CurrIntg,ASIL-B,Init / 100µs,SpdCtrl (IqRef),Inner PI loop; decoupling FF; voltage limiting
+C03,MtrMon,Motor monitor,AtomicSwComponentType,"MtrMon_Init
+MtrMon_1ms
+MtrMon_10ms","IdMon
+IqMon
+MtrT
+VdcMon
+SpdMon","IqMaxOut
+MtrProtSt
+OcSt
+OtSt",6 params,"OcState
+OtState",EA_MtrState,ASIL-B,Init / 1ms / 10ms,— (provides to SpdCtrl),Protection; OC/OT detection; Iq derating
+Signal Flow Summary,,,,,,,,,,,,,
+"Signal flow: SpdRef ──▶ [SpdCtrl] ──▶ IqRef ──▶ [CurrCtrl] ──▶ VdCmd/VqCmd ──▶ PWM/Inverter
+             SpdFbk (observer) ────────────▶ [SpdCtrl] (feedback)
+             IdFbk/IqFbk (ADC) ─────────────────▶ [CurrCtrl] (feedback)
+             IdMon/IqMon/MtrT/VdcMon ──▶ [MtrMon] ──▶ IqMaxIn ──▶ [SpdCtrl] (protection)",,,,,,,,,,,,,
+Color Legend,,,,,,,,,,,,,
+,R-Port (Require Port) — component reads this data,,,,,,,,,,,,
+,P-Port (Provide Port) — component writes this data,,,,,,,,,,,,
+,CalPrm — calibration parameter (online-tunable via XCP/A2L),,,,,,,,,,,,
+,Runnable Entity — executable code block triggered by RTE event,,,,,,,,,,,,
+,InterRunnableVariable (IRV) — internal data between runnables,,,,,,,,,,,,
+,ExclusiveArea — concurrency protection region,,,,,,,,,,,,

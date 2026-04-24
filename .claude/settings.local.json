@@ -41,7 +41,8 @@
       "Bash(xargs grep *)",
       "Bash(.venv/Scripts/python.exe -c \"from mudtool.ai.chunked_elaborator import ChunkedElaborator; print\\('OK'\\)\")",
       "Bash(.venv/Scripts/python.exe -c \"from mudtool.config.settings import Settings; s = Settings\\(\\); print\\('elaboration_mode =', s.elaboration_mode\\)\")",
-      "Bash(.venv/Scripts/python.exe -c ' *)"
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(xargs cat *)"
     ]
   }
 }

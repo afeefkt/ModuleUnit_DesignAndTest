@@ -1,0 +1,37 @@
+﻿SwCType: AtomicSwComponentType  |  Safety: ASIL-B  |  Cycles: Init (once) | 100 µs (TimingEvent = 10 kHz inner loop)  |  Purpose: Inner PI current control loop — regulates Id and Iq via decoupled PI + voltage limiting,,,,,,,,,,,,,,,
+■  PORTS AND INTERFACES,,,,,,,,,,,,,,,
+REQ-ID,Port ShortName,Direction,Interface ShortName,Interface Type,Data Element,Impl. Type,Phys. Unit,Resolution,Min Value,Max Value,CompuMethod,Comm. Mode,Connected To,Description,ASIL
+CUR-PORT-001,IdFbk,R-Port,MtrId1,SenderReceiverInterface,Val,sint16,A×100,0.01 A/LSB,-16000,16000,MtrIdLnrl (×0.01 A/LSB),Explicit,CurrentSens SWC (P-Port IdOut),d-axis stator current feedback from ADC/Clarke-Park transform,ASIL-B
+CUR-PORT-002,IqFbk,R-Port,MtrIq1,SenderReceiverInterface,Val,sint16,A×100,0.01 A/LSB,-16000,16000,MtrIqLnrl (×0.01 A/LSB),Explicit,CurrentSens SWC (P-Port IqOut),q-axis stator current feedback from ADC/Clarke-Park transform,ASIL-B
+CUR-PORT-003,IdRef,R-Port,MtrId1,SenderReceiverInterface,Val,sint16,A×100,0.01 A/LSB,-5000,5000,MtrIdLnrl,Explicit,MTPA SWC or tied to 0 for SPMSM,d-axis current reference; 0 for SPMSM; MTPA-computed for IPMSM,ASIL-B
+CUR-PORT-004,IqRef,R-Port,MtrIq1,SenderReceiverInterface,Val,float32,A,0.001 A,-160.0,160.0,ALnrl,Explicit,SpdCtrl (P-Port IqRef),q-axis current reference from speed controller,ASIL-B
+CUR-PORT-005,VdcBus,R-Port,VdcBus1,SenderReceiverInterface,Val,uint16,V×10,0.1 V/LSB,0,8000,VdcLnrl (×0.1 V/LSB),Explicit,VdcMeas SWC (P-Port VdcOut),DC bus voltage measurement for voltage normalisation in PI output,ASIL-B
+CUR-PORT-006,VdCmd,P-Port,MtrVd1,SenderReceiverInterface,Val,sint16,V×100,0.01 V/LSB,-40000,40000,VdLnrl (×0.01 V/LSB),Explicit,SVM/PWM SWC (R-Port VdIn),d-axis voltage command to PWM/SVM block after PI + decoupling,ASIL-B
+CUR-PORT-007,VqCmd,P-Port,MtrVq1,SenderReceiverInterface,Val,sint16,V×100,0.01 V/LSB,-40000,40000,VqLnrl (×0.01 V/LSB),Explicit,SVM/PWM SWC (R-Port VqIn),q-axis voltage command to PWM/SVM block after PI + decoupling,ASIL-B
+■  RUNNABLE ENTITIES,,,,,,,,,,,,,,,
+REQ-ID,Runnable ShortName,RTE Event,Cycle / Condition,Ports Read,Ports Written,CalPrm Used,IRV Read,IRV Written,ExclusiveArea,Init Required,Return Type,Description,ASIL,Timing Budget,Notes
+CUR-RUN-001,CurrCtrl_Init,InitEvent,Once at ECU startup,"IdRef, IqRef, IdFbk, IqFbk, VdcBus","VdCmd, VqCmd",CurrCtrlPrm (all),—,"IdIntgState, IqIntgState",—,Yes,void,"Set IdIntgState=0, IqIntgState=0, VdCmd=0, VqCmd=0. Cache CalPrm to locals.",ASIL-B,<50 µs,
+CUR-RUN-002,CurrCtrl_100us,TimingEvent,100 µs (10 kHz),"IdFbk, IqFbk, IdRef, IqRef, VdcBus","VdCmd, VqCmd","KpId, KiId, KpIq, KiIq, VdcNom, VoltLim, Ld, Lq, Rs",—,"IdIntgState, IqIntgState",EA_CurrIntg,No,void,"1. Read IdFbk, IqFbk (sint16 → float32 via ×0.01)
+2. Read IqRef (float32), IdRef (sint16→float32)
+3. Compute errors: idErr=IdRef-IdFbk; iqErr=IqRef-IqFbk
+4. d-axis PI: Vd = KpId*idErr + IdIntg; IdIntg+=KiId*idErr*100e-6
+5. q-axis PI: Vq = KpIq*iqErr + IqIntg; IqIntg+=KiIq*iqErr*100e-6
+6. Decoupling FF: Vd -= omega*Lq*IqFbk; Vq += omega*Ld*IdFbk
+7. Voltage circle limiting: if |Vdq|>VoltLim*Vdc/sqrt(3) → scale down
+8. Convert float Vd/Vq → sint16 (×100) and write ports",ASIL-B,<30 µs,10 kHz — tightest timing constraint in system. No dynamic memory.
+■  CALIBRATION PARAMETERS (CalPrm — ParameterInterface),,,,,,,,,,,,,,,
+REQ-ID,CalPrm ShortName,Long Name,Impl. Type,Unit,Default Value,Min Value,Max Value,Resolution,A2L Access,Online Calibratable,CompuMethod,Used In Runnable,Physical Description,Impact if Wrong,Notes
+CUR-CAL-001,KpId,d-axis current PI proportional gain,float32,V/A,5.0,0.1,200.0,0.01,Yes,Yes,VPerALnrl,CurrCtrl_100us,P-gain for d-axis PI controller,Low: slow Id tracking. High: oscillation — motor may destabilize,
+CUR-CAL-002,KiId,d-axis current PI integral gain,float32,V/(A·s),50.0,1.0,5000.0,0.1,Yes,Yes,VPerALnrl,CurrCtrl_100us,I-gain for d-axis PI; per 100µs sample,Too high: integrator diverges. Too low: steady-state Id error,
+CUR-CAL-003,KpIq,q-axis current PI proportional gain,float32,V/A,5.0,0.1,200.0,0.01,Yes,Yes,VPerALnrl,CurrCtrl_100us,P-gain for q-axis PI controller,Low: slow torque response. High: oscillation,Usually same as KpId for SPMSM
+CUR-CAL-004,KiIq,q-axis current PI integral gain,float32,V/(A·s),50.0,1.0,5000.0,0.1,Yes,Yes,VPerALnrl,CurrCtrl_100us,I-gain for q-axis PI; per 100µs sample,Too high: torque ripple / oscillation,
+CUR-CAL-005,VdcNom,Nominal DC bus voltage,float32,V,400.0,100.0,800.0,0.1,Yes,No,VLnrl,CurrCtrl_100us,Nominal Vdc used for normalisation; not measured value,Wrong value → incorrect per-unit scaling of voltage commands,Set once at calibration
+CUR-CAL-006,VoltLim,Voltage limit factor,float32,—,0.90,0.50,0.98,0.01,Yes,Yes,VoltLimIdentcl,CurrCtrl_100us,Fraction of Vdc/√3 used as voltage limit circle radius,Too high: overmodulation. Too low: reduced torque capability,
+CUR-CAL-007,Ld,d-axis stator inductance,float32,H,0.00100,0.00001,0.05000,0.00001,Yes,No,LdIdentcl,CurrCtrl_100us,d-axis inductance for cross-coupling decoupling feedforward,Wrong: residual cross-coupling oscillation,Identify via standstill test
+CUR-CAL-008,Lq,q-axis stator inductance,float32,H,0.00120,0.00001,0.05000,0.00001,Yes,No,LqIdentcl,CurrCtrl_100us,q-axis inductance for cross-coupling decoupling feedforward,Wrong: cross-coupling oscillation at high speed,Lq > Ld for IPMSM
+CUR-CAL-009,Rs,Stator phase resistance,float32,Ω,0.100,0.001,5.000,0.001,Yes,No,RsIdentcl,CurrCtrl_100us,Stator resistance for back-EMF compensation at low speed,Wrong: steady-state voltage offset at low speed,Temp-dependent; may need derating table
+■  INTER-RUNNABLE VARIABLES (IRV) AND EXCLUSIVE AREAS,,,,,,,,,,,,,,,
+REQ-ID,Name,Type,Kind,Written By,Read By,Protected By EA,Data Description,Init Value,Size (bytes),Persistence,ASIL,Notes,,,
+CUR-IRV-001,IdIntgState,float32,IRV,"CurrCtrl_100us, CurrCtrl_Init",CurrCtrl_100us,EA_CurrIntg,d-axis PI integrator accumulator (V),0.0f,4,,ASIL-B,,,,
+CUR-IRV-002,IqIntgState,float32,IRV,"CurrCtrl_100us, CurrCtrl_Init",CurrCtrl_100us,EA_CurrIntg,q-axis PI integrator accumulator (V),0.0f,4,,ASIL-B,,,,
+CUR-EA-001,EA_CurrIntg,—,ExclusiveArea,—,—,—,Protects IdIntgState and IqIntgState against concurrent access,—,—,—,ASIL-B,Not strictly needed if 100µs is only runnable — but kept for future-proofing,,,
