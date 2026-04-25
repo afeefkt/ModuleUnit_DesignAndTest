@@ -220,6 +220,7 @@ class StructuralPreCheck:
                 "sequence diagrams need at least 2 lifelines. "
                 "Add requirements referencing a second SWC."
             )
+            result.blocked = True
 
         if not _PORT_PATTERN.search(all_text):
             result.warnings.append(

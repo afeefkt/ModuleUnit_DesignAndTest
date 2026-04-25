@@ -74,6 +74,16 @@ class GenerateRequest(BaseModel):
     )
 
 
+    mud_spec_markdown: Optional[str] = Field(
+        None,
+        description="Latest MUD spec markdown for activity generation.",
+    )
+    activity_source: Literal["requirements", "mud_spec"] = Field(
+        "requirements",
+        description="Source of activity diagrams.",
+    )
+
+
 class GenerateResponse(BaseModel):
     result: GenerationResult
     validation_report: Optional[ValidationReport] = None
@@ -475,6 +485,77 @@ async def _generate_activity_per_swc(
     return merged
 
 
+def _validate_activity_request(request: GenerateRequest, diagram_types: list[DiagramType]) -> None:
+    if DiagramType.ACTIVITY not in diagram_types:
+        return
+    if request.activity_source != "mud_spec":
+        raise HTTPException(
+            400,
+            "Activity diagrams are MUD-first and require activity_source='mud_spec'.",
+        )
+    if not (request.mud_spec_markdown or "").strip():
+        raise HTTPException(
+            400,
+            "Activity diagrams require mud_spec_markdown from the selected module.",
+        )
+
+
+async def _generate_activity_from_mud(
+    orchestrator,
+    requirements: list,
+    request: GenerateRequest,
+    progress_callback: Optional[callable] = None,
+) -> "GenerationResult":
+    from mudtool.ai.mud_activity_context import build_mud_activity_context
+    from mudtool.models.json_uml import DiagramType, GenerationResult
+
+    mud_context = build_mud_activity_context(
+        request.mud_spec_markdown or "",
+        module_context=request.module_context,
+    )
+    logger.info(
+        "_generate_activity_from_mud: swc=%s runnables=%d has_flow=%s md_len=%d",
+        mud_context.swc_name,
+        len(mud_context.runnables),
+        mud_context.has_usable_flow_source,
+        len(request.mud_spec_markdown or ""),
+    )
+    if not mud_context.has_usable_flow_source:
+        return GenerationResult(
+            analyzed_requirements=[r.req_id for r in requirements],
+            errors=[
+                "Selected MUD spec does not contain runnable flow details usable for activity generation."
+            ],
+        )
+
+    if progress_callback:
+        progress_callback({
+            "stage": "activity_context",
+            "diagram_type": "activity",
+            "source": "mud_spec",
+            "runnable_count": len(mud_context.runnables),
+            "message": (
+                f"[Activity:MUD] Using MUD spec for {mud_context.swc_name or (request.module_context or 'selected SWC')} "
+                f"with {len(mud_context.runnables)} runnable(s)"
+            ),
+        })
+
+    result = await orchestrator.generate_diagram(
+        DiagramType.ACTIVITY,
+        requirements,
+        module_context=request.module_context,
+        existing_swcs=request.existing_swcs,
+        temperature=request.temperature,
+        progress_callback=progress_callback,
+        generation_profile=("autosar" if request.autosar_compliant else "generic_c"),
+        activity_label_style=request.activity_label_style,
+        autosar_compliant=request.autosar_compliant,
+        activity_source="mud_spec",
+        mud_activity_context=mud_context.to_prompt_block(),
+    )
+    return result
+
+
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_diagrams(request: GenerateRequest):
     """Generate UML diagrams from requirements using AI.
@@ -513,10 +594,29 @@ async def generate_diagrams(request: GenerateRequest):
             diagram_types.append(DiagramType(dt_str))
         except ValueError:
             raise HTTPException(400, f"Invalid diagram type: {dt_str}")
+    _validate_activity_request(request, diagram_types)
 
     req_ids = [r.req_id for r in request.requirements.requirements]
     generation_mode = "autosar" if request.autosar_compliant else "generic_c"
     generation_profile = generation_mode
+
+    from mudtool.validation.structural_precheck import StructuralPreCheck
+    precheck = StructuralPreCheck()
+    precheck_results = {
+        dt.value: precheck.check(request.requirements.requirements, dt).to_summary()
+        for dt in diagram_types
+        if dt != DiagramType.ACTIVITY
+    }
+    diagram_types = [
+        dt for dt in diagram_types
+        if dt == DiagramType.ACTIVITY
+        or not precheck_results.get(dt.value, {}).get("blocked", False)
+    ]
+    if not diagram_types:
+        raise HTTPException(
+            400,
+            "All requested architecture diagrams are blocked by structural pre-check.",
+        )
 
     elaboration_data = await _ensure_elaboration_data(
         orchestrator, request.requirements.requirements
@@ -629,22 +729,10 @@ async def generate_diagrams(request: GenerateRequest):
 
     # ── Activity diagrams — one per SWC when swc_list is available ──────────
     if activity_types:
-        if has_swc_list:
-            logger.info(
-                "[PerSWC] Generating %d activity diagram(s) for %d SWC(s)",
-                len(activity_types),
-                len(elaboration_data["swc_list"]),
-            )
-        activity_result = await _generate_activity_per_swc(
+        activity_result = await _generate_activity_from_mud(
             orchestrator=orchestrator,
-            all_requirements=request.requirements.requirements,
-            elaboration_data=elaboration_data,
-            pipeline_orch=None,
-            pipeline_config=pipeline_config,
-            module_context=request.module_context,
-            existing_swcs=request.existing_swcs,
-            effective_mode=effective_mode,
-            req_ids=req_ids,
+            requirements=request.requirements.requirements,
+            request=request,
         )
         result.diagrams.extend(activity_result.diagrams)
         result.warnings.extend(activity_result.warnings)
@@ -704,6 +792,7 @@ async def generate_diagrams_stream(request: GenerateRequest):
             diagram_types.append(DiagramType(dt_str))
         except ValueError:
             raise HTTPException(400, f"Invalid diagram type: {dt_str}")
+    _validate_activity_request(request, diagram_types)
 
     req_ids = [r.req_id for r in request.requirements.requirements]
     generation_mode = "autosar" if request.autosar_compliant else "generic_c"
@@ -735,6 +824,18 @@ async def generate_diagrams_stream(request: GenerateRequest):
             precheck_results = {}
             precheck_hints: dict[str, str] = {}  # diagram_type.value → hint block
             for dt in diagram_types:
+                if dt == DiagramType.ACTIVITY and request.activity_source == "mud_spec":
+                    precheck_results[dt.value] = {
+                        "diagram_type": dt.value,
+                        "blocked": False,
+                        "quality_score": 1.0,
+                        "gap_count": 0,
+                        "warning_count": 0,
+                        "gaps": [],
+                        "warnings": [],
+                        "suggestions": [],
+                    }
+                    continue
                 pc = precheck.check(request.requirements.requirements, dt)
                 precheck_results[dt.value] = pc.to_summary()
                 if pc.gaps or pc.warnings:
@@ -891,16 +992,10 @@ async def generate_diagrams_stream(request: GenerateRequest):
                         "[PerSWC] Generating activity diagrams for %d SWC(s)",
                         len(elaboration_data["swc_list"]),
                     )
-                activity_result = await _generate_activity_per_swc(
+                activity_result = await _generate_activity_from_mud(
                     orchestrator=orchestrator,
-                    all_requirements=request.requirements.requirements,
-                    elaboration_data=elaboration_data,
-                    pipeline_orch=None,
-                    pipeline_config=pipeline_config,
-                    module_context=request.module_context,
-                    existing_swcs=request.existing_swcs,
-                    effective_mode=effective_mode,
-                    req_ids=req_ids,
+                    requirements=request.requirements.requirements,
+                    request=request,
                     progress_callback=progress_callback,
                 )
                 result.diagrams.extend(activity_result.diagrams)

@@ -4,6 +4,9 @@ import pytest
 
 from mudtool.config.settings import Settings
 from mudtool.models.json_uml import (
+    ActivityDiagram,
+    ActivityNode,
+    ActivityNodeType,
     ClassDiagram,
     ClassElement,
     ClassOperation,
@@ -19,11 +22,15 @@ from mudtool.models.json_uml import (
     State,
     StateMachineDiagram,
     Transition,
+    DiagramType,
 )
+from mudtool.models.requirements import Priority, Requirement, RequirementType
 from mudtool.validation.structural_validator import StructuralValidator
 from mudtool.validation.autosar_validator import AUTOSARValidator
 from mudtool.validation.consistency_validator import ConsistencyValidator
 from mudtool.validation.engine import ValidationEngine
+from mudtool.validation.structural_precheck import StructuralPreCheck
+from mudtool.ai.orchestrator import AIOrchestrator
 
 
 class TestStructuralValidator:
@@ -98,6 +105,65 @@ class TestStructuralValidator:
         report = StructuralValidator().validate(result)
 
         assert report.error_count >= 1
+
+
+class TestStructuralPreCheck:
+    def test_sequence_requires_two_swcs_and_blocks_generation(self):
+        requirements = [
+            Requirement(
+                req_id="REQ-ARCH-1001",
+                title="EPS torque publish",
+                description=(
+                    "SWC_ElectricPowerSteering shall send steering torque via "
+                    "PP_Torque using IF_SR_Torque."
+                ),
+                req_type=RequirementType.FUNCTIONAL,
+                priority=Priority.MUST,
+            ),
+            Requirement(
+                req_id="REQ-ARCH-1002",
+                title="EPS torque compute",
+                description=(
+                    "SWC_ElectricPowerSteering shall compute assist torque in "
+                    "RE_Main every 10 ms."
+                ),
+                req_type=RequirementType.FUNCTIONAL,
+                priority=Priority.MUST,
+            ),
+        ]
+
+        result = StructuralPreCheck().check(requirements, DiagramType.SEQUENCE)
+
+        assert result.blocked is True
+        assert any("at least 2 lifelines" in gap for gap in result.gaps)
+
+    def test_activity_repair_recurses_into_sub_diagrams(self):
+        orchestrator = AIOrchestrator.__new__(AIOrchestrator)
+        child = ActivityDiagram(
+            name="Helper",
+            function_name="EPS_Helper",
+            nodes=[
+                ActivityNode(id="N_01", name="l_x = 1", node_type=ActivityNodeType.ACTION),
+            ],
+            edges=[],
+        )
+        parent = ActivityDiagram(
+            name="Parent",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Test",
+            nodes=[
+                ActivityNode(id="N_10", name="l_y = EPS_Helper()", node_type=ActivityNodeType.FUNCTION_CALL, callee="EPS_Helper"),
+            ],
+            edges=[],
+            sub_diagrams=[child],
+        )
+
+        repaired = orchestrator._repair_activity_diagram(parent, ["REQ-ARCH-1001"])
+
+        assert any(n.node_type == ActivityNodeType.INITIAL for n in repaired.nodes)
+        assert any(n.node_type == ActivityNodeType.FINAL for n in repaired.nodes)
+        assert any(n.node_type == ActivityNodeType.INITIAL for n in repaired.sub_diagrams[0].nodes)
+        assert any(n.node_type == ActivityNodeType.FINAL for n in repaired.sub_diagrams[0].nodes)
 
 
 class TestAUTOSARValidator:

@@ -415,7 +415,7 @@ class MermaidExporter:
                 lines.append(f"    %% traces: {', '.join(node.trace_reqs)}")
 
             if node.node_type == ActivityNodeType.INITIAL:
-                lines.append(f"    {nid}([{_q('Start: ' + node.name)}])")
+                lines.append(f"    {nid}([{_q('Start')}])")
 
             elif node.node_type == ActivityNodeType.FINAL:
                 lines.append(f"    {nid}([{_q('End')}])")

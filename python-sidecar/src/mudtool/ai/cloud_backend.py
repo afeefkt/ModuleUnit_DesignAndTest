@@ -213,9 +213,13 @@ class CloudBackend(BaseAIBackend):
         if self.settings.openai_enable_thinking or is_reasoning_model:
             payload["think"] = True    # Ollama extension: enables chain-of-thought reasoning
 
-        # Only inject format:json when the CALLER explicitly requests JSON output.
-        # NEVER apply to Markdown / prose generation — it corrupts the response.
-        if response_format == "json" and self.settings.openai_json_mode and self._is_local_ollama():
+        # Inject format:json when caller explicitly requests JSON output (review, analysis, etc.).
+        # We ignore the global openai_json_mode guard here because the caller has already
+        # opted-in by passing response_format="json". This ensures the reviewer model
+        # (which may differ from the generator) returns parseable JSON regardless of
+        # the global setting. NEVER apply to prose/Markdown generation calls (those
+        # pass response_format="text").
+        if response_format == "json" and self._is_local_ollama():
             payload["format"] = "json"
 
         if stop_sequences:

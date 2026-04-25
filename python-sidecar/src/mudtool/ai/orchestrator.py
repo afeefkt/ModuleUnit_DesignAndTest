@@ -109,6 +109,42 @@ class AIOrchestrator:
             "No AI backend available. Configure either cloud API key or local model path."
         )
 
+    def _get_reviewer_backend(self) -> BaseAIBackend:
+        """Return a backend configured for the reviewer/critic model.
+
+        Uses ``settings.pipeline_reviewer_model`` (e.g. ``deepseek-r1:7b``) so
+        that MUD spec review is performed by a reasoning-capable model rather
+        than the same generation model.  Falls back to ``_get_backend()`` when:
+          - ``pipeline_reviewer_model`` is empty / not configured
+          - The active backend is a local model (no per-model override supported)
+        """
+        reviewer_model = self.settings.pipeline_reviewer_model
+        if not reviewer_model:
+            logger.debug("Reviewer: no pipeline_reviewer_model configured, using generator backend")
+            return self._get_backend()
+
+        gen_backend = self._get_backend()
+        if not isinstance(gen_backend, CloudBackend):
+            logger.info("Reviewer: local backend active — reviewer model override not supported, using generator")
+            return gen_backend
+
+        # Build a CloudBackend instance with the reviewer model name substituted
+        try:
+            reviewer_settings = self.settings.model_copy(
+                update={"openai_model": reviewer_model}
+            )
+        except AttributeError:
+            # Pydantic v1 fallback
+            reviewer_settings = self.settings.copy(
+                update={"openai_model": reviewer_model}
+            )
+
+        reviewer = CloudBackend(reviewer_settings)
+        logger.info(
+            "Reviewer backend: %s (model=%s)", reviewer.backend_name, reviewer_model
+        )
+        return reviewer
+
     async def generate_diagram(
         self,
         diagram_type: DiagramType,
@@ -121,6 +157,8 @@ class AIOrchestrator:
         activity_label_style: str = "pseudocode",
         autosar_compliant: bool = True,
         elaborated_data: Optional[dict] = None,
+        activity_source: str = "requirements",
+        mud_activity_context: Optional[str] = None,
     ) -> GenerationResult:
         """Generate a single diagram from requirements.
 
@@ -160,6 +198,22 @@ class AIOrchestrator:
             profile=generation_profile,
             activity_label_style=activity_label_style,
         )
+
+        if diagram_type == DiagramType.ACTIVITY and activity_source == "mud_spec":
+            system_prompt += (
+                "\n\nMUD-FIRST ACTIVITY MODE:\n"
+                "- The supplied MUD specification is the authoritative source for runnable flow.\n"
+                "- Architecture requirements are traceability background only.\n"
+                "- Produce one parent activity diagram per runnable described by the MUD spec.\n"
+                "- Helper sub-diagrams are allowed only when supported by the MUD text.\n"
+                "- Every diagram must contain a valid Start-to-End executable path."
+            )
+            user_prompt = self._build_activity_mud_user_prompt(
+                mud_activity_context or "",
+                requirements,
+                module_context,
+                activity_label_style=activity_label_style,
+            )
 
         # Inject elaborated context if available (from pre-processing step)
         try:
@@ -579,6 +633,8 @@ class AIOrchestrator:
         activity_label_style: str = "pseudocode",
         autosar_compliant: bool = True,
         elaborated_data: Optional[dict] = None,
+        activity_source: str = "requirements",
+        mud_activity_context: Optional[str] = None,
     ) -> GenerationResult:
         """Post-generation verification gate.
 
@@ -604,6 +660,8 @@ class AIOrchestrator:
                 activity_label_style=activity_label_style,
                 autosar_compliant=autosar_compliant,
                 elaborated_data=elaborated_data,
+                activity_source=activity_source,
+                mud_activity_context=mud_activity_context,
             )
 
         covered = self._collect_covered_reqs(result)
@@ -625,6 +683,32 @@ class AIOrchestrator:
             reasons.append(f"confidence={confidence:.2f} < threshold={self.settings.confidence_threshold:.2f}")
         if str_errors > 0:
             reasons.append(f"{str_errors} structural errors")
+        if diagram_type == DiagramType.STATE_MACHINE:
+            missing_initial = any(
+                isinstance(d, StateMachineDiagram)
+                and not any(getattr(state, "is_initial", False) for state in d.states)
+                for d in result.diagrams
+            )
+            no_transitions = any(
+                isinstance(d, StateMachineDiagram) and len(d.transitions) == 0
+                for d in result.diagrams
+            )
+            if missing_initial:
+                reasons.append("state machine missing initial state")
+            if no_transitions:
+                reasons.append("state machine has no transitions")
+        if diagram_type == DiagramType.ACTIVITY:
+            invalid_activity = any(
+                isinstance(d, ActivityDiagram)
+                and (
+                    not d.nodes
+                    or not any(n.node_type == ActivityNodeType.INITIAL for n in d.nodes)
+                    or not any(n.node_type == ActivityNodeType.FINAL for n in d.nodes)
+                )
+                for d in result.diagrams
+            )
+            if invalid_activity:
+                reasons.append("activity diagram missing executable Start/End path")
 
         if reasons:
             logger.warning(
@@ -640,6 +724,8 @@ class AIOrchestrator:
                 activity_label_style=activity_label_style,
                 autosar_compliant=autosar_compliant,
                 elaborated_data=elaborated_data,
+                activity_source=activity_source,
+                mud_activity_context=mud_activity_context,
             )
             # Keep whichever result is better
             regen_conf = self._compute_confidence(regen, req_id_list)
@@ -789,6 +875,16 @@ Output valid JSON with this structure:
                 # initial / final nodes (common with smaller local models).
                 if isinstance(diagram, ActivityDiagram):
                     diagram = self._repair_activity_diagram(diagram, req_ids)
+                    has_initial = any(
+                        node.node_type == ActivityNodeType.INITIAL for node in diagram.nodes
+                    )
+                    has_final = any(
+                        node.node_type == ActivityNodeType.FINAL for node in diagram.nodes
+                    )
+                    if not diagram.nodes or not has_initial or not has_final:
+                        result.errors.append(
+                            f"Activity diagram '{diagram.name or i}' is structurally incomplete after repair."
+                        )
 
                 result.diagrams.append(diagram)
                 if activity_normalization_stats:
@@ -1152,8 +1248,40 @@ Output valid JSON with this structure:
                         f"'{synth_id}' from DECISION '{node.id}' → '{else_target}'"
                     )
 
+        repaired_sub_diagrams = [
+            self._repair_activity_diagram(sub, req_ids)
+            for sub in diagram.sub_diagrams
+        ]
+
         # Return rebuilt diagram with repaired node/edge lists
-        return diagram.model_copy(update={"nodes": nodes, "edges": edges})
+        return diagram.model_copy(
+            update={"nodes": nodes, "edges": edges, "sub_diagrams": repaired_sub_diagrams}
+        )
+
+    def _build_activity_mud_user_prompt(
+        self,
+        mud_activity_context: str,
+        requirements: list[Requirement],
+        module_context: Optional[str],
+        activity_label_style: str = "pseudocode",
+    ) -> str:
+        reqs_text = self.prompt_engine._format_requirements(requirements)
+        style_line = (
+            "Use short pseudocode-style node labels unless the MUD explicitly shows full call signatures."
+            if activity_label_style == "pseudocode"
+            else "Use explicit call-signature labels when the MUD spec shows them."
+        )
+        return (
+            f"Generate activity flowcharts for {module_context or 'the selected SWC'}.\n\n"
+            "Use the supplied MUD specification as the authoritative control-flow source.\n"
+            "Produce one parent flowchart per runnable and helper sub-diagrams only when the MUD text supports them.\n"
+            "Every diagram must contain Start and End nodes and at least one executable path between them.\n"
+            f"{style_line}\n\n"
+            f"{mud_activity_context}\n\n"
+            "ARCHITECTURAL REQUIREMENTS FOR TRACEABILITY:\n"
+            f"{reqs_text}\n\n"
+            "Output ONE JSON object only. No text before or after."
+        )
 
     @staticmethod
     def _collect_covered_reqs(result: GenerationResult) -> set[str]:
@@ -1366,5 +1494,9 @@ Output valid JSON with this structure:
 
         result["active_backend"] = self.settings.ai_backend.value
         result["prompt_templates_loaded"] = len(self.prompt_engine._templates)
+
+        # Expose model names for dual-AI UI badges
+        result["generator_model"] = self.settings.openai_model or self.settings.local_model_path or "unknown"
+        result["reviewer_model"] = self.settings.pipeline_reviewer_model or result["generator_model"]
 
         return result

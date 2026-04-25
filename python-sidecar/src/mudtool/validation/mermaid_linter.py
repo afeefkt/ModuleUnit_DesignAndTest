@@ -146,11 +146,11 @@ class MermaidLinter:
             if diagram_type_map and key in diagram_type_map:
                 dt = diagram_type_map[key]
             else:
-                prefix = key.split("_")[0]
-                try:
-                    dt = DiagramType(prefix)
-                except ValueError:
-                    dt = DiagramType.ACTIVITY
+                dt = DiagramType.ACTIVITY # default fallback
+                for enum_type in DiagramType:
+                    if key.startswith(enum_type.value):
+                        dt = enum_type
+                        break
             results[key] = self.lint(text, dt, diagram_key=key)
         return results
 
@@ -287,10 +287,15 @@ class MermaidLinter:
             )
 
         if not declared:
-            result.errors.append(
-                "No 'participant' declarations found - sequence diagram will be empty."
-            )
-            result.valid = False
+            if not used:
+                result.errors.append(
+                    "No 'participant' declarations and no messages found - sequence diagram will be empty."
+                )
+                result.valid = False
+            else:
+                result.warnings.append(
+                    "No explicit 'participant' declarations found - relying on implicit actors from messages."
+                )
 
         return result
 

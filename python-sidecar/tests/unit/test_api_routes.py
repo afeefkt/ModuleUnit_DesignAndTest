@@ -179,6 +179,19 @@ class TestGenerateAndValidateRoutes:
         assert response.status_code == 400
         assert "Invalid diagram type" in response.json()["detail"]
 
+    def test_generate_rejects_activity_without_mud_spec(self, api_client, sample_requirement_set):
+        response = api_client.post(
+            "/api/v1/generate",
+            json={
+                "requirements": sample_requirement_set.model_dump(mode="json"),
+                "diagram_types": ["activity"],
+                "activity_source": "mud_spec",
+            },
+        )
+
+        assert response.status_code == 400
+        assert "mud_spec_markdown" in response.json()["detail"]
+
     def test_validate_returns_report(self, api_client, sample_generation_result):
         response = api_client.post(
             "/api/v1/validate",

@@ -42,7 +42,9 @@
       "Bash(.venv/Scripts/python.exe -c \"from mudtool.ai.chunked_elaborator import ChunkedElaborator; print\\('OK'\\)\")",
       "Bash(.venv/Scripts/python.exe -c \"from mudtool.config.settings import Settings; s = Settings\\(\\); print\\('elaboration_mode =', s.elaboration_mode\\)\")",
       "Bash(.venv/Scripts/python.exe -c ' *)",
-      "Bash(xargs cat *)"
+      "Bash(xargs cat *)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -c \"import mudtool; print\\(mudtool.__file__\\)\")",
+      "Bash(cmd /c \"cd /d D:\\\\AI_Learnigns\\\\moduleunitdesign\\\\python-sidecar && .venv\\\\Scripts\\\\python.exe -c \\\\\"import mudtool; print\\(mudtool.__file__\\)\\\\\" 2>&1\")"
     ]
   }
 }
