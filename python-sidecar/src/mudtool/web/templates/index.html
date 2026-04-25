@@ -544,53 +544,52 @@
     .regen-btn:hover { opacity: 0.88; }
     .regen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-    /* ── Fixed Info Panel (top of main content) ─────────── */
-    #infoPanel {
-      height: 260px;
+    /* ── Activity Log bar (collapsible bottom of center column) ── */
+    #activityBar {
       flex-shrink: 0;
+      border-top: 1px solid #e2e8f0;
+      background: #1e293b;
       display: flex;
       flex-direction: column;
-      border-bottom: 2px solid #e2e8f0;
-      background: #fff;
+      transition: height 0.2s ease;
     }
-    .info-tab-btn {
-      font-size: 11px;
-      padding: 4px 14px;
-      border: none;
-      border-bottom: 2px solid transparent;
-      background: transparent;
-      color: #64748b;
+    #activityBar.collapsed { height: 34px; }
+    #activityBar.expanded  { height: 220px; }
+    #actBarHeader {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      height: 34px;
       cursor: pointer;
-      font-weight: 500;
-      margin-bottom: -1px;
-      transition: all 0.1s;
-      white-space: nowrap;
+      flex-shrink: 0;
+      user-select: none;
+      color: #94a3b8;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .info-tab-btn:hover  { color: #334155; background: #f8fafc; }
-    .info-tab-btn.active { color: #2563eb; font-weight: 700; border-bottom-color: #3b82f6; }
-    #infoTabContent {
+    #actBarHeader:hover { background: rgba(255,255,255,0.04); }
+    #actBarArrow { margin-left: auto; transition: transform 0.2s; font-size: 10px; }
+    #activityBar.expanded #actBarArrow { transform: rotate(180deg); }
+    #actLogCount { background: #334155; color: #94a3b8; border-radius: 9px; padding: 1px 7px; font-size: 10px; font-weight: 700; }
+    #actLogList {
       flex: 1;
       overflow-y: auto;
+      display: none;
     }
-    /* Activity log entry styles */
-    .alog-entry { font-size: 11px; padding: 3px 12px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: baseline; gap: 6px; }
-    .alog-time  { color: #94a3b8; font-size: 10px; flex-shrink: 0; font-family: monospace; }
-    .alog-msg   { color: #334155; flex: 1; }
-    .alog-ok    { color: #16a34a; }
-    .alog-warn  { color: #d97706; }
-    .alog-err   { color: #dc2626; }
-    /* AI live stream */
-    #aiStreamContent {
-      font-family: 'Consolas', 'Fira Code', monospace;
-      font-size: 11px;
-      line-height: 1.6;
-      padding: 10px 14px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #e2e8f0;
-      background: #0f172a;
-      min-height: 100%;
-    }
+    #activityBar.expanded #actLogList { display: block; }
+    /* Log entry styles */
+    .alog-entry { font-size: 11px; padding: 3px 12px; border-bottom: 1px solid #0f172a; display: flex; align-items: baseline; gap: 6px; }
+    .alog-time  { color: #475569; font-size: 10px; flex-shrink: 0; font-family: monospace; }
+    .alog-msg   { color: #94a3b8; flex: 1; }
+    .alog-ok    { color: #4ade80; }
+    .alog-warn  { color: #fbbf24; }
+    .alog-err   { color: #f87171; }
+    /* Sidebar requirements list */
+    #reqSidebarSection { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+    #reqList { font-size: 11.5px; flex: 1; overflow-y: auto; }
   </style>
 </head>
 
@@ -755,23 +754,20 @@
 
     <!-- ── SIDEBAR ── -->
     <aside class="sidebar bg-white border-r border-slate-100 flex flex-col overflow-hidden">
-      <div class="p-4 border-b border-slate-100">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-          1 - Import Requirements
-        </p>
 
-        <!-- File upload -->
+      <!-- ① Import section -->
+      <div class="p-4 border-b border-slate-100 flex-shrink-0">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          ① Import Requirements
+        </p>
         <label class="block mb-2">
           <span class="text-xs text-slate-600">Upload file (.csv .xlsx .txt .md)</span>
           <input type="file" id="reqFile" accept=".csv,.xlsx,.txt,.md" class="mt-1 w-full text-xs" />
         </label>
         <button class="primary w-full mb-2" id="btnImport">Import</button>
-
-        <!-- OR paste text -->
         <details class="mt-1">
-          <summary class="text-xs text-blue-500 cursor-pointer hover:underline">or paste text...</summary>
-          <textarea id="reqText" rows="5" placeholder="REQ-001 | Functional | Description..." class="mt-2 w-full border border-slate-200 rounded text-xs p-2 font-mono resize-none
-                         focus:outline-none focus:border-blue-400"></textarea>
+          <summary class="text-xs text-blue-500 cursor-pointer hover:underline">or paste text…</summary>
+          <textarea id="reqText" rows="4" placeholder="REQ-001 | Functional | Description..." class="mt-2 w-full border border-slate-200 rounded text-xs p-2 font-mono resize-none focus:outline-none focus:border-blue-400"></textarea>
           <div class="flex gap-1 mt-1">
             <select id="reqTextFmt" class="flex-1 text-xs">
               <option value="txt">TXT (pipe)</option>
@@ -783,150 +779,114 @@
         </details>
       </div>
 
-
-
-      <!-- Elaborate -->
-      <div class="p-4 border-t border-slate-100">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          1.5 - Elaborate Requirements
-        </p>
-        <p class="text-xs text-slate-400 mb-2">AI pre-analysis for richer generation context</p>
-        <button class="secondary w-full text-xs" id="btnElaborate" disabled>
-          <span id="elabLabel">Elaborate</span>
-          <svg id="elabSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-          </svg>
-        </button>
-        <div id="elabStatus" class="text-xs mt-1 hidden"></div>
+      <!-- Requirements list (scrollable, fills remaining space) -->
+      <div id="reqSidebarSection">
+        <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-white z-10 border-b border-slate-50 flex-shrink-0">
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Requirements</span>
+          <span id="reqCountBadge" class="badge bg-slate-100 text-slate-600">0</span>
+        </div>
+        <div id="reqList" class="overflow-y-auto">
+          <p class="text-slate-400 p-4 text-center text-xs">No requirements loaded</p>
+        </div>
       </div>
 
-      <!-- ── 1.75 Analyse Modules ─────────────────────────── -->
-      <div class="p-4 border-t border-slate-100">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-          1.75 - Analyse Modules
-        </p>
-        <p class="text-xs text-slate-400 mb-2">AI detects SWC modules from requirements</p>
-        <button class="secondary w-full text-xs" id="btnPlanModules" disabled>
-          <span id="planLabel">Plan Modules</span>
-          <svg id="planSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-          </svg>
-        </button>
-        <div id="planStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
-      </div>
+      <!-- ② Actions (fixed at bottom) -->
+      <div class="border-t border-slate-100 flex-shrink-0 overflow-y-auto" style="max-height:320px">
 
-      <!-- ── 2 MUD Spec ─────────────────────────────────── -->
-      <div class="p-4 border-t border-slate-100" id="mudSpecSection">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-          2 - MUD Spec
-        </p>
-        <p class="text-xs text-slate-400 mb-2">Select a module then generate its detailed spec</p>
-        <select id="moduleSelect" class="w-full text-xs mb-2" disabled>
-          <option value="">— plan modules first —</option>
-        </select>
-        <button class="primary w-full text-xs mb-1" id="btnGenerateMudSpec" disabled>
-          <span id="mudSpecLabel">Generate MUD Spec</span>
-          <svg id="mudSpecSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-          </svg>
-        </button>
-        <button class="secondary w-full text-xs" id="btnReviewMudSpec" disabled>AI Review Spec</button>
-        <div id="mudSpecStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
-      </div>
-
-      <!-- Generate button -->
-      <div class="p-4 border-t border-slate-100">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          3 - Generate Diagrams
-        </p>
-        <!-- Pipeline mode selector -->
-        <div class="flex items-center gap-2 mb-2">
-          <label class="text-xs text-slate-500 whitespace-nowrap" for="pipelineMode">Pipeline:</label>
-          <select id="pipelineMode" class="flex-1 text-xs">
-            <option value="single_pass">1-pass - fast (~3-5 min)</option>
-            <option value="multi_pass">Self-review - multi-pass (~8-12 min)</option>
-            <option value="two_model_fast">Dual AI - fast (~12 min)</option>
-            <option value="two_model" selected>Dual AI - generator+reviewer - best (~15 min)</option>
-          </select>
-        </div>
-        <div class="flex items-center gap-2 mb-2">
-          <input id="autosarCompliant" type="checkbox" checked />
-          <label class="text-xs text-slate-600 cursor-pointer" for="autosarCompliant">AUTOSAR compliant</label>
-        </div>
-        <!-- Stage progress chips — shown during multi-stage runs -->
-        <div id="pipelineProgress"></div>
-
-        <div class="flex flex-wrap gap-1 mb-2" id="diagramTypeToggles">
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="sequence" checked class="diag-type" /> Sequence
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="state_machine" checked class="diag-type" /> State Machine
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="class" checked class="diag-type" /> Class
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="component" class="diag-type" /> Component
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="activity" checked class="diag-type" /> Activity/Flow
-          </label>
-        </div>
-        <div class="flex gap-2">
-          <button class="primary flex-1" id="btnGenerate" disabled>
-            <span id="genLabel">Generate</span>
-            <svg id="genSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+        <!-- Elaborate -->
+        <div class="p-3 border-b border-slate-50">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">② Elaborate</span>
+            <span class="text-xs text-slate-400">AI pre-analysis</span>
+          </div>
+          <button class="secondary w-full text-xs" id="btnElaborate" disabled>
+            <span id="elabLabel">Elaborate</span>
+            <svg id="elabSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
             </svg>
           </button>
-          <button class="secondary px-3 text-base" id="btnClear" title="Clear results - keeps requirements loaded"
-            disabled>Reset</button>
+          <div id="elabStatus" class="text-xs mt-1 hidden"></div>
         </div>
+
+        <!-- Analyse Modules -->
+        <div class="p-3 border-b border-slate-50">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">③ Modules</span>
+            <span class="text-xs text-slate-400">Detect SWCs</span>
+          </div>
+          <button class="secondary w-full text-xs" id="btnPlanModules" disabled>
+            <span id="planLabel">Plan Modules</span>
+            <svg id="planSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </button>
+          <div id="planStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+        </div>
+
+        <!-- MUD Spec -->
+        <div class="p-3 border-b border-slate-50" id="mudSpecSection">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">④ MUD Spec</span>
+          </div>
+          <select id="moduleSelect" class="w-full text-xs mb-2" disabled>
+            <option value="">— plan modules first —</option>
+          </select>
+          <button class="primary w-full text-xs mb-1" id="btnGenerateMudSpec" disabled>
+            <span id="mudSpecLabel">Generate MUD Spec</span>
+            <svg id="mudSpecSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </button>
+          <button class="secondary w-full text-xs" id="btnReviewMudSpec" disabled>AI Review Spec</button>
+          <div id="mudSpecStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+        </div>
+
+        <!-- Generate Diagrams -->
+        <div class="p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">⑤ Diagrams</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <label class="text-xs text-slate-500 whitespace-nowrap" for="pipelineMode">Mode:</label>
+            <select id="pipelineMode" class="flex-1 text-xs">
+              <option value="single_pass">1-pass · fast</option>
+              <option value="multi_pass">Self-review · multi</option>
+              <option value="two_model_fast">Dual AI · fast</option>
+              <option value="two_model" selected>Dual AI · best</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <input id="autosarCompliant" type="checkbox" checked />
+            <label class="text-xs text-slate-600 cursor-pointer" for="autosarCompliant">AUTOSAR compliant</label>
+          </div>
+          <div id="pipelineProgress"></div>
+          <div class="flex flex-wrap gap-1 mb-2" id="diagramTypeToggles">
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="sequence" checked class="diag-type" /> Sequence</label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="state_machine" checked class="diag-type" /> State Machine</label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="class" checked class="diag-type" /> Class</label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="component" class="diag-type" /> Component</label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="activity" checked class="diag-type" /> Activity</label>
+          </div>
+          <div class="flex gap-2">
+            <button class="primary flex-1" id="btnGenerate" disabled>
+              <span id="genLabel">Generate</span>
+              <svg id="genSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+            </button>
+            <button class="secondary px-3 text-base" id="btnClear" title="Clear results" disabled>Reset</button>
+          </div>
+        </div>
+
       </div>
     </aside>
 
     <!-- ── CENTER: DIAGRAMS ── -->
     <main class="flex-1 flex flex-col overflow-hidden">
-      <!-- ── FIXED TOP INFO PANEL ── -->
-      <div id="infoPanel">
-        <!-- Tab header row -->
-        <div class="flex items-center gap-0 px-3 border-b border-slate-200 bg-slate-50" style="flex-shrink:0;height:34px">
-          <button class="info-tab-btn active" data-tab="requirements" onclick="openInfoTab('requirements')">
-            📋 Requirements <span id="reqCountBadge" class="ml-1 badge bg-slate-200 text-slate-600">0</span>
-          </button>
-          <button class="info-tab-btn" data-tab="actlog" onclick="openInfoTab('actlog')">
-            ⚡ Activity Log
-          </button>
-          <button class="info-tab-btn" data-tab="aistream" onclick="openInfoTab('aistream')">
-            ✦ AI Live Stream
-          </button>
-          <span id="infoPanelHint" class="ml-auto text-xs text-slate-400 pr-3">Import requirements to begin</span>
-        </div>
-        <!-- Tab content -->
-        <div id="infoTabContent">
-          <!-- Requirements tab (default) -->
-          <div id="infoTab_requirements" class="h-full overflow-y-auto">
-            <div id="reqList" class="text-xs">
-              <p class="text-slate-400 p-4 text-center">No requirements loaded</p>
-            </div>
-          </div>
-          <!-- Activity Log tab (hidden) -->
-          <div id="infoTab_actlog" class="h-full overflow-y-auto hidden">
-            <div id="actLogList">
-              <p class="text-xs text-slate-400 p-4">No activity yet.</p>
-            </div>
-          </div>
-          <!-- AI Live Stream tab (hidden) -->
-          <div id="infoTab_aistream" class="h-full overflow-y-auto hidden" style="background:#0f172a">
-            <div id="aiStreamContent">Waiting for AI response…</div>
-          </div>
-        </div>
-      </div>
 
       <!-- Diagram tabs -->
       <div id="diagramTabs" class="flex border-b border-slate-200 bg-white px-4 pt-2 gap-1 text-sm text-slate-500">
@@ -1075,7 +1035,6 @@
             <div id="mudSpecContent" class="p-6 prose max-w-none"></div>
           </div>
         </div>
-        </div>
       </div>
 
       <!-- Diagram canvas -->
@@ -1088,6 +1047,18 @@
           </svg>
           <p class="font-medium">No diagrams yet</p>
           <p class="text-sm mt-1">Import requirements and click Generate</p>
+        </div>
+      </div>
+
+      <!-- ── ACTIVITY LOG BAR (collapsible) ── -->
+      <div id="activityBar" class="collapsed">
+        <div id="actBarHeader" onclick="toggleActivityBar()">
+          <span>⚡ Activity Log</span>
+          <span id="actLogCount" class="">0</span>
+          <span id="actBarArrow">▲</span>
+        </div>
+        <div id="actLogList">
+          <p class="text-xs text-slate-500 p-3">No activity yet.</p>
         </div>
       </div>
 
@@ -1263,8 +1234,6 @@
       mudReview: null,         // Latest SpecReviewResult from AI review
       mudIteration: 0,         // How many specs have been generated (0=none, 1=first, ...)
       reviewHistory: [],       // [{iteration, review, spec_snapshot}] — full audit trail
-      infoActiveTab: 'requirements',
-      aiStreamBuffer: '',
     };
 
     // ── Helpers ─────────────────────────────────────────────
@@ -1295,6 +1264,8 @@
 
       console.log(`[DEBUG] Selected file: ${file.name}, size: ${file.size} bytes`);
       setStatus('Importing…');
+      addActivityLog(`Started importing requirements file: ${file.name}`, 'ok');
+
       const fd = new FormData();
       fd.append('file', file);
 
@@ -1318,10 +1289,12 @@
         document.getElementById('btnPlanModules').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
+        addActivityLog(`Imported ${d.requirement_set.requirements.length} requirements successfully`, 'ok');
       } catch (e) {
         console.error("[DEBUG] Import caught an exception:", e);
         toast('Import failed: ' + e.message, true);
         setStatus('Import failed');
+        addActivityLog(`Requirement import failed: ${e.message}`, 'err');
       }
     });
 
@@ -1341,6 +1314,8 @@
       fd.append('format', fmt);
 
       setStatus('Importing…');
+      addActivityLog(`Started importing requirements from pasted text`, 'ok');
+
       try {
         console.log(`[DEBUG] Sending POST request to /requirements/import/text with format: ${fmt}`);
         const r = await fetch(`${API}/requirements/import/text`, { method: 'POST', body: fd });
@@ -1361,9 +1336,11 @@
         document.getElementById('btnPlanModules').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
+        addActivityLog(`Imported ${d.requirement_set.requirements.length} requirements successfully`, 'ok');
       } catch (e) {
         console.error("[DEBUG] Text import caught an exception:", e);
         toast('Import failed: ' + e.message, true);
+        addActivityLog(`Requirement import failed: ${e.message}`, 'err');
       }
     });
 
@@ -2161,6 +2138,7 @@
       // Status bar + disable clear button itself
       setStatus('Ready');
       document.getElementById('btnClear').disabled = true;
+      addActivityLog('Cleared all generated diagrams and state', 'ok');
     }
 
     document.getElementById('btnClear').addEventListener('click', clearResults);
@@ -2175,6 +2153,7 @@
         format: format,
       };
       setStatus(`Exporting as ${format}…`);
+      addActivityLog(`Exporting diagrams as ${format}...`, 'ok');
       try {
         const r = await fetch(`${API}/export`, {
           method: 'POST',
@@ -2186,9 +2165,11 @@
         const count = d.paths?.length || (d.path ? 1 : 0);
         toast(`Exported ${count} file(s) to ${dir}/`);
         setStatus(`Exported to ${dir}/`);
+        addActivityLog(`Exported ${count} file(s) to ${dir}/`, 'ok');
       } catch (e) {
         toast('Export failed: ' + e.message, true);
         setStatus('Export failed');
+        addActivityLog(`Export failed: ${e.message}`, 'err');
       }
     }
 
@@ -2200,6 +2181,7 @@
       if (!state.generationResult) return;
       const dir = document.getElementById('exportDir').value || 'output/web';
       setStatus('Rendering SVGs via Kroki.io…');
+      addActivityLog('Rendering SVGs via Kroki.io...', 'ok');
       try {
         const r = await fetch(`${API}/render`, {
           method: 'POST',
@@ -2210,15 +2192,18 @@
         const d = await r.json();
         toast(`Rendered ${d.paths?.length || 0} SVG(s) to ${dir}/`);
         setStatus(`SVGs rendered to ${dir}/`);
+        addActivityLog(`Rendered ${d.paths?.length || 0} SVG(s) to ${dir}/`, 'ok');
       } catch (e) {
         toast('SVG render failed: ' + e.message, true);
         setStatus('SVG render failed');
+        addActivityLog(`SVG render failed: ${e.message}`, 'err');
       }
     });
 
     document.getElementById('btnExportCSkeleton').addEventListener('click', async () => {
       if (!state.generationResult) return;
       setStatus('Generating C skeleton...');
+      addActivityLog('Generating C skeleton from activity diagrams...', 'ok');
       try {
         const r = await fetch(`${API}/export/c-skeleton`, {
           method: 'POST',
@@ -2231,6 +2216,7 @@
         const names = Object.keys(files);
         if (names.length === 0) {
           toast('No ActivityDiagram found for C export', true);
+          addActivityLog('C skeleton export skipped: No ActivityDiagram found', 'warn');
           return;
         }
         // Download each file as .c
@@ -2245,9 +2231,11 @@
         }
         toast(`Downloaded ${names.length} C skeleton file(s)`);
         setStatus(`C skeleton exported: ${names.join(', ')}`);
+        addActivityLog(`Downloaded ${names.length} C skeleton file(s)`, 'ok');
       } catch (e) {
         toast('C skeleton export failed: ' + e.message, true);
         setStatus('C skeleton export failed');
+        addActivityLog(`C skeleton export failed: ${e.message}`, 'err');
       }
     });
 
@@ -2271,6 +2259,7 @@
       statusEl.classList.remove('hidden');
       statusEl.className = 'text-xs mt-1 text-blue-500';
       statusEl.textContent = 'Thinking step-by-step about each requirement...';
+      addActivityLog('Started AI elaboration of requirements...', 'ok');
 
       try {
         const r = await fetch(`${API}/elaborate`, {
@@ -2286,11 +2275,13 @@
         statusEl.textContent = `Done - ${(data.elaborated || []).length} requirements elaborated`;
         setStatus('Elaboration complete - ready to generate with enriched context');
         toast(`Elaborated ${(data.elaborated || []).length} requirements with AI reasoning`);
+        addActivityLog(`Elaboration complete: ${(data.elaborated || []).length} requirements enriched`, 'ok');
       } catch (e) {
         statusEl.className = 'text-xs mt-1 text-red-500';
         statusEl.textContent = 'Failed: ' + e.message;
         toast('Elaboration failed: ' + e.message, true);
         setStatus('Elaboration failed');
+        addActivityLog(`Elaboration failed: ${e.message}`, 'err');
       } finally {
         setElaborating(false);
       }
@@ -2418,6 +2409,7 @@
       statusEl.classList.remove('hidden');
       statusEl.textContent = 'AI is detecting SWC modules…';
       setStatus('Planning modules…');
+      addActivityLog('Detecting SWC modules from requirements...', 'ok');
 
       try {
         const r = await fetch(`${API}/modules/plan`, {
@@ -2435,6 +2427,7 @@
         statusEl.textContent = `Found ${state.modules.length} module(s)`;
         setStatus(`Module analysis complete — ${state.modules.length} SWC modules found`);
         toast(`Found ${state.modules.length} modules — choose one to build its MUD spec`);
+        addActivityLog(`Module planning complete: Found ${state.modules.length} modules`, 'ok');
 
         renderModulePicker(data);
         showModulePickerPanel();
@@ -2442,6 +2435,7 @@
         statusEl.textContent = 'Failed: ' + e.message;
         toast('Module planning failed: ' + e.message, true);
         setStatus('Module planning failed');
+        addActivityLog(`Module planning failed: ${e.message}`, 'err');
       } finally {
         btn.disabled = false;
         lbl.textContent = 'Plan Modules';
@@ -2571,8 +2565,7 @@
       if (!m) return;
 
       setMudSpecGenerating(true);
-      addActivityLog(`Starting MUD spec generation for ${m.swc_name}`, 'ok');
-      openInfoTab('aistream');
+      addActivityLog(`Generating MUD spec for ${m.swc_name}…`, 'ok');
       document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name}`;
       document.getElementById('mudSpecStatus').classList.remove('hidden');
       document.getElementById('mudSpecStatus').textContent = 'Generating…';
@@ -2620,19 +2613,10 @@
                 } else {
                   if (ev.message) {
                     loadingMsg.textContent = ev.message;
-                    // Heartbeat events: log to activity to show elapsed time visibly
                     if (ev.debug_heartbeat !== undefined) {
                       addActivityLog(ev.message, 'warn');
-                      // Also update the status bar
                       setStatus(ev.message);
                     }
-                  }
-                  // Show streaming tokens live in the AI stream tab
-                  if (ev.partial_content !== undefined) {
-                    document.getElementById('mudSpecLoading').classList.add('hidden');
-                    appendAiStream(ev.partial_content);
-                    // Switch to AI stream tab so user sees output
-                    if (state.infoActiveTab !== 'aistream') openInfoTab('aistream');
                   }
                 }
               } catch (parseErr) {
@@ -2659,8 +2643,6 @@
         state.mudSpec = specMd;
 
         addActivityLog(`MUD spec generation complete for ${m.swc_name}`, 'ok');
-        clearAiStream();
-        openInfoTab('requirements');
         renderMudSpec(specMd, m.swc_name);
         document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name} (iteration 1)`;
         document.getElementById('mudSpecStatus').textContent = `Iteration 1 — ${specMd.length} chars`;
@@ -2729,8 +2711,7 @@
       const btn = document.getElementById('btnReviewMudSpec');
       btn.disabled = true;
       btn.textContent = 'Reviewing…';
-      addActivityLog(`Starting AI Review for ${m.swc_name} (iteration ${state.mudIteration})`, 'ok');
-      openInfoTab('actlog');
+      addActivityLog(`Starting AI Review for ${m.swc_name} (iteration ${state.mudIteration})…`, 'ok');
       setStatus(`AI reviewing MUD spec for ${m.swc_name} (iteration ${state.mudIteration})…`);
 
       try {
@@ -2937,8 +2918,7 @@
       document.getElementById('regenStatus').textContent =
         `Fixing ${state.mudReview.error_count || 0} error(s) and ${state.mudReview.warning_count || 0} warning(s)…`;
       setMudSpecGenerating(true);
-      addActivityLog(`Starting MUD spec regeneration for ${m.swc_name} (iteration ${state.mudIteration + 1})`, 'ok');
-      openInfoTab('aistream');
+      addActivityLog(`Regenerating spec for ${m.swc_name} (iteration ${state.mudIteration + 1})…`, 'ok');
       document.getElementById('mudSpecLoadingMsg').textContent =
         `Regenerating MUD spec (iteration ${state.mudIteration + 1}) — applying AI review fixes…`;
       setStatus(`Regenerating MUD spec for ${m.swc_name} (iteration ${state.mudIteration + 1})…`);
@@ -2983,11 +2963,6 @@
                 } else {
                   if (ev.message)
                     document.getElementById('mudSpecLoadingMsg').textContent = ev.message;
-                  // Show regeneration tokens live
-                  if (ev.partial_content !== undefined) {
-                    document.getElementById('mudSpecLoading').classList.add('hidden');
-                    appendAiStream(ev.partial_content);
-                  }
                 }
               } catch (parseErr) {
                 if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
@@ -3009,8 +2984,6 @@
         state.mudIteration = newIteration;
         state.mudSpec = improvedMd;
         state.mudReview = null; // clear stale review — user must re-review
-        clearAiStream();
-        openInfoTab('requirements');
 
         addActivityLog(`Regeneration complete for ${m.swc_name}`, 'ok');
 
@@ -3121,37 +3094,34 @@
     });
 
     // ════════════════════════════════════════════════════════
-    //  INFO PANEL FUNCTIONS
+    //  ACTIVITY BAR
     // ════════════════════════════════════════════════════════
 
-    function openInfoTab(tab) {
-      state.infoActiveTab = tab;
-      document.querySelectorAll('.info-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-      document.getElementById('infoTab_requirements').classList.toggle('hidden', tab !== 'requirements');
-      document.getElementById('infoTab_actlog').classList.toggle('hidden', tab !== 'actlog');
-      document.getElementById('infoTab_aistream').classList.toggle('hidden', tab !== 'aistream');
+    let _actLogCount = 0;
+
+    function toggleActivityBar() {
+      const bar = document.getElementById('activityBar');
+      const isExpanded = bar.classList.contains('expanded');
+      bar.classList.toggle('expanded', !isExpanded);
+      bar.classList.toggle('collapsed', isExpanded);
     }
 
     function addActivityLog(msg, type = 'ok') {
       const list = document.getElementById('actLogList');
-      if (list.querySelector('p')?.textContent.includes('No activity')) list.innerHTML = '';
+      // Clear placeholder
+      if (list.querySelector('p')) list.innerHTML = '';
+      _actLogCount++;
+      document.getElementById('actLogCount').textContent = _actLogCount;
+      // Auto-expand on errors
+      if (type === 'err') {
+        const bar = document.getElementById('activityBar');
+        bar.classList.add('expanded');
+        bar.classList.remove('collapsed');
+      }
       const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
       list.insertAdjacentHTML('beforeend',
         `<div class="alog-entry"><span class="alog-time">[${time}]</span><span class="alog-msg alog-${type}">${escapeHtml(msg)}</span></div>`);
       list.scrollTop = list.scrollHeight;
-    }
-
-    function appendAiStream(text) {
-      const el = document.getElementById('aiStreamContent');
-      if (state.aiStreamBuffer === '') el.innerHTML = ''; // Clear waiting text
-      state.aiStreamBuffer += text;
-      el.textContent = state.aiStreamBuffer;
-      el.parentElement.scrollTop = el.parentElement.scrollHeight;
-    }
-
-    function clearAiStream(label = 'Waiting for AI response…') {
-      state.aiStreamBuffer = '';
-      document.getElementById('aiStreamContent').textContent = label;
     }
 
     // ── Init ─────────────────────────────────────────────────
@@ -3301,6 +3271,7 @@
       btn.disabled = true;
       btn.textContent = '⏳ Testing…';
       result.textContent = '';
+      addActivityLog(`Testing AI backend connection...`, 'ok');
 
       const ok = await _applyConfig(true);
       if (!ok) { btn.disabled = false; btn.textContent = 'Test Connection'; return; }
@@ -3311,13 +3282,16 @@
         if (d.ok) {
           result.textContent = `✓ Connected! ${d.latency_ms}ms`;
           result.className = 'text-xs test-ok';
+          addActivityLog(`Testing AI backend connection... ✓ Connected in ${d.latency_ms}ms`, 'ok');
         } else {
           result.textContent = `✗ ${d.error || 'No response'}`;
           result.className = 'text-xs test-fail';
+          addActivityLog(`Testing AI backend connection... ✗ ${d.error || 'No response'}`, 'err');
         }
       } catch (e) {
         result.textContent = `✗ ${e.message}`;
         result.className = 'text-xs test-fail';
+        addActivityLog(`Testing AI backend connection... ✗ ${e.message}`, 'err');
       } finally {
         btn.disabled = false;
         btn.textContent = 'Test Connection';
@@ -3329,6 +3303,7 @@
       if (ok) {
         closeSettings();
         await checkHealth();
+        addActivityLog(`AI backend switched to ${activeBackend}`, 'ok');
         toast('AI backend switched successfully!');
       }
     }
