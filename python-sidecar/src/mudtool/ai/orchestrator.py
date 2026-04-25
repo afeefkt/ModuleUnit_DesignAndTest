@@ -1147,8 +1147,47 @@ Output valid JSON with this structure:
         """
         from mudtool.models.json_uml import ActivityEdge, ActivityNode, ActivityNodeType
 
+        # ── Empty-diagram fallback ──────────────────────────────────────────
+        # If the AI returned a diagram with zero nodes (common with smaller
+        # local models when prompts grow long), synthesise a minimal
+        # Start → Action(<name>) → End so the diagram is at least valid and
+        # renderable. The Action node carries the runnable's name as a
+        # placeholder description.
         if not diagram.nodes:
-            return diagram
+            trace = list(req_ids) if req_ids else (diagram.source_requirements or [])
+            runnable_name = (diagram.name or "Action").strip() or "Action"
+            synth_nodes = [
+                ActivityNode(
+                    id="N_START", name="Start",
+                    node_type=ActivityNodeType.INITIAL,
+                    trace_reqs=trace[:1] if trace else [],
+                    confidence=0.5,
+                    description=f"Entry point for {runnable_name}",
+                ),
+                ActivityNode(
+                    id="N_ACTION_1", name=runnable_name,
+                    node_type=ActivityNodeType.ACTION,
+                    trace_reqs=trace,
+                    confidence=0.5,
+                    description=f"Execute {runnable_name} body (synthesised — AI returned empty diagram)",
+                ),
+                ActivityNode(
+                    id="N_END", name="End",
+                    node_type=ActivityNodeType.FINAL,
+                    trace_reqs=trace[:1] if trace else [],
+                    confidence=0.5,
+                    description=f"Exit point for {runnable_name}",
+                ),
+            ]
+            synth_edges = [
+                ActivityEdge(id="E_S2A", source="N_START",     target="N_ACTION_1"),
+                ActivityEdge(id="E_A2E", source="N_ACTION_1",  target="N_END"),
+            ]
+            logger.warning(
+                f"Activity diagram '{diagram.name}': AI returned 0 nodes — "
+                f"synthesised minimal Start → {runnable_name} → End diagram"
+            )
+            return diagram.model_copy(update={"nodes": synth_nodes, "edges": synth_edges})
 
         has_initial = any(n.node_type == ActivityNodeType.INITIAL for n in diagram.nodes)
         has_final   = any(n.node_type == ActivityNodeType.FINAL   for n in diagram.nodes)

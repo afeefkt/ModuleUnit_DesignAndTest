@@ -127,7 +127,11 @@ values for all ASIL-C/D runnables, redundancy mechanisms, and fault reaction str
 4. Rte_Write(PP_TorqueOut, clamp(irvFilteredTorque, −100.0, 100.0 Nm))
 ════════════════════════════════════════════════
 
-RULES:
+RULES (follow ALL — do not deviate):
+- Output EXACTLY 7 top-level sections (## 1. Overview through ## 7. Functional Description).
+  Do NOT add any other top-level (##) sections such as "Stack Monitoring", "Self-Test",
+  "DTC Configuration", or anything not in the template above. Such content belongs INSIDE
+  Section 6 (Error Handling & Safety) or Section 7 (Functional Description) as needed.
 - Use AUTOSAR naming: SWC_PascalCase, RE_PascalCase, PP_/RP_ ports,
   IF_SR_/IF_CS_/IF_Prm_ interfaces, EA_ ExclusiveAreas, DEM event IDs (SWC_DEM_E_*)
 - Section 3.1: include ALL OS-scheduled runnables — at minimum RE_Init + one RE_Cyclic
@@ -217,61 +221,63 @@ Return the JSON review result."""
 
 # ── Regeneration prompt ───────────────────────────────────────────────────────
 
-_REGEN_SYSTEM_PROMPT = """You are an AUTOSAR MUD specification editor operating in PATCH MODE.
+_REGEN_SYSTEM_PROMPT = """You are a TEXT EDITOR for AUTOSAR MUD specifications.
+You are NOT a writer. You DO NOT generate new content from scratch.
+You modify exactly the lines you are told to modify and copy everything else verbatim.
 
-You will receive:
-  - A CURRENT MUD SPEC (the base document — already partially correct)
-  - A REVIEW REPORT listing specific issues to fix
-  - A list of UNCOVERED REQUIREMENT IDs that must now be addressed in Section 7
+INPUTS:
+  - CURRENT SPEC: the base document (already mostly correct)
+  - FIX LIST: errors, warnings, suggestions, and uncovered requirements
 
-PATCH MODE RULES — follow ALL of these exactly:
-1. Output the COMPLETE document from "# MUD Spec:" to the final line.
-2. Copy EVERY section that has NO listed issues CHARACTER-FOR-CHARACTER from the current spec.
-3. ONLY modify the specific sections/fields referenced in the ERRORS and WARNINGS below.
-4. For each UNCOVERED REQUIREMENT: add the missing logic to Section 7 of the most relevant
-   runnable's pseudo-code steps — do NOT invent new runnables or restructure the document.
-5. Apply each SUGGESTION by making the minimum targeted change it describes — do not rewrite.
-6. Do NOT expand, improve, or rewrite any section that is not explicitly broken.
-7. The output MUST be structurally identical to the current spec with only the fixes applied.
-8. Output ONLY the Markdown document — no JSON, no code fences, no commentary before or after.
+YOUR JOB — STRICT RULES:
+1. Start by mentally reading the entire CURRENT SPEC line by line.
+2. For each line, decide: is this line referenced in the FIX LIST? If NO → output it verbatim.
+3. If YES → output the corrected version of that line/block, applying ONLY the listed fix.
+4. For UNCOVERED REQUIREMENTS: ADD a new numbered step to Section 7 of the most relevant
+   runnable's pseudo-code (do NOT delete or modify existing steps; do NOT add new runnables).
+5. NEVER add sections, ports, or runnables that are not explicitly requested by the FIX LIST.
+6. NEVER rephrase, "improve clarity", or "polish" lines that have no listed issue.
+7. The OUTPUT line count MUST be ≥ 95% of the CURRENT SPEC line count (you only ADD missing
+   logic for uncovered reqs; you do NOT delete or shrink anything).
+8. Output ONLY the complete patched Markdown — no JSON, no code fences, no commentary.
+
+VERIFICATION CHECK (do this in your head before responding):
+  - Did I copy every line not in the FIX LIST verbatim? If no → start over.
+  - Did I add a step for every UNCOVERED requirement? If no → start over.
+  - Did I keep the same 7 top-level sections? If no → start over.
 """
 
 _REGEN_USER_PROMPT_TMPL = """You are patching a MUD specification. Apply ONLY the fixes listed below.
 Copy all unchanged sections VERBATIM from the current spec.
 
-═══════════════════════════════════════════════
-MODULE: {swc_name}   |   ASIL: {asil}
-ITERATION: {iteration}   |   Current Coverage: {coverage_pct}%
-═══════════════════════════════════════════════
+FIX LIST for {swc_name} (iteration {iteration}, current coverage {coverage_pct}%):
 
-REVIEW REPORT — fix ONLY these items:
-Approved: {approved}
-
-ERRORS to fix ({error_count}):
+ERRORS ({error_count}):
 {errors_text}
 
-WARNINGS to fix ({warning_count}):
+WARNINGS ({warning_count}):
 {warnings_text}
 
-SUGGESTIONS to apply ({suggestion_count}):
+SUGGESTIONS ({suggestion_count}):
 {suggestions_text}
 
-UNCOVERED REQUIREMENT IDs — add their logic to Section 7 ({uncovered_count} uncovered):
+UNCOVERED REQUIREMENTS — must add logic for these to Section 7 ({uncovered_count}):
 {uncovered_req_ids_text}
 
-COVERAGE GAPS — what is missing per requirement:
+COVERAGE GAPS:
 {coverage_gaps_text}
 
-═══════════════════════════════════════════════
-REQUIREMENTS (context — only add logic explicitly listed in coverage gaps above):
+REQUIREMENTS (context only — do not introduce content beyond the FIX LIST above):
 {requirements_text}
 
 ═══════════════════════════════════════════════
-CURRENT MUD SPECIFICATION — PATCH THIS DOCUMENT (copy unchanged sections verbatim):
+CURRENT SPEC — copy verbatim except for the FIX LIST above:
+═══════════════════════════════════════════════
 {mud_spec_markdown}
+═══════════════════════════════════════════════
 
-PATCH MODE: Output the complete document. Copy every section that has no issue verbatim.
-Only change the sections addressed in the ERRORS, WARNINGS, SUGGESTIONS, and COVERAGE GAPS above."""
+Output the patched document NOW. Copy every line that has no issue verbatim. Apply ONLY the
+fixes above. If FIX LIST is empty in any category, change nothing for that category."""
 
 # ── Data models ───────────────────────────────────────────────────────────────
 
@@ -609,7 +615,7 @@ class MudSpecGenerator:
         requirements_text: str,
         current_spec_markdown: str,
         review: SpecReviewResult,
-        temperature: float = 0.05,
+        temperature: float = 0.0,
         progress_callback=None,
     ) -> str:
         """Regenerate an improved MUD spec by fixing all issues from the review report.
@@ -756,6 +762,42 @@ class MudSpecGenerator:
             spec_md = re.sub(r"^```[a-z]*\n?", "", spec_md)
             spec_md = re.sub(r"\n?```$", "", spec_md)
 
+        # ── Convergence verification ─────────────────────────────────────────
+        # Small models often ignore PATCH MODE and rewrite from scratch. Detect
+        # this by measuring line overlap with the previous spec. If overlap is
+        # too low (<60%), the regen is a wholesale rewrite — log a warning so
+        # the user knows the model didn't follow patch mode (they may need to
+        # try a stronger model or a different reviewer model).
+        try:
+            prev_lines = {l.strip() for l in current_spec_markdown.splitlines() if l.strip()}
+            new_lines  = {l.strip() for l in spec_md.splitlines() if l.strip()}
+            if prev_lines and new_lines:
+                kept = len(prev_lines & new_lines)
+                overlap = kept / len(prev_lines) * 100
+                logger.info(
+                    "regenerate_spec: convergence — kept %d/%d lines (%.1f%% overlap) from iter %d → %d",
+                    kept, len(prev_lines), overlap, review.iteration, regen_iter,
+                )
+                if overlap < 60.0:
+                    logger.warning(
+                        "regenerate_spec: LOW CONVERGENCE — only %.1f%% line overlap with previous spec. "
+                        "Model rewrote rather than patched. Consider a larger model or stricter prompt.",
+                        overlap,
+                    )
+                    if progress_callback:
+                        progress_callback({
+                            "stage": "mud_regen",
+                            "message": (
+                                f"Warning: low convergence ({overlap:.0f}% overlap) — "
+                                "model rewrote instead of patching. Result kept anyway."
+                            ),
+                            "progress": 95,
+                            "iteration": regen_iter,
+                            "convergence_pct": round(overlap, 1),
+                        })
+        except Exception as _exc:
+            logger.debug("convergence check failed: %s", _exc)
+
         logger.info(
             "MudSpecGenerator: regenerated spec for %s (iteration %d) → %d chars",
             swc_name, regen_iter, len(spec_md),
@@ -763,6 +805,26 @@ class MudSpecGenerator:
         return spec_md
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _enforce_approval_rules(result: "SpecReviewResult") -> "SpecReviewResult":
+        """Override the AI's self-reported `approved` flag with our deterministic rule.
+
+        Small models often return approved=true even when they list errors, low coverage,
+        or uncovered requirements. The contract is: approved=true ONLY if all are clean.
+        """
+        rule_approved = (
+            result.coverage_pct >= 80
+            and result.error_count == 0
+            and len(result.uncovered_req_ids) == 0
+        )
+        if result.approved and not rule_approved:
+            logger.warning(
+                "Review approved=true overridden to false: coverage=%d errors=%d uncovered=%d",
+                result.coverage_pct, result.error_count, len(result.uncovered_req_ids),
+            )
+            result.approved = False
+        return result
 
     def _parse_review(self, raw: str, iteration: int = 1) -> SpecReviewResult:
         """Parse JSON review result from AI response.
@@ -798,7 +860,7 @@ class MudSpecGenerator:
                 # Ensure there are always some concrete suggestions for the regeneration step
                 if not result.suggestions:
                     result.suggestions = self._auto_suggestions(result)
-                return result
+                return self._enforce_approval_rules(result)
             except json.JSONDecodeError:
                 pass
 
@@ -814,7 +876,7 @@ class MudSpecGenerator:
                     result = SpecReviewResult.from_dict(data, raw=raw, iteration=iteration)
                     if not result.suggestions:
                         result.suggestions = self._auto_suggestions(result)
-                    return result
+                    return self._enforce_approval_rules(result)
             except json.JSONDecodeError:
                 continue
 
@@ -828,7 +890,7 @@ class MudSpecGenerator:
         coverage_pct = int(coverage_m.group(1)) if coverage_m else 20
         approved = approved_m.group(1).lower() == "true" if approved_m else False
 
-        return SpecReviewResult(
+        return self._enforce_approval_rules(SpecReviewResult(
             approved=approved,
             coverage_pct=coverage_pct,
             issues=[ReviewIssue("warning", "review",
@@ -840,7 +902,7 @@ class MudSpecGenerator:
             ],
             raw_response=raw,
             iteration=iteration,
-        )
+        ))
 
     @staticmethod
     def _fallback_review(raw: str, iteration: int, reason: str) -> "SpecReviewResult":

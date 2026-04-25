@@ -3004,10 +3004,16 @@
       const panel = document.getElementById('reviewPanel');
       panel.classList.remove('hidden');
 
-      const approved = review.approved;
       const errors   = review.error_count   || (review.issues || []).filter(i => i.severity === 'error').length;
       const warnings = review.warning_count || (review.issues || []).filter(i => i.severity === 'warning').length;
       const infos    = review.info_count    || (review.issues || []).filter(i => i.severity === 'info').length;
+      const uncoveredCount = (review.uncovered_req_ids || []).length;
+      // Client-side approval rule (mirrors backend _enforce_approval_rules):
+      // approved=true ONLY if coverage >= 80, zero errors, AND zero uncovered requirements.
+      const approved = !!review.approved
+        && (review.coverage_pct || 0) >= 80
+        && errors === 0
+        && uncoveredCount === 0;
       const iter     = review.iteration || state.mudIteration;
 
       // Summary bar
@@ -3093,15 +3099,21 @@
         }
       }
 
-      // Regenerate button — enable if there are errors or warnings to fix
-      const canRegen = (errors + warnings) > 0 && !approved;
+      // Regenerate button — enable when there is anything to fix:
+      //   errors, warnings, or uncovered requirements (coverage gaps)
+      const canRegen = !approved && (errors + warnings + uncoveredCount) > 0;
       const regenBtn = document.getElementById('btnRegenMudSpec');
       regenBtn.disabled = !canRegen;
+      const fixParts = [];
+      if (errors > 0)         fixParts.push(`${errors} error(s)`);
+      if (warnings > 0)       fixParts.push(`${warnings} warning(s)`);
+      if (uncoveredCount > 0) fixParts.push(`${uncoveredCount} uncovered requirement(s)`);
+      if (suggestions.length) fixParts.push(`${suggestions.length} suggestion(s)`);
       document.getElementById('regenDescription').textContent = canRegen
-        ? `AI will fix ${errors} error(s) and ${warnings} warning(s) and apply ${suggestions.length} suggestion(s).`
+        ? `AI will fix ${fixParts.join(', ')}.`
         : approved
           ? 'Spec is approved — no regeneration needed.'
-          : 'No errors or warnings to fix.';
+          : 'No issues to fix.';
     }
 
     function renderReviewHistory() {

@@ -26,15 +26,11 @@ class MudActivityContext:
 
     @property
     def has_usable_flow_source(self) -> bool:
-        if not self.runnables:
-            return False
-        # Primary: at least one runnable has a real functional description or summary
-        if any(r.functional_description.strip() or r.summary.strip() for r in self.runnables):
-            return True
-        # Fallback: runnables exist with trigger/period metadata from Section 3.
-        # The activity generator can derive a minimal flowchart from trigger + ASIL data
-        # even when Section 7 descriptions are empty (e.g. for older specs).
-        return any(r.trigger or r.period or r.asil for r in self.runnables)
+        # If we found ANY runnable name (even by raw-text scan), let activity
+        # generation proceed. The activity generator + skill block can synthesise
+        # a minimal flowchart from just the runnable name + RTE calls + helper
+        # functions detected elsewhere in the markdown.
+        return bool(self.runnables)
 
     def to_prompt_block(self) -> str:
         runnable_lines = []
@@ -83,11 +79,19 @@ class MudActivityContext:
 
 def build_mud_activity_context(markdown: str, module_context: str | None = None) -> MudActivityContext:
     swc_name = _extract_swc_name(markdown) or (module_context or "")
-    runnable_rows = _parse_markdown_table(_extract_section(markdown, "3. Runnables"))
+    # Try "3.1 Main Runnables" first (new split format), fall back to full "3. Runnables"
+    section_3_text = _extract_section(markdown, "3.1 Main Runnables") or \
+                     _extract_section(markdown, "3. Runnables")
+    runnable_rows = _parse_markdown_table(section_3_text)
     runnable_map: dict[str, RunnableContext] = {}
     for row in runnable_rows:
         name = row[0].strip() if row else ""
-        if not name or name.startswith("-"):
+        # Skip empty rows, separator rows, table header words, and sub-function entries
+        # (sub-functions have parentheses like "ReadSensorInputs()" — they are C helpers,
+        # not OS-scheduled runnables, so they should not appear in the runnable_map)
+        if not name or name.startswith("-") or "(" in name or name in (
+            "Runnable", "Function", "Helper", "Sub-Function"
+        ):
             continue
         runnable_map[name] = RunnableContext(
             name=name,
