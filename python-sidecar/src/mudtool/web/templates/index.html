@@ -440,6 +440,157 @@
       color: #dc2626;
       font-size: 12px;
     }
+
+    /* ── Module Planner & MUD Spec ───────────────────────── */
+    .module-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: white;
+    }
+    .module-card:hover {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+    .module-card.selected {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+    .asil-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      letter-spacing: .04em;
+    }
+    .asil-qm  { background:#e5e7eb; color:#374151; }
+    .asil-a   { background:#d1fae5; color:#065f46; }
+    .asil-b   { background:#fef3c7; color:#92400e; }
+    .asil-c   { background:#fed7aa; color:#9a3412; }
+    .asil-d   { background:#fee2e2; color:#991b1b; }
+    .complexity-low  { color:#16a34a; }
+    .complexity-medium { color:#d97706; }
+    .complexity-high { color:#dc2626; }
+
+    /* MUD Spec viewer */
+    #mudSpecContent {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1e293b;
+    }
+    #mudSpecContent h1 { font-size: 1.3em; font-weight: 700; color: #1e293b; margin: 0 0 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+    #mudSpecContent h2 { font-size: 1.05em; font-weight: 700; color: #1e293b; margin: 18px 0 8px; }
+    #mudSpecContent h3 { font-size: .95em; font-weight: 600; color: #475569; margin: 12px 0 4px; }
+    #mudSpecContent table { border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 12px; }
+    #mudSpecContent th { background: #f1f5f9; color: #475569; font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid #e2e8f0; }
+    #mudSpecContent td { padding: 5px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+    #mudSpecContent tr:nth-child(even) td { background: #f8fafc; }
+    #mudSpecContent code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+    #mudSpecContent pre { background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 11px; }
+
+    /* Review result badges */
+    .review-error   { border-left: 3px solid #ef4444; background: #fef2f2; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
+    .review-warning { border-left: 3px solid #f59e0b; background: #fffbeb; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
+    .review-info    { border-left: 3px solid #3b82f6; background: #eff6ff; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
+
+    /* Review report full panel */
+    .review-section-header {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 4px 0 2px;
+      margin-top: 10px;
+      border-bottom: 1px solid currentColor;
+      opacity: 0.6;
+    }
+    .iter-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .iter-badge.current {
+      background: #3b82f6;
+      color: white;
+    }
+    #reviewHistoryList .history-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    #reviewHistoryList .history-item.current-iter {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+    .regen-btn {
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      color: white;
+      border-radius: 7px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      border: none;
+    }
+    .regen-btn:hover { opacity: 0.88; }
+    .regen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Fixed Info Panel (top of main content) ─────────── */
+    #infoPanel {
+      height: 260px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-bottom: 2px solid #e2e8f0;
+      background: #fff;
+    }
+    .info-tab-btn {
+      font-size: 11px;
+      padding: 4px 14px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      font-weight: 500;
+      margin-bottom: -1px;
+      transition: all 0.1s;
+      white-space: nowrap;
+    }
+    .info-tab-btn:hover  { color: #334155; background: #f8fafc; }
+    .info-tab-btn.active { color: #2563eb; font-weight: 700; border-bottom-color: #3b82f6; }
+    #infoTabContent {
+      flex: 1;
+      overflow-y: auto;
+    }
+    /* Activity log entry styles */
+    .alog-entry { font-size: 11px; padding: 3px 12px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: baseline; gap: 6px; }
+    .alog-time  { color: #94a3b8; font-size: 10px; flex-shrink: 0; font-family: monospace; }
+    .alog-msg   { color: #334155; flex: 1; }
+    .alog-ok    { color: #16a34a; }
+    .alog-warn  { color: #d97706; }
+    .alog-err   { color: #dc2626; }
+    /* AI live stream */
+    #aiStreamContent {
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      padding: 10px 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #e2e8f0;
+      background: #0f172a;
+      min-height: 100%;
+    }
   </style>
 </head>
 
@@ -632,19 +783,7 @@
         </details>
       </div>
 
-      <!-- Requirements list -->
-      <div class="flex-1 overflow-y-auto">
-        <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-white z-10
-                  border-b border-slate-50">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Requirements
-          </span>
-          <span id="reqCount" class="badge bg-slate-100 text-slate-600">0</span>
-        </div>
-        <div id="reqList" class="text-xs">
-          <p class="text-slate-400 p-4 text-center">No requirements loaded</p>
-        </div>
-      </div>
+
 
       <!-- Elaborate -->
       <div class="p-4 border-t border-slate-100">
@@ -662,10 +801,46 @@
         <div id="elabStatus" class="text-xs mt-1 hidden"></div>
       </div>
 
+      <!-- ── 1.75 Analyse Modules ─────────────────────────── -->
+      <div class="p-4 border-t border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+          1.75 - Analyse Modules
+        </p>
+        <p class="text-xs text-slate-400 mb-2">AI detects SWC modules from requirements</p>
+        <button class="secondary w-full text-xs" id="btnPlanModules" disabled>
+          <span id="planLabel">Plan Modules</span>
+          <svg id="planSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+          </svg>
+        </button>
+        <div id="planStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+      </div>
+
+      <!-- ── 2 MUD Spec ─────────────────────────────────── -->
+      <div class="p-4 border-t border-slate-100" id="mudSpecSection">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+          2 - MUD Spec
+        </p>
+        <p class="text-xs text-slate-400 mb-2">Select a module then generate its detailed spec</p>
+        <select id="moduleSelect" class="w-full text-xs mb-2" disabled>
+          <option value="">— plan modules first —</option>
+        </select>
+        <button class="primary w-full text-xs mb-1" id="btnGenerateMudSpec" disabled>
+          <span id="mudSpecLabel">Generate MUD Spec</span>
+          <svg id="mudSpecSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+          </svg>
+        </button>
+        <button class="secondary w-full text-xs" id="btnReviewMudSpec" disabled>AI Review Spec</button>
+        <div id="mudSpecStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+      </div>
+
       <!-- Generate button -->
       <div class="p-4 border-t border-slate-100">
         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          2 - Generate Diagrams
+          3 - Generate Diagrams
         </p>
         <!-- Pipeline mode selector -->
         <div class="flex items-center gap-2 mb-2">
@@ -717,9 +892,190 @@
 
     <!-- ── CENTER: DIAGRAMS ── -->
     <main class="flex-1 flex flex-col overflow-hidden">
+      <!-- ── FIXED TOP INFO PANEL ── -->
+      <div id="infoPanel">
+        <!-- Tab header row -->
+        <div class="flex items-center gap-0 px-3 border-b border-slate-200 bg-slate-50" style="flex-shrink:0;height:34px">
+          <button class="info-tab-btn active" data-tab="requirements" onclick="openInfoTab('requirements')">
+            📋 Requirements <span id="reqCountBadge" class="ml-1 badge bg-slate-200 text-slate-600">0</span>
+          </button>
+          <button class="info-tab-btn" data-tab="actlog" onclick="openInfoTab('actlog')">
+            ⚡ Activity Log
+          </button>
+          <button class="info-tab-btn" data-tab="aistream" onclick="openInfoTab('aistream')">
+            ✦ AI Live Stream
+          </button>
+          <span id="infoPanelHint" class="ml-auto text-xs text-slate-400 pr-3">Import requirements to begin</span>
+        </div>
+        <!-- Tab content -->
+        <div id="infoTabContent">
+          <!-- Requirements tab (default) -->
+          <div id="infoTab_requirements" class="h-full overflow-y-auto">
+            <div id="reqList" class="text-xs">
+              <p class="text-slate-400 p-4 text-center">No requirements loaded</p>
+            </div>
+          </div>
+          <!-- Activity Log tab (hidden) -->
+          <div id="infoTab_actlog" class="h-full overflow-y-auto hidden">
+            <div id="actLogList">
+              <p class="text-xs text-slate-400 p-4">No activity yet.</p>
+            </div>
+          </div>
+          <!-- AI Live Stream tab (hidden) -->
+          <div id="infoTab_aistream" class="h-full overflow-y-auto hidden" style="background:#0f172a">
+            <div id="aiStreamContent">Waiting for AI response…</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Diagram tabs -->
       <div id="diagramTabs" class="flex border-b border-slate-200 bg-white px-4 pt-2 gap-1 text-sm text-slate-500">
         <p class="py-2 text-slate-400 text-xs">Generate diagrams to see them here</p>
+      </div>
+
+      <!-- ── MODULE PICKER PANEL ── -->
+      <div id="modulePickerPanel" class="hidden flex-1 overflow-auto p-6">
+        <div class="max-w-4xl mx-auto">
+          <div class="mb-4 flex items-center gap-3">
+            <div>
+              <h2 class="font-bold text-slate-800 text-base">Module Analysis Results</h2>
+              <p class="text-xs text-slate-500 mt-0.5">AI detected the following SWC modules — select one to generate its MUD spec</p>
+            </div>
+            <span id="modulePlanCount" class="ml-auto badge bg-indigo-100 text-indigo-700 font-semibold">0 modules</span>
+          </div>
+
+          <!-- Architecture summary -->
+          <div id="archSummaryBox" class="hidden mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-800">
+            <div class="font-semibold mb-1">Architecture Summary</div>
+            <div id="archSummaryText"></div>
+          </div>
+
+          <!-- Module cards grid -->
+          <div id="moduleCardsGrid" class="grid grid-cols-1 gap-4 md:grid-cols-2"></div>
+
+          <!-- Action buttons -->
+          <div class="mt-5 flex items-center gap-3">
+            <button class="primary px-5" id="btnConfirmModule" disabled>
+              Generate MUD Spec for Selected Module →
+            </button>
+            <button class="secondary text-sm" onclick="showDiagramPanel()">← Back to Diagrams</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MUD SPEC PANEL ── -->
+      <div id="mudSpecPanel" class="hidden flex-1 overflow-auto">
+        <div class="max-w-5xl mx-auto p-6">
+          <!-- Header bar -->
+          <div class="flex items-center gap-3 mb-4">
+            <div>
+              <h2 class="font-bold text-slate-800 text-base" id="mudSpecTitle">MUD Specification</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Detailed module design spec generated by AI</p>
+            </div>
+            <div class="ml-auto flex gap-2 items-center">
+              <button class="secondary text-xs px-3" onclick="showModulePickerPanel()">← Modules</button>
+              <button class="primary text-xs px-3" id="btnUseMudSpecForDiagrams">Use for Diagrams →</button>
+              <button class="secondary text-xs px-3" id="btnDownloadMudSpec">Download .md</button>
+            </div>
+          </div>
+
+          <!-- ── AI REVIEW REPORT PANEL ── -->
+          <div id="reviewPanel" class="hidden mb-5">
+
+            <!-- Summary header bar -->
+            <div id="reviewSummaryBar" class="flex items-center gap-2 mb-3 p-3 rounded-xl border">
+              <span id="reviewApprovedBadge" class="badge font-semibold px-3 py-1 text-xs"></span>
+              <span class="text-sm font-semibold text-slate-700" id="reviewCoverage"></span>
+              <div class="ml-auto flex items-center gap-2">
+                <span id="reviewIterBadge" class="iter-badge current"></span>
+                <span class="text-xs text-slate-400" id="reviewIssueCount"></span>
+              </div>
+            </div>
+
+            <!-- Issue counts row -->
+            <div class="flex gap-3 mb-3 text-xs" id="reviewCountsRow">
+              <div class="flex-1 rounded-lg p-2 text-center bg-red-50 border border-red-100">
+                <div class="font-bold text-red-600 text-base" id="reviewErrorCount">0</div>
+                <div class="text-red-400">Errors</div>
+              </div>
+              <div class="flex-1 rounded-lg p-2 text-center bg-amber-50 border border-amber-100">
+                <div class="font-bold text-amber-600 text-base" id="reviewWarnCount">0</div>
+                <div class="text-amber-400">Warnings</div>
+              </div>
+              <div class="flex-1 rounded-lg p-2 text-center bg-blue-50 border border-blue-100">
+                <div class="font-bold text-blue-600 text-base" id="reviewInfoCount">0</div>
+                <div class="text-blue-400">Info</div>
+              </div>
+              <div class="flex-1 rounded-lg p-2 text-center bg-green-50 border border-green-100">
+                <div class="font-bold text-green-600 text-base" id="reviewCoverageNum">0%</div>
+                <div class="text-green-400">Coverage</div>
+              </div>
+            </div>
+
+            <!-- Full issue list -->
+            <details open>
+              <summary class="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none mb-2">
+                Full Issue Report
+              </summary>
+              <div id="reviewFullIssueList" class="space-y-1 max-h-72 overflow-y-auto text-xs rounded-lg border border-slate-100 p-2 bg-white"></div>
+            </details>
+
+            <!-- Suggestions -->
+            <details class="mt-2" id="reviewSuggestionsDetails">
+              <summary class="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none mb-2">
+                AI Suggestions
+              </summary>
+              <div id="reviewSuggestions" class="text-xs text-slate-600 bg-white rounded-lg border border-slate-100 p-3"></div>
+            </details>
+
+            <!-- Regenerate action -->
+            <div class="mt-4 p-4 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl">
+              <div class="flex items-start gap-3">
+                <div class="flex-1">
+                  <div class="font-semibold text-indigo-800 text-sm mb-1">Regenerate with AI Fixes</div>
+                  <div class="text-xs text-indigo-600" id="regenDescription">
+                    AI will fix all errors and warnings and apply all suggestions to produce an improved MUD spec.
+                  </div>
+                </div>
+                <button class="regen-btn" id="btnRegenMudSpec" disabled>
+                  <span id="regenLabel">Regenerate Spec</span>
+                  <svg id="regenSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                  </svg>
+                </button>
+              </div>
+              <div id="regenStatus" class="text-xs mt-2 text-indigo-500 hidden"></div>
+            </div>
+
+          </div>
+
+          <!-- Iteration history (one entry per review round) -->
+          <div id="iterHistoryBox" class="hidden mb-4">
+            <details>
+              <summary class="text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none mb-2">
+                Iteration History
+                <span id="iterHistoryCount" class="ml-1 badge bg-slate-100 text-slate-600">0</span>
+              </summary>
+              <div id="reviewHistoryList" class="space-y-1 max-h-64 overflow-y-auto"></div>
+            </details>
+          </div>
+
+          <!-- Spec content area (rendered markdown) -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+            <!-- Loading skeleton -->
+            <div id="mudSpecLoading" class="hidden p-8 text-center text-slate-400">
+              <svg class="spin w-8 h-8 mx-auto mb-3 text-blue-400" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+              <p id="mudSpecLoadingMsg">Generating MUD specification…</p>
+            </div>
+            <!-- Rendered content -->
+            <div id="mudSpecContent" class="p-6 prose max-w-none"></div>
+          </div>
+        </div>
+        </div>
       </div>
 
       <!-- Diagram canvas -->
@@ -806,9 +1162,12 @@
       <!-- Export -->
       <div class="p-4 border-b border-slate-100">
         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          3 - Export
+          4 - Export
         </p>
         <div class="space-y-1.5">
+          <button class="secondary w-full text-left text-xs bg-indigo-50 text-indigo-700 border border-indigo-200"
+            id="btnExportMudSpecFile" disabled>MUD Spec .md file
+          </button>
           <button class="secondary w-full text-left text-xs" id="btnExportMermaid" disabled>Mermaid .mmd files
           </button>
           <button class="secondary w-full text-left text-xs" id="btnExportDrawio" disabled>draw.io .drawio files
@@ -892,11 +1251,20 @@
 
     // ── State ───────────────────────────────────────────────
     let state = {
-      requirements: null,     // RequirementSet from last import
-      generationResult: null, // GenerationResult from last generate
-      diagrams: {},           // { key: mermaid_text }
+      requirements: null,      // RequirementSet from last import
+      generationResult: null,  // GenerationResult from last generate
+      diagrams: {},            // { key: mermaid_text }
       activeTab: null,
       validationReport: null,
+      // --- Enhanced workflow ---
+      modules: [],             // ModuleInfo[] from plan_modules
+      selectedModule: null,    // The chosen ModuleInfo object
+      mudSpec: null,           // Current MUD spec Markdown (latest iteration)
+      mudReview: null,         // Latest SpecReviewResult from AI review
+      mudIteration: 0,         // How many specs have been generated (0=none, 1=first, ...)
+      reviewHistory: [],       // [{iteration, review, spec_snapshot}] — full audit trail
+      infoActiveTab: 'requirements',
+      aiStreamBuffer: '',
     };
 
     // ── Helpers ─────────────────────────────────────────────
@@ -947,6 +1315,7 @@
         console.log("[DEBUG] renderReqList completed successfully.");
         document.getElementById('btnGenerate').disabled = false;
         document.getElementById('btnElaborate').disabled = false;
+        document.getElementById('btnPlanModules').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
       } catch (e) {
@@ -989,6 +1358,7 @@
         console.log("[DEBUG] renderReqList completed successfully.");
         document.getElementById('btnGenerate').disabled = false;
         document.getElementById('btnElaborate').disabled = false;
+        document.getElementById('btnPlanModules').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
       } catch (e) {
@@ -1026,7 +1396,7 @@
     // ── Render Requirements List ────────────────────────────
     function renderReqList(reqs) {
       const list = document.getElementById('reqList');
-      document.getElementById('reqCount').textContent = reqs ? reqs.length : 0;
+      document.getElementById('reqCountBadge').textContent = reqs ? reqs.length : 0;
       
       if (!reqs || reqs.length === 0) {
         list.innerHTML = '<p class="text-slate-400 p-4 text-center">No requirements</p>';
@@ -1085,12 +1455,18 @@
     // Append a one-line entry to the pipeline log panel (below progress bars)
     function logPipelineEvent(msg, colorClass) {
       const log = document.getElementById('pipelineLog');
-      if (!log) return;
-      const row = document.createElement('div');
-      row.className = `text-xs font-mono ${colorClass || 'text-slate-500'} leading-tight`;
-      row.textContent = msg;
-      log.appendChild(row);
-      log.scrollTop = log.scrollHeight;  // auto-scroll to latest
+      if (log) {
+        const row = document.createElement('div');
+        row.className = `text-xs font-mono ${colorClass || 'text-slate-500'} leading-tight`;
+        row.textContent = msg;
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;  // auto-scroll to latest
+      }
+      
+      let type = 'ok';
+      if (colorClass && colorClass.includes('red')) type = 'err';
+      if (colorClass && (colorClass.includes('yellow') || colorClass.includes('orange'))) type = 'warn';
+      addActivityLog(msg, type);
     }
 
     function updateProgress(event) {
@@ -1366,12 +1742,16 @@
       const tabsEl = document.getElementById('diagramTabs');
       tabsEl.innerHTML = buildProgressHTML(selectedTypes);
 
+      // If a module was selected via the enhanced workflow, focus generation on it
+      const moduleCtx = state.selectedModule ? state.selectedModule.swc_name : null;
+
       const body = {
         requirements: state.requirements,
         diagram_types: selectedTypes,
         apply_autosar_mapping: autosarCompliant,
         autosar_compliant: autosarCompliant,
         pipeline_mode: pipelineMode,
+        module_context: moduleCtx,
       };
 
       try {
@@ -1982,6 +2362,710 @@
       }
     }
 
+    // ════════════════════════════════════════════════════════
+    //  MODULE PLANNER  (Stage 1.75)
+    // ════════════════════════════════════════════════════════
+
+    // Panel switcher helpers
+    function showDiagramPanel() {
+      document.getElementById('modulePickerPanel').classList.add('hidden');
+      document.getElementById('mudSpecPanel').classList.add('hidden');
+      document.getElementById('diagramCanvas').classList.remove('hidden');
+      document.getElementById('diagramTabs').classList.remove('hidden');
+    }
+    function showModulePickerPanel() {
+      document.getElementById('diagramCanvas').classList.add('hidden');
+      document.getElementById('mudSpecPanel').classList.add('hidden');
+      document.getElementById('modulePickerPanel').classList.remove('hidden');
+      document.getElementById('diagramTabs').classList.add('hidden');
+    }
+    function showMudSpecPanel() {
+      document.getElementById('diagramCanvas').classList.add('hidden');
+      document.getElementById('modulePickerPanel').classList.add('hidden');
+      document.getElementById('mudSpecPanel').classList.remove('hidden');
+      document.getElementById('diagramTabs').classList.add('hidden');
+    }
+
+    function getRequirementsText() {
+      if (!state.requirements) return '';
+      return (state.requirements.requirements || [])
+        .map(r => `[${r.id}] (${r.type || 'functional'}) ${r.title || ''}\n  Description: ${r.description || ''}`)
+        .join('\n');
+    }
+
+    // ASIL badge colour helper
+    function asilClass(asil) {
+      const a = (asil || 'QM').toUpperCase();
+      if (a === 'ASIL-D') return 'asil-d';
+      if (a === 'ASIL-C') return 'asil-c';
+      if (a === 'ASIL-B') return 'asil-b';
+      if (a === 'ASIL-A') return 'asil-a';
+      return 'asil-qm';
+    }
+
+    // Plan Modules button handler
+    document.getElementById('btnPlanModules').addEventListener('click', async () => {
+      if (!state.requirements) { toast('Import requirements first', true); return; }
+
+      const btn = document.getElementById('btnPlanModules');
+      const lbl = document.getElementById('planLabel');
+      const spinner = document.getElementById('planSpinner');
+      const statusEl = document.getElementById('planStatus');
+
+      btn.disabled = true;
+      lbl.textContent = 'Analysing…';
+      spinner.classList.add('active');
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = 'AI is detecting SWC modules…';
+      setStatus('Planning modules…');
+
+      try {
+        const r = await fetch(`${API}/modules/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requirements_text: getRequirementsText(),
+            temperature: 0.2,
+          }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+
+        state.modules = data.modules || [];
+        statusEl.textContent = `Found ${state.modules.length} module(s)`;
+        setStatus(`Module analysis complete — ${state.modules.length} SWC modules found`);
+        toast(`Found ${state.modules.length} modules — choose one to build its MUD spec`);
+
+        renderModulePicker(data);
+        showModulePickerPanel();
+      } catch (e) {
+        statusEl.textContent = 'Failed: ' + e.message;
+        toast('Module planning failed: ' + e.message, true);
+        setStatus('Module planning failed');
+      } finally {
+        btn.disabled = false;
+        lbl.textContent = 'Plan Modules';
+        spinner.classList.remove('active');
+      }
+    });
+
+    function renderModulePicker(data) {
+      const modules = data.modules || [];
+
+      // Count badge
+      document.getElementById('modulePlanCount').textContent = `${modules.length} module${modules.length !== 1 ? 's' : ''}`;
+
+      // Architecture summary
+      if (data.architecture_summary) {
+        document.getElementById('archSummaryText').textContent = data.architecture_summary;
+        document.getElementById('archSummaryBox').classList.remove('hidden');
+      } else {
+        document.getElementById('archSummaryBox').classList.add('hidden');
+      }
+
+      // Populate sidebar module selector
+      const sel = document.getElementById('moduleSelect');
+      sel.innerHTML = '<option value="">— select a module —</option>';
+      modules.forEach((m, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${m.swc_name} (${m.asil})`;
+        sel.appendChild(opt);
+      });
+      sel.disabled = modules.length === 0;
+
+      // Module cards
+      const grid = document.getElementById('moduleCardsGrid');
+      grid.innerHTML = '';
+      modules.forEach((m, i) => {
+        const complexClass = `complexity-${(m.complexity || 'medium').toLowerCase()}`;
+        const card = document.createElement('div');
+        card.className = 'module-card';
+        card.dataset.idx = i;
+        card.innerHTML = `
+          <div class="flex items-start gap-2 mb-2">
+            <span class="text-sm font-bold text-slate-800 flex-1">${escapeHtml(m.swc_name)}</span>
+            <span class="asil-badge ${asilClass(m.asil)}">${escapeHtml(m.asil || 'QM')}</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-2">${escapeHtml(m.description || '')}</p>
+          <div class="flex flex-wrap gap-1 mb-2">
+            ${(m.runnables || []).map(r => `<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700 font-mono">${escapeHtml(r)}</span>`).join('')}
+          </div>
+          <div class="flex items-center gap-3 text-[11px] text-slate-500">
+            <span title="Ports">⬡ ${m.port_count || 0} ports</span>
+            <span title="CalPrm">⚙ ${m.calprm_count || 0} CalPrm</span>
+            <span class="${complexClass} font-semibold" title="Complexity">${(m.complexity || 'medium').toUpperCase()}</span>
+            <span class="ml-auto text-[10px] text-slate-400">${(m.req_ids || []).length} reqs</span>
+          </div>`;
+        card.addEventListener('click', () => selectModule(i));
+        grid.appendChild(card);
+      });
+
+      // Confirm button
+      document.getElementById('btnConfirmModule').disabled = true;
+    }
+
+    function selectModule(idx) {
+      state.selectedModule = state.modules[idx] || null;
+      if (!state.selectedModule) return;
+
+      // Update card selection
+      document.querySelectorAll('.module-card').forEach(c => {
+        c.classList.toggle('selected', parseInt(c.dataset.idx) === idx);
+      });
+
+      // Update sidebar select
+      document.getElementById('moduleSelect').value = idx;
+
+      // Enable confirm + MUD spec buttons
+      document.getElementById('btnConfirmModule').disabled = false;
+      document.getElementById('btnGenerateMudSpec').disabled = false;
+      document.getElementById('btnReviewMudSpec').disabled = true; // review only after spec
+    }
+
+    // Module selector in sidebar
+    document.getElementById('moduleSelect').addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value);
+      if (!isNaN(idx) && idx >= 0 && idx < state.modules.length) {
+        selectModule(idx);
+      }
+    });
+
+    // Confirm module button (in picker panel)
+    document.getElementById('btnConfirmModule').addEventListener('click', () => {
+      if (!state.selectedModule) return;
+      startMudSpecGeneration();
+    });
+
+    // ════════════════════════════════════════════════════════
+    //  MUD SPEC GENERATOR  (Stage 2)
+    // ════════════════════════════════════════════════════════
+
+    async function startMudSpecGeneration() {
+      if (!state.selectedModule) { toast('Select a module first', true); return; }
+      showMudSpecPanel();
+      await generateMudSpec();
+    }
+
+    // Sidebar Generate MUD Spec button
+    document.getElementById('btnGenerateMudSpec').addEventListener('click', async () => {
+      if (!state.selectedModule) { toast('Select a module first', true); return; }
+      showMudSpecPanel();
+      await generateMudSpec();
+    });
+
+    function setMudSpecGenerating(active) {
+      const btn = document.getElementById('btnGenerateMudSpec');
+      const lbl = document.getElementById('mudSpecLabel');
+      const spinner = document.getElementById('mudSpecSpinner');
+      btn.disabled = active;
+      lbl.textContent = active ? 'Generating…' : 'Generate MUD Spec';
+      spinner.classList.toggle('active', active);
+      document.getElementById('mudSpecLoading').classList.toggle('hidden', !active);
+      if (active) document.getElementById('mudSpecContent').innerHTML = '';
+      document.getElementById('reviewBanner')?.classList.add('hidden');
+    }
+
+    async function generateMudSpec() {
+      const m = state.selectedModule;
+      if (!m) return;
+
+      setMudSpecGenerating(true);
+      addActivityLog(`Starting MUD spec generation for ${m.swc_name}`, 'ok');
+      openInfoTab('aistream');
+      document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name}`;
+      document.getElementById('mudSpecStatus').classList.remove('hidden');
+      document.getElementById('mudSpecStatus').textContent = 'Generating…';
+      setStatus(`Generating MUD spec for ${m.swc_name}…`);
+
+      const loadingMsg = document.getElementById('mudSpecLoadingMsg');
+
+      try {
+        const resp = await fetch(`${API}/modules/mud-spec`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            swc_name: m.swc_name,
+            description: m.description || '',
+            asil: m.asil || 'QM',
+            runnables: m.runnables || [],
+            req_ids: m.req_ids || [],
+            requirements_text: getRequirementsText(),
+            temperature: 0.25,
+          }),
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let specMd = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const ev = JSON.parse(line.slice(6));
+                if (ev._final) {
+                  specMd = ev.mud_spec_markdown || '';
+                } else if (ev._error) {
+                  throw new Error(ev.detail || 'Generation error');
+                } else {
+                  if (ev.message) {
+                    loadingMsg.textContent = ev.message;
+                    // Heartbeat events: log to activity to show elapsed time visibly
+                    if (ev.debug_heartbeat !== undefined) {
+                      addActivityLog(ev.message, 'warn');
+                      // Also update the status bar
+                      setStatus(ev.message);
+                    }
+                  }
+                  // Show streaming tokens live in the AI stream tab
+                  if (ev.partial_content !== undefined) {
+                    document.getElementById('mudSpecLoading').classList.add('hidden');
+                    appendAiStream(ev.partial_content);
+                    // Switch to AI stream tab so user sees output
+                    if (state.infoActiveTab !== 'aistream') openInfoTab('aistream');
+                  }
+                }
+              } catch (parseErr) {
+                // Only re-throw non-JSON errors (i.e. real generation errors)
+                if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
+              }
+            }
+          }
+        }
+        // Flush any remaining bytes in the buffer
+        if (buffer.startsWith('data: ')) {
+          try {
+            const ev = JSON.parse(buffer.slice(6));
+            if (ev._final) specMd = ev.mud_spec_markdown || '';
+          } catch (_) {}
+        }
+
+        if (!specMd) throw new Error('No spec content received from server');
+
+        // Advance iteration counter; reset history on fresh generation
+        state.mudIteration = 1;
+        state.mudReview = null;
+        state.reviewHistory = [];
+        state.mudSpec = specMd;
+
+        addActivityLog(`MUD spec generation complete for ${m.swc_name}`, 'ok');
+        clearAiStream();
+        openInfoTab('requirements');
+        renderMudSpec(specMd, m.swc_name);
+        document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name} (iteration 1)`;
+        document.getElementById('mudSpecStatus').textContent = `Iteration 1 — ${specMd.length} chars`;
+        document.getElementById('reviewPanel').classList.add('hidden');
+        document.getElementById('iterHistoryBox').classList.add('hidden');
+        document.getElementById('btnReviewMudSpec').disabled = false;
+        document.getElementById('btnExportMudSpecFile').disabled = false;
+        setStatus(`MUD spec for ${m.swc_name} ready — run AI Review to check quality`);
+        toast(`MUD spec generated for ${m.swc_name} (iteration 1)`);
+
+      } catch (e) {
+        document.getElementById('mudSpecStatus').textContent = 'Failed: ' + e.message;
+        document.getElementById('mudSpecContent').innerHTML =
+          `<p class="text-red-500 p-4">Generation failed: ${escapeHtml(e.message)}</p>`;
+        toast('MUD spec generation failed: ' + e.message, true);
+        setStatus('MUD spec generation failed');
+      } finally {
+        setMudSpecGenerating(false);
+      }
+    }
+
+    function renderMudSpec(markdown, swcName) {
+      // Simple Markdown → HTML renderer (no external lib needed)
+      let html = escapeHtml(markdown);
+
+      // Tables
+      html = html.replace(/^\|(.+)\|$/gm, '<tr><td>' + '$1'.replace(/\|/g, '</td><td>') + '</td></tr>');
+      html = html.replace(/(<tr>.*<\/tr>\n?)+/g, (m) => {
+        const rows = m.trim().split('\n');
+        // First row is header, second is separator
+        const header = rows[0].replace(/<td>/g, '<th>').replace(/<\/td>/g, '</th>');
+        const body = rows.slice(2).join('\n');
+        return `<table>${header}${body}</table>`;
+      });
+
+      // Headers
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+      // Bold / italic
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+      // Inline code
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+      // Paragraphs (blank line separated)
+      html = html.replace(/\n\n([^<])/g, '<br><br>$1');
+
+      document.getElementById('mudSpecContent').innerHTML = html;
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  AI REVIEW REPORT  (Stage 2b)
+    // ════════════════════════════════════════════════════════
+
+    document.getElementById('btnReviewMudSpec').addEventListener('click', async () => {
+      await reviewMudSpec();
+    });
+
+    async function reviewMudSpec() {
+      const m = state.selectedModule;
+      if (!m || !state.mudSpec) { toast('Generate MUD spec first', true); return; }
+
+      const btn = document.getElementById('btnReviewMudSpec');
+      btn.disabled = true;
+      btn.textContent = 'Reviewing…';
+      addActivityLog(`Starting AI Review for ${m.swc_name} (iteration ${state.mudIteration})`, 'ok');
+      openInfoTab('actlog');
+      setStatus(`AI reviewing MUD spec for ${m.swc_name} (iteration ${state.mudIteration})…`);
+
+      try {
+        const r = await fetch(`${API}/modules/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            swc_name: m.swc_name,
+            asil: m.asil || 'QM',
+            req_ids: m.req_ids || [],
+            requirements_text: getRequirementsText(),
+            mud_spec_markdown: state.mudSpec,
+            temperature: 0.1,
+            iteration: state.mudIteration,
+          }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const review = await r.json();
+
+        // Persist in state
+        state.mudReview = review;
+        addActivityLog(`AI Review complete for ${m.swc_name}`, 'ok');
+
+        // Save snapshot to history
+        state.reviewHistory.push({
+          iteration: state.mudIteration,
+          review: review,
+          spec_snapshot: state.mudSpec,
+          timestamp: new Date().toLocaleTimeString(),
+        });
+
+        renderReviewResults(review);
+        renderReviewHistory();
+
+        const statusMsg = review.approved
+          ? `Approved (${review.coverage_pct}% coverage)`
+          : `Needs revision — ${review.error_count || 0} error(s), ${review.warning_count || 0} warning(s)`;
+        setStatus(`Review complete — ${statusMsg}`);
+        toast(review.approved
+          ? `Spec approved at iteration ${state.mudIteration} (${review.coverage_pct}% coverage)`
+          : `Revision needed — ${(review.issues || []).length} issue(s) found`
+        );
+      } catch (e) {
+        toast('Review failed: ' + e.message, true);
+        setStatus('Review failed');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'AI Review Spec';
+      }
+    }
+
+    function renderReviewResults(review) {
+      const panel = document.getElementById('reviewPanel');
+      panel.classList.remove('hidden');
+
+      const approved = review.approved;
+      const errors   = review.error_count   || (review.issues || []).filter(i => i.severity === 'error').length;
+      const warnings = review.warning_count || (review.issues || []).filter(i => i.severity === 'warning').length;
+      const infos    = review.info_count    || (review.issues || []).filter(i => i.severity === 'info').length;
+      const iter     = review.iteration || state.mudIteration;
+
+      // Summary bar
+      const bar = document.getElementById('reviewSummaryBar');
+      bar.className = `flex items-center gap-2 mb-3 p-3 rounded-xl border ${
+        approved ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+      }`;
+
+      document.getElementById('reviewApprovedBadge').textContent = approved ? '✓ APPROVED' : '⚠ NEEDS REVISION';
+      document.getElementById('reviewApprovedBadge').className =
+        `badge font-semibold px-3 py-1 text-xs ${approved ? 'bg-green-200 text-green-800' : 'bg-amber-200 text-amber-800'}`;
+
+      document.getElementById('reviewCoverage').textContent = `${review.coverage_pct || 0}% requirement coverage`;
+      document.getElementById('reviewIterBadge').textContent = `Iteration ${iter}`;
+      document.getElementById('reviewIssueCount').textContent =
+        `${(review.issues || []).length} issue${(review.issues || []).length !== 1 ? 's' : ''}`;
+
+      // Stat boxes
+      document.getElementById('reviewErrorCount').textContent = errors;
+      document.getElementById('reviewWarnCount').textContent  = warnings;
+      document.getElementById('reviewInfoCount').textContent  = infos;
+      document.getElementById('reviewCoverageNum').textContent = `${review.coverage_pct || 0}%`;
+
+      // Full issue list — grouped by severity
+      const issues = review.issues || [];
+      const byGroup = { error: [], warning: [], info: [] };
+      issues.forEach(i => (byGroup[i.severity] || byGroup.info).push(i));
+
+      const issueHtml = ['error', 'warning', 'info'].map(sev => {
+        const group = byGroup[sev];
+        if (!group.length) return '';
+        const colors = {
+          error:   'text-red-600',
+          warning: 'text-amber-600',
+          info:    'text-blue-600',
+        };
+        return `<div class="review-section-header ${colors[sev]}">${sev.toUpperCase()} (${group.length})</div>` +
+          group.map(issue => `
+            <div class="review-${sev}">
+              <div class="flex items-center gap-1 mb-0.5">
+                <span class="font-semibold text-[10px] uppercase ${colors[sev]}">${escapeHtml(sev)}</span>
+                <span class="text-slate-400 text-[10px]">§ ${escapeHtml(issue.section || '?')}</span>
+              </div>
+              <div class="text-[12px] text-slate-700">${escapeHtml(issue.message || '')}</div>
+            </div>`).join('');
+      }).join('');
+
+      document.getElementById('reviewFullIssueList').innerHTML =
+        issueHtml || '<p class="text-slate-400 text-xs p-2">No issues found</p>';
+
+      // Suggestions
+      const suggestions = review.suggestions || [];
+      const sugDet = document.getElementById('reviewSuggestionsDetails');
+      if (suggestions.length) {
+        sugDet.classList.remove('hidden');
+        document.getElementById('reviewSuggestions').innerHTML =
+          '<ul class="list-disc pl-4 space-y-1">' +
+          suggestions.map(s => `<li>${escapeHtml(s)}</li>`).join('') +
+          '</ul>';
+      } else {
+        sugDet.classList.add('hidden');
+      }
+
+      // Regenerate button — enable if there are errors or warnings to fix
+      const canRegen = (errors + warnings) > 0 && !approved;
+      const regenBtn = document.getElementById('btnRegenMudSpec');
+      regenBtn.disabled = !canRegen;
+      document.getElementById('regenDescription').textContent = canRegen
+        ? `AI will fix ${errors} error(s) and ${warnings} warning(s) and apply ${suggestions.length} suggestion(s).`
+        : approved
+          ? 'Spec is approved — no regeneration needed.'
+          : 'No errors or warnings to fix.';
+    }
+
+    function renderReviewHistory() {
+      const history = state.reviewHistory;
+      if (!history.length) return;
+
+      document.getElementById('iterHistoryBox').classList.remove('hidden');
+      document.getElementById('iterHistoryCount').textContent = history.length;
+
+      const list = document.getElementById('reviewHistoryList');
+      list.innerHTML = [...history].reverse().map((entry, revIdx) => {
+        const isLatest = revIdx === 0;
+        const r = entry.review;
+        const errors   = r.error_count   || 0;
+        const warnings = r.warning_count || 0;
+        const approved = r.approved;
+        return `
+          <div class="history-item ${isLatest ? 'current-iter' : ''}">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="iter-badge ${isLatest ? 'current' : ''}">Iteration ${entry.iteration}</span>
+              <span class="text-[10px] font-semibold ${approved ? 'text-green-600' : 'text-amber-600'}">
+                ${approved ? '✓ Approved' : '⚠ Needs revision'}
+              </span>
+              <span class="ml-auto text-[10px] text-slate-400">${entry.timestamp}</span>
+            </div>
+            <div class="flex gap-3 text-[11px]">
+              <span class="text-red-500">${errors} err</span>
+              <span class="text-amber-500">${warnings} warn</span>
+              <span class="text-green-600">${r.coverage_pct || 0}% cov</span>
+              <button class="ml-auto text-blue-500 hover:underline text-[11px]"
+                onclick="restoreSpecSnapshot(${history.length - 1 - revIdx})">
+                View spec
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Restore a previous spec snapshot from history
+    function restoreSpecSnapshot(historyIdx) {
+      const entry = state.reviewHistory[historyIdx];
+      if (!entry) return;
+      renderMudSpec(entry.spec_snapshot, state.selectedModule?.swc_name || '');
+      toast(`Viewing spec from iteration ${entry.iteration}`);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  AI-DRIVEN REGENERATION  (Stage 2c)
+    // ════════════════════════════════════════════════════════
+
+    document.getElementById('btnRegenMudSpec').addEventListener('click', async () => {
+      await regenerateMudSpec();
+    });
+
+    function setRegenerating(active) {
+      const btn = document.getElementById('btnRegenMudSpec');
+      const lbl = document.getElementById('regenLabel');
+      const sp  = document.getElementById('regenSpinner');
+      btn.disabled = active;
+      lbl.textContent = active ? 'Regenerating…' : 'Regenerate Spec';
+      sp.classList.toggle('active', active);
+      document.getElementById('regenStatus').classList.toggle('hidden', !active);
+    }
+
+    async function regenerateMudSpec() {
+      const m = state.selectedModule;
+      if (!m || !state.mudSpec || !state.mudReview) {
+        toast('Run AI review first', true);
+        return;
+      }
+
+      setRegenerating(true);
+      document.getElementById('regenStatus').textContent =
+        `Fixing ${state.mudReview.error_count || 0} error(s) and ${state.mudReview.warning_count || 0} warning(s)…`;
+      setMudSpecGenerating(true);
+      addActivityLog(`Starting MUD spec regeneration for ${m.swc_name} (iteration ${state.mudIteration + 1})`, 'ok');
+      openInfoTab('aistream');
+      document.getElementById('mudSpecLoadingMsg').textContent =
+        `Regenerating MUD spec (iteration ${state.mudIteration + 1}) — applying AI review fixes…`;
+      setStatus(`Regenerating MUD spec for ${m.swc_name} (iteration ${state.mudIteration + 1})…`);
+
+      try {
+        const resp = await fetch(`${API}/modules/mud-spec/regenerate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            swc_name: m.swc_name,
+            asil: m.asil || 'QM',
+            requirements_text: getRequirementsText(),
+            current_spec_markdown: state.mudSpec,
+            review: state.mudReview,
+            temperature: 0.2,
+          }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let improvedMd = null;
+        let newIteration = state.mudIteration + 1;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const ev = JSON.parse(line.slice(6));
+                if (ev._final) {
+                  improvedMd = ev.mud_spec_markdown || '';
+                  newIteration = ev.iteration || newIteration;
+                } else if (ev._error) {
+                  throw new Error(ev.detail || 'Regeneration error');
+                } else {
+                  if (ev.message)
+                    document.getElementById('mudSpecLoadingMsg').textContent = ev.message;
+                  // Show regeneration tokens live
+                  if (ev.partial_content !== undefined) {
+                    document.getElementById('mudSpecLoading').classList.add('hidden');
+                    appendAiStream(ev.partial_content);
+                  }
+                }
+              } catch (parseErr) {
+                if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
+              }
+            }
+          }
+        }
+        if (buffer.startsWith('data: ')) {
+          try {
+            const ev = JSON.parse(buffer.slice(6));
+            if (ev._final) { improvedMd = ev.mud_spec_markdown || ''; newIteration = ev.iteration || newIteration; }
+          } catch (_) {}
+        }
+
+        if (!improvedMd) throw new Error('No improved spec received from server');
+
+        // Advance iteration
+        const _prevSpec = state.mudSpec;
+        state.mudIteration = newIteration;
+        state.mudSpec = improvedMd;
+        state.mudReview = null; // clear stale review — user must re-review
+        clearAiStream();
+        openInfoTab('requirements');
+
+        addActivityLog(`Regeneration complete for ${m.swc_name}`, 'ok');
+
+        renderMudSpec(improvedMd, m.swc_name);
+        document.getElementById('mudSpecTitle').textContent =
+          `MUD Spec: ${m.swc_name} (iteration ${state.mudIteration})`;
+
+        // Hide review panel — it's stale until user runs review again
+        document.getElementById('reviewPanel').classList.add('hidden');
+        document.getElementById('btnReviewMudSpec').disabled = false;
+        document.getElementById('btnRegenMudSpec').disabled = true;
+        document.getElementById('mudSpecStatus').textContent =
+          `Regenerated — iteration ${state.mudIteration} ready`;
+
+        setStatus(`Iteration ${state.mudIteration} ready — run AI Review to check improvements`);
+        toast(`Spec improved — iteration ${state.mudIteration} generated. Run AI Review to verify.`);
+
+      } catch (e) {
+        document.getElementById('regenStatus').textContent = 'Failed: ' + e.message;
+        toast('Regeneration failed: ' + e.message, true);
+        setStatus('Regeneration failed');
+      } finally {
+        setRegenerating(false);
+        setMudSpecGenerating(false);
+      }
+    }
+
+    // ── Use MUD Spec for Diagrams ────────────────────────────
+    document.getElementById('btnUseMudSpecForDiagrams').addEventListener('click', () => {
+      if (!state.mudSpec || !state.selectedModule) return;
+      // Prepend the MUD spec as additional context for generation
+      // The existing generate flow will pick up the selectedModule for module_context
+      showDiagramPanel();
+      toast(`Diagrams will now use ${state.selectedModule.swc_name} MUD spec as context`);
+      setStatus(`Ready to generate diagrams for ${state.selectedModule.swc_name}`);
+    });
+
+    // ── Download MUD Spec ────────────────────────────────────
+    document.getElementById('btnDownloadMudSpec').addEventListener('click', () => {
+      if (!state.mudSpec) return;
+      const name = state.selectedModule ? state.selectedModule.swc_name : 'mud_spec';
+      const blob = new Blob([state.mudSpec], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name}_MUD_Spec.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Sidebar export MUD Spec button
+    document.getElementById('btnExportMudSpecFile').addEventListener('click', () => {
+      document.getElementById('btnDownloadMudSpec').click();
+    });
+
     // ── Guidelines status ────────────────────────────────────
     async function initGuidelinesStatus() {
       const statusEl = document.getElementById('guidelinesStatus');
@@ -2035,6 +3119,40 @@
         btn.textContent = 'Clear Cache';
       }
     });
+
+    // ════════════════════════════════════════════════════════
+    //  INFO PANEL FUNCTIONS
+    // ════════════════════════════════════════════════════════
+
+    function openInfoTab(tab) {
+      state.infoActiveTab = tab;
+      document.querySelectorAll('.info-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.getElementById('infoTab_requirements').classList.toggle('hidden', tab !== 'requirements');
+      document.getElementById('infoTab_actlog').classList.toggle('hidden', tab !== 'actlog');
+      document.getElementById('infoTab_aistream').classList.toggle('hidden', tab !== 'aistream');
+    }
+
+    function addActivityLog(msg, type = 'ok') {
+      const list = document.getElementById('actLogList');
+      if (list.querySelector('p')?.textContent.includes('No activity')) list.innerHTML = '';
+      const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      list.insertAdjacentHTML('beforeend',
+        `<div class="alog-entry"><span class="alog-time">[${time}]</span><span class="alog-msg alog-${type}">${escapeHtml(msg)}</span></div>`);
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function appendAiStream(text) {
+      const el = document.getElementById('aiStreamContent');
+      if (state.aiStreamBuffer === '') el.innerHTML = ''; // Clear waiting text
+      state.aiStreamBuffer += text;
+      el.textContent = state.aiStreamBuffer;
+      el.parentElement.scrollTop = el.parentElement.scrollHeight;
+    }
+
+    function clearAiStream(label = 'Waiting for AI response…') {
+      state.aiStreamBuffer = '';
+      document.getElementById('aiStreamContent').textContent = label;
+    }
 
     // ── Init ─────────────────────────────────────────────────
     checkHealth();

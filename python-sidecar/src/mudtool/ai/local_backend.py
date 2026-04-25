@@ -137,6 +137,7 @@ class LocalBackend(BaseAIBackend):
         max_tokens: int = 8192,
         temperature: float = 0.2,
         stop_sequences: Optional[list[str]] = None,
+        response_format: str = "text",
     ) -> AIResponse:
         self._load_model()
         start_time = time.monotonic()

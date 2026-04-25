@@ -1438,6 +1438,310 @@ async def reload_prompts():
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# MODULE PLANNING & MUD SPEC ENDPOINTS  (Enhanced Workflow — Stage 1 & 2)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class PlanModulesRequest(BaseModel):
+    """Request body for POST /modules/plan."""
+    requirements_text: str = Field(
+        ...,
+        description="Full raw requirements text (any format, all SWCs).",
+    )
+    temperature: float = Field(0.2, ge=0.0, le=1.0)
+
+
+class MudSpecRequest(BaseModel):
+    """Request body for POST /modules/mud-spec (SSE stream)."""
+    swc_name: str
+    description: str = ""
+    asil: str = "QM"
+    runnables: list[str] = []
+    req_ids: list[str] = []
+    requirements_text: str = Field(
+        ...,
+        description="Full raw requirements text used as architectural context.",
+    )
+    temperature: float = Field(0.25, ge=0.0, le=1.0)
+
+
+class ReviewSpecRequest(BaseModel):
+    """Request body for POST /modules/review."""
+    swc_name: str
+    asil: str = "QM"
+    req_ids: list[str] = []
+    requirements_text: str
+    mud_spec_markdown: str
+    temperature: float = Field(0.1, ge=0.0, le=1.0)
+    iteration: int = Field(1, ge=1, description="Generation iteration number (1 = first draft)")
+
+
+@router.post("/modules/plan")
+async def plan_modules(request: PlanModulesRequest):
+    """Stage 1 — Analyse architectural requirements and return module decomposition.
+
+    Uses AI to detect all SWCs, their runnables, ASIL levels, and linked
+    requirement IDs.  The UI displays these as module cards for the user to
+    select from.
+
+    Returns:
+        {
+          "modules": [...],
+          "architecture_summary": "...",
+          "module_count": 4
+        }
+    """
+    from mudtool.api.dependencies import get_orchestrator
+    from mudtool.ai.module_planner import ModulePlanner
+
+    orchestrator = get_orchestrator()
+    planner = ModulePlanner(orchestrator)
+
+    plan = await planner.plan_modules(
+        requirements_text=request.requirements_text,
+        temperature=request.temperature,
+    )
+
+    return {
+        "modules": [m.to_dict() for m in plan.modules],
+        "architecture_summary": plan.architecture_summary,
+        "module_count": len(plan.modules),
+    }
+
+
+@router.post("/modules/mud-spec")
+async def generate_mud_spec_stream(request: MudSpecRequest):
+    """Stage 2 — Generate a detailed MUD spec Markdown for ONE selected SWC.
+
+    Streams progress events via Server-Sent Events (SSE).
+    Final event carries the full Markdown in ``data.mud_spec_markdown``.
+
+    Event types:
+        ``mud_spec``    — progress updates
+        ``complete``    — final event with full spec
+        ``error``       — generation failed
+    """
+    logger.info(
+        "mud-spec request received for %s (asil=%s, %d req_ids)",
+        request.swc_name, request.asil, len(request.req_ids),
+    )
+    import asyncio as _asyncio
+    from mudtool.api.dependencies import get_orchestrator
+    from mudtool.ai.mud_spec_generator import MudSpecGenerator
+
+    orchestrator = get_orchestrator()
+    generator = MudSpecGenerator(orchestrator)
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _progress(event: dict) -> None:
+        queue.put_nowait(event)
+
+    async def _run():
+        try:
+            spec_md = await generator.generate_spec(
+                swc_name=request.swc_name,
+                description=request.description,
+                asil=request.asil,
+                runnables=request.runnables,
+                req_ids=request.req_ids,
+                requirements_text=request.requirements_text,
+                temperature=request.temperature,
+                progress_callback=_progress,
+            )
+            queue.put_nowait({
+                "_final": True,
+                "mud_spec_markdown": spec_md,
+                "swc_name": request.swc_name,
+                "char_count": len(spec_md),
+            })
+        except Exception as exc:
+            logger.exception("mud_spec generation failed for %s", request.swc_name)
+            queue.put_nowait({"_error": True, "detail": str(exc)})
+
+    async def event_generator():
+        task = asyncio.create_task(_run())
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=300)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+
+                if event.get("_final"):
+                    yield (
+                        f"event: complete\n"
+                        f"data: {json_mod.dumps(event, default=str)}\n\n"
+                    )
+                    break
+                elif event.get("_error"):
+                    yield (
+                        f"event: error\n"
+                        f"data: {json_mod.dumps(event)}\n\n"
+                    )
+                    break
+                else:
+                    yield (
+                        f"event: mud_spec\n"
+                        f"data: {json_mod.dumps(event)}\n\n"
+                    )
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+class RegenerateSpecRequest(BaseModel):
+    """Request body for POST /modules/mud-spec/regenerate (SSE stream)."""
+    swc_name: str
+    asil: str = "QM"
+    requirements_text: str
+    current_spec_markdown: str = Field(..., description="MUD spec from the previous iteration")
+    review: dict = Field(..., description="SpecReviewResult.to_dict() from the review pass")
+    temperature: float = Field(0.2, ge=0.0, le=1.0)
+
+
+@router.post("/modules/mud-spec/regenerate")
+async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
+    """Stage 2c — Regenerate an improved MUD spec by fixing all review issues.
+
+    Streams progress events via SSE.  The review report (all errors + warnings +
+    suggestions) is fed back to the AI so it can produce an improved version.
+
+    Event types:
+        ``mud_regen``   — progress updates with current iteration number
+        ``complete``    — final event: improved spec + new iteration number
+        ``error``       — regeneration failed
+    """
+    logger.info("mud-spec regenerate request for %s (iter=%s)", request.swc_name, request.review.get("iteration"))
+    
+    from mudtool.api.dependencies import get_orchestrator
+    from mudtool.ai.mud_spec_generator import MudSpecGenerator, SpecReviewResult
+
+    orchestrator = get_orchestrator()
+    generator = MudSpecGenerator(orchestrator)
+
+    # Reconstruct review object from the dict sent by the client
+    review = SpecReviewResult.from_dict(
+        request.review,
+        iteration=request.review.get("iteration", 1),
+    )
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _progress(event: dict) -> None:
+        queue.put_nowait(event)
+
+    async def _run():
+        try:
+            improved_md = await generator.regenerate_spec(
+                swc_name=request.swc_name,
+                asil=request.asil,
+                requirements_text=request.requirements_text,
+                current_spec_markdown=request.current_spec_markdown,
+                review=review,
+                temperature=request.temperature,
+                progress_callback=_progress,
+            )
+            queue.put_nowait({
+                "_final": True,
+                "mud_spec_markdown": improved_md,
+                "swc_name": request.swc_name,
+                "iteration": review.iteration + 1,
+                "char_count": len(improved_md),
+            })
+        except Exception as exc:
+            logger.exception("mud_spec regeneration failed for %s", request.swc_name)
+            queue.put_nowait({"_error": True, "detail": str(exc)})
+
+    async def event_generator():
+        task = asyncio.create_task(_run())
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=300)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+
+                if event.get("_final"):
+                    yield (
+                        f"event: complete\n"
+                        f"data: {json_mod.dumps(event, default=str)}\n\n"
+                    )
+                    break
+                elif event.get("_error"):
+                    yield (
+                        f"event: error\n"
+                        f"data: {json_mod.dumps(event)}\n\n"
+                    )
+                    break
+                else:
+                    yield (
+                        f"event: mud_regen\n"
+                        f"data: {json_mod.dumps(event)}\n\n"
+                    )
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.post("/modules/review")
+async def review_mud_spec(request: ReviewSpecRequest):
+    """Stage 2b — Run an AI reviewer pass on a generated MUD spec.
+
+    Checks completeness, naming conventions, safety requirements, and
+    IRV/CalPrm coverage.
+
+    Returns:
+        {
+          "approved": true,
+          "coverage_pct": 87,
+          "issues": [...],
+          "suggestions": [...]
+        }
+    """
+    from mudtool.api.dependencies import get_orchestrator
+    from mudtool.ai.mud_spec_generator import MudSpecGenerator
+
+    orchestrator = get_orchestrator()
+    generator = MudSpecGenerator(orchestrator)
+
+    review = await generator.review_spec(
+        swc_name=request.swc_name,
+        asil=request.asil,
+        req_ids=request.req_ids,
+        requirements_text=request.requirements_text,
+        mud_spec_markdown=request.mud_spec_markdown,
+        temperature=request.temperature,
+        iteration=request.iteration,
+    )
+
+    return review.to_dict()
+
+
+# ── Private helpers ───────────────────────────────────────────────────────────
+
 def _write_env_updates(updates: dict[str, str]) -> None:
     """Write key=value pairs into the .env file (updating existing keys in-place)."""
     import os
