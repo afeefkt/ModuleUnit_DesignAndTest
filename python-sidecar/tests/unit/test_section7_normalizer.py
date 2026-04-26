@@ -46,6 +46,25 @@ def test_normalize_section7_preserves_ambiguous_prose_with_warning():
     assert "Validation otherwise set fault" in result.normalized_markdown
     assert result.runnable_reports[0].ambiguous_lines >= 1
     assert result.runnable_reports[0].warnings
+    assert "structure was ambiguous" in result.runnable_reports[0].warnings[0]
+
+
+def test_normalize_section7_rewrites_header_plus_helper_and_assignment_sequence():
+    markdown = """
+# MUD Spec: SWC_Helper
+
+## 7. Functional Description
+### RE_Helper
+1. Compute output: ApplyAssistCurve(speed); torqueCmd = speed * gain;
+"""
+
+    result = normalize_section7_markdown(markdown)
+
+    assert result.changed is True
+    assert "1. Compute output:" in result.normalized_markdown
+    assert "ApplyAssistCurve(speed);" in result.normalized_markdown
+    assert "torqueCmd = speed * gain;" in result.normalized_markdown
+    assert result.runnable_reports[0].mixed_rewrites >= 1
 
 
 def test_normalized_section7_improves_activity_context_branching():

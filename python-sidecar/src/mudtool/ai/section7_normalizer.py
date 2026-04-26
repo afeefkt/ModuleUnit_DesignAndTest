@@ -252,7 +252,7 @@ def _normalize_statement_block(
 
     if _looks_mixed_prose_and_code(text):
         ambiguous_lines += 1
-        warnings.append("left mixed prose/code line unchanged because structure was ambiguous")
+        warnings.append(_describe_ambiguous_line(text))
 
     return [f"{'   ' * max(base_indent - 1, 0)}{text}" if base_indent > 0 else text], changed, mixed_rewrites, ambiguous_lines, control_structures, warnings
 
@@ -267,7 +267,7 @@ def _split_header_from_inline_code(text: str) -> tuple[str | None, str | None]:
             continue
         if _looks_control_or_call(header):
             continue
-        if not _starts_explicit_code_structure(tail):
+        if not (_starts_explicit_code_structure(tail) or _looks_code_sequence(tail)):
             continue
         return f"{header}:", tail
     return None, None
@@ -405,6 +405,17 @@ def _starts_explicit_code_structure(text: str) -> bool:
     return lowered.startswith(_CONTROL_PREFIXES) or candidate.startswith(("Rte_", "Dem_"))
 
 
+def _looks_code_sequence(text: str) -> bool:
+    candidate = (text or "").strip()
+    if not candidate:
+        return False
+    if ";" in candidate and _looks_code_like(candidate):
+        return True
+    helper_call = re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*;?", candidate)
+    assignment = re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=", candidate)
+    return bool(helper_call or assignment)
+
+
 def _looks_control_or_call(text: str) -> bool:
     candidate = (text or "").strip().lower()
     if not candidate:
@@ -419,6 +430,15 @@ def _looks_mixed_prose_and_code(text: str) -> bool:
     has_words = bool(re.search(r"[A-Za-z]{4,}", candidate))
     has_code = _looks_code_like(candidate)
     return has_words and has_code and not _looks_control_or_call(candidate)
+
+
+def _describe_ambiguous_line(text: str) -> str:
+    candidate = (text or "").strip()
+    if ":" in candidate and _looks_code_like(candidate):
+        return "left mixed prose/code line unchanged because header + inline code structure was ambiguous"
+    if re.search(r"\botherwise\b", candidate, flags=re.IGNORECASE):
+        return "left mixed prose/code line unchanged because implied else structure was ambiguous"
+    return "left mixed prose/code line unchanged because structure was ambiguous"
 
 
 def _leading_indent_units(text: str) -> int:

@@ -181,12 +181,14 @@ def synthesize_activity_diagrams_from_context(
         steps = _parse_numbered_step_entries(runnable.functional_description)
         if not steps:
             continue
+        helper_call_counts = _count_helper_calls(steps, helper_names)
 
         builder = _ActivityGraphBuilder(
             swc_name=context.swc_name,
             runnable_name=runnable.name,
             req_ids=trace_reqs,
             helper_names=helper_names,
+            helper_call_counts=helper_call_counts,
         )
         start_id = builder.add_node(
             name="Start",
@@ -235,6 +237,7 @@ class _ActivityGraphBuilder:
         runnable_name: str,
         req_ids: list[str],
         helper_names: set[str],
+        helper_call_counts: dict[str, int],
     ) -> None:
         from mudtool.models.json_uml import ActivityEdge, ActivityNode, ActivityNodeType
 
@@ -245,6 +248,7 @@ class _ActivityGraphBuilder:
         self.runnable_name = runnable_name
         self.req_ids = list(req_ids)
         self.helper_names = set(helper_names)
+        self.helper_call_counts = dict(helper_call_counts)
         self.nodes: list[ActivityNode] = []
         self.edges: list[ActivityEdge] = []
         self.sub_diagrams = []
@@ -365,18 +369,22 @@ class _ActivityGraphBuilder:
         node_type = self.ActivityNodeType.ACTION
         callee = None
         description = _short_step_description(step_text)
+        display_name = _compact_step_label(step_text)
         rte_meta = _extract_rte_metadata(step_text)
         if rte_meta:
             node_type = self.ActivityNodeType.CALL
+            display_name = _compact_step_label(step_text, prefer_explicit_call=True)
         else:
             helper_name = _extract_helper_call(step_text, self.helper_names)
             if helper_name:
                 node_type = self.ActivityNodeType.FUNCTION_CALL
                 callee = helper_name
+                display_name = _compact_step_label(step_text, prefer_helper_name=helper_name)
             elif "dem_reporterrorstatus" in step_text.lower() or "dem_seteventstatus" in step_text.lower():
                 node_type = self.ActivityNodeType.EXCEPTION
+                display_name = _compact_step_label(step_text, prefer_explicit_call=True)
         node_id = self.add_node(
-            name=step_text,
+            name=display_name,
             node_type=node_type,
             rte_call=rte_meta["rte_call"] if rte_meta else None,
             port=rte_meta["port"] if rte_meta else None,
@@ -386,7 +394,7 @@ class _ActivityGraphBuilder:
             confidence=0.88,
         )
         self.connect_pending(pending, node_id)
-        if callee and callee not in self._sub_ids:
+        if callee and callee not in self._sub_ids and self._should_emit_helper_subdiagram(callee, step_text, pending):
             self._sub_ids.add(callee)
             self.sub_diagrams.append(
                 _make_helper_subdiagram(
@@ -398,6 +406,22 @@ class _ActivityGraphBuilder:
                 )
             )
         return (node_id, None)
+
+    def _should_emit_helper_subdiagram(
+        self,
+        callee: str,
+        step_text: str,
+        pending: list[tuple[str, str | None]],
+    ) -> bool:
+        if self.helper_call_counts.get(callee, 0) > 1:
+            return True
+        if any(guard for _source, guard in pending if guard):
+            return True
+        if _step_has_multiple_substantive_ops(step_text):
+            return True
+        if _contains_structural_hint(step_text):
+            return True
+        return False
 
     def emit_return_step(
         self,
@@ -990,11 +1014,114 @@ def _extract_helper_call(step: str, helper_names: set[str]) -> str | None:
     return None
 
 
+def _count_helper_calls(steps: list[NumberedStep], helper_names: set[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for step in steps:
+        helper = _extract_helper_call(step.text, helper_names)
+        if not helper:
+            continue
+        counts[helper] = counts.get(helper, 0) + 1
+    return counts
+
+
+def _compact_step_label(
+    step: str,
+    *,
+    prefer_explicit_call: bool = False,
+    prefer_helper_name: str | None = None,
+) -> str:
+    trimmed = _normalize_ws(step)
+    if not trimmed:
+        return trimmed
+
+    if prefer_helper_name:
+        assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*.+$", trimmed)
+        if assign:
+            return f"{assign.group(1)} = {prefer_helper_name}(...)"
+        return f"{prefer_helper_name}(...)"
+
+    if prefer_explicit_call:
+        return trimmed
+
+    header, tail = _split_heading_prefix(trimmed)
+    candidate = _normalize_ws(tail or trimmed)
+    if len(candidate) <= 72:
+        return candidate
+
+    assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", candidate)
+    if assign:
+        lhs = assign.group(1)
+        rhs = assign.group(2)
+        helper = _extract_helper_call(rhs, set())
+        if helper:
+            return f"{lhs} = {helper}(...)"
+        return f"{lhs} = ..."
+
+    call = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(", candidate)
+    if call:
+        return f"{call.group(1)}(...)"
+
+    if header:
+        return f"{header}: ..."
+    return candidate[:69].rstrip() + "..."
+
+
 def _short_step_description(step: str) -> str:
     trimmed = _normalize_ws(step)
-    if len(trimmed) <= 72:
+    if not trimmed:
         return trimmed
-    return trimmed[:69].rstrip() + "..."
+
+    header, tail = _split_heading_prefix(trimmed)
+    target = _normalize_ws(tail or trimmed)
+
+    if _extract_rte_metadata(target):
+        return target
+
+    helper = _extract_helper_call(target, set())
+    if helper:
+        assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*.+$", target)
+        if assign:
+            return f"{assign.group(1)} = {helper}(...)"
+        return f"{helper}(...)"
+
+    if len(target) <= 56:
+        return target
+    compact = target[:53].rstrip() + "..."
+    if header:
+        return f"{header}: {compact}"
+    return compact
+
+
+def _split_heading_prefix(step: str) -> tuple[str | None, str | None]:
+    parts = step.split(":", 1)
+    if len(parts) != 2:
+        return None, None
+    head = parts[0].strip()
+    tail = parts[1].strip()
+    if not head or not tail:
+        return None, None
+    if _classify_step_kind(head) != "action":
+        return None, None
+    return head, tail
+
+
+def _step_has_multiple_substantive_ops(step: str) -> bool:
+    candidate = _normalize_ws(step)
+    _header, tail = _split_heading_prefix(candidate)
+    candidate = tail or candidate
+    if candidate.count(";") >= 1:
+        return True
+    if candidate.count("&&") >= 1 or candidate.count("||") >= 1:
+        return True
+    if candidate.count(",") >= 2 and "(" not in candidate:
+        return True
+    return False
+
+
+def _contains_structural_hint(step: str) -> bool:
+    lowered = f" {_normalize_ws(step).lower()} "
+    hints = (" if ", " else ", " while ", " for ", " switch ", " case ", " return ", " loop ", " guard ")
+    return any(hint in lowered for hint in hints)
 
 
 def _make_helper_subdiagram(
@@ -1028,7 +1155,7 @@ def _make_helper_subdiagram(
             ),
             ActivityNode(
                 id="N_01",
-                name=step_text,
+                name=_compact_step_label(step_text, prefer_helper_name=callee),
                 node_type=ActivityNodeType.ACTION,
                 trace_reqs=list(req_ids),
                 description=f"Helper logic for {callee}",

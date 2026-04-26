@@ -107,13 +107,25 @@ values for all ASIL-C/D runnables, redundancy mechanisms, and fault reaction str
 // IRVs produced: irvTorqueSetpoint, irvModuleStatus
 // CalPrm used:   RP_CalPrm_DefaultTorque
 
-1. Rte_Read(RP_NvM_State, &nvmState);
-   if (nvmState == NVM_VALID) → irvTorqueSetpoint = nvmState.lastTorque (Nm)
-   else → irvTorqueSetpoint = RP_CalPrm_DefaultTorque.value (default: 0.0 Nm)
-2. Validate irvTorqueSetpoint ∈ [−100.0, 100.0] Nm; clamp to safe range if violated
-3. Rte_Write(PP_InitStatus, INIT_DONE); irvModuleStatus = STATUS_READY
-4. On error: Dem_ReportErrorStatus(SWC_DEM_E_INIT_FAIL, DEM_EVENT_STATUS_FAILED);
-             Rte_Write(PP_InitStatus, INIT_FAIL); irvModuleStatus = STATUS_ERROR
+1. Guard
+   if (moduleState != MODULE_READY) {
+      irvModuleStatus = STATUS_INIT;
+   }
+2. Read inputs
+   Rte_Read(RP_NvM_State, &nvmState);
+3. Restore defaults
+   if (nvmState == NVM_VALID) {
+      irvTorqueSetpoint = nvmState.lastTorque;
+   } else {
+      irvTorqueSetpoint = Rte_Prm(RP_CalPrm_DefaultTorque);
+   }
+4. Validate
+   if (irvTorqueSetpoint > 100.0F) {
+      irvTorqueSetpoint = 100.0F;
+   }
+5. Write outputs
+   Rte_Write(PP_InitStatus, INIT_DONE);
+   irvModuleStatus = STATUS_READY;
 
 ### RE_Control
 // Reads:  RP_SteerAngle, RP_MotorCurrent
@@ -122,14 +134,25 @@ values for all ASIL-C/D runnables, redundancy mechanisms, and fault reaction str
 // IRVs produced: irvFilteredTorque
 // CalPrm used:   RP_CalPrm_TorqueGain, RP_CalPrm_CurrentLimit
 
-1. ReadSensorInputs(): Rte_Read(RP_SteerAngle, &steerAngle);
-                       Rte_Read(RP_MotorCurrent, &motorCurrent)
-2. ValidateInputs(): if steerAngle ∉ [−540, 540] deg OR motorCurrent > RP_CalPrm_CurrentLimit
-                     → SAFE_STATE: Rte_Write(PP_TorqueOut, 0.0 Nm);
-                                    Dem_ReportErrorStatus(SWC_DEM_E_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED)
-3. ComputeOutput(): torqueCmd = steerAngle × RP_CalPrm_TorqueGain + irvTorqueSetpoint
-                    irvFilteredTorque = LowPassFilter(torqueCmd, RP_CalPrm_FilterCoeff)
-4. Rte_Write(PP_TorqueOut, clamp(irvFilteredTorque, −100.0, 100.0 Nm))
+1. Guard
+   if (irvModuleStatus != STATUS_READY) {
+      Rte_Write(PP_TorqueOut, 0.0F);
+      return;
+   }
+2. Read inputs
+   Rte_Read(RP_SteerAngle, &steerAngle);
+   Rte_Read(RP_MotorCurrent, &motorCurrent);
+3. Validate
+   if (motorCurrent > Rte_Prm(RP_CalPrm_CurrentLimit)) {
+      Rte_Write(PP_TorqueOut, 0.0F);
+      Dem_ReportErrorStatus(SWC_DEM_E_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);
+      return;
+   }
+4. Compute
+   torqueCmd = steerAngle * Rte_Prm(RP_CalPrm_TorqueGain);
+   irvFilteredTorque = LowPassFilter(torqueCmd, Rte_Prm(RP_CalPrm_FilterCoeff));
+5. Write outputs
+   Rte_Write(PP_TorqueOut, clamp(irvFilteredTorque, -100.0F, 100.0F));
 ════════════════════════════════════════════════
 
 RULES (follow ALL — do not deviate):
@@ -143,10 +166,16 @@ RULES (follow ALL — do not deviate):
 - Section 3.2: include ALL internal helper functions called by those runnables
 - Section 7 MUST use the pseudo-code format shown above for EVERY runnable in Section 3.1:
     * // Reads / Writes / IRVs consumed / IRVs produced / CalPrm used — header comment block
+    * Numbered steps with short labels such as Guard / Read inputs / Validate / Compute / Write outputs
+    * One executable statement per line in the pseudo-code body
+    * Explicit if / else if / else / switch / case / default / return statements
     * Numbered steps using Rte_Read/Rte_Write with actual port/signal names from Section 2
     * SAFE_STATE output value (0 or fail-safe) for every ASIL-C/D validation step
     * Dem_ReportErrorStatus() call with named DEM event ID on every error path
-    * Sub-function calls (e.g. ReadSensorInputs()) referencing names from Section 3.2
+    * Sub-function calls (e.g. ReadSensorInputs()) as standalone statements referencing names from Section 3.2
+    * No mixed prose + logic on one line
+    * No arrow shorthand such as "-> SAFE_STATE" or "→"
+    * No long narrative sentences describing multiple operations in one step
 - Signal ranges must use engineering units (Nm, deg, m/s, %, A, V)
 - Every CalPrm must have a default value and valid range in Section 2.3
 - If an IRV is shared between runnables in different OS tasks, list the ExclusiveArea name

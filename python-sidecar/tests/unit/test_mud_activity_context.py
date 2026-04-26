@@ -88,7 +88,8 @@ def test_synthesize_activity_diagrams_from_context_uses_section7_steps():
     assert len(diagram.nodes) == 5
     assert diagram.nodes[1].node_type.value == "call"
     assert diagram.nodes[2].node_type.value == "function_call"
-    assert diagram.sub_diagrams
+    assert diagram.nodes[2].name == "assist = EPS_CalcAssistTorque(...)"
+    assert diagram.sub_diagrams == []
 
 
 def test_synthesize_activity_diagrams_from_context_builds_if_else_branching():
@@ -202,6 +203,29 @@ def test_synthesize_activity_diagrams_from_context_builds_for_each_loop_and_help
     assert any(n.node_type == ActivityNodeType.DECISION for n in diagram.nodes)
     assert diagram.sub_diagrams
     assert diagram.sub_diagrams[0].function_name == "EvaluateDtc"
+
+
+def test_synthesize_activity_diagrams_from_context_emits_helper_subdiagram_when_helper_repeats():
+    markdown = """
+# MUD Spec: SWC_Filter
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Filter | Cyclic | 10 ms | ASIL-B | Repeated helper use |
+
+## 7. Functional Description
+### RE_Filter
+1. filteredA = ApplyFilter(rawA)
+2. filteredB = ApplyFilter(rawB)
+3. Rte_Write(PP_FilteredA, filteredA)
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_Filter")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-105"])[0]
+
+    assert diagram.sub_diagrams
+    assert diagram.sub_diagrams[0].function_name == "ApplyFilter"
 
 
 def test_parse_numbered_step_entries_expands_c_style_pseudocode_blocks():

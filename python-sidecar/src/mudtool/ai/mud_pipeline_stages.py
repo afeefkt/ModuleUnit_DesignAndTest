@@ -194,6 +194,21 @@ PSEUDO-CODE RULES:
 4. Core computation step(s) using Rte_Prm() for calibrations and Rte_IrvRead/Write() for IRVs
 5. Write PP_ output using Rte_IWrite() with clamp to safe range
 6. Last step: WdgM_UpdateAliveCounter() for ASIL-C/D runnables
+7. Keep Section 7 strict and code-like:
+   - one executable statement per line
+   - explicit if / else if / else / switch / case / default / return
+   - helper calls as standalone statements on their own line
+   - no mixed prose + code on the same line
+   - no arrow shorthand like "-> SAFE_STATE" or "→"
+   - no sentence-style logic like "do X and Y and maybe Z"
+8. Keep step labels short and structural only, such as:
+   - "Guard"
+   - "Read inputs"
+   - "Validate"
+   - "Compute"
+   - "Write outputs"
+9. The code field must be compact pseudo-code, not narrative text.
+10. On early-exit paths, emit an explicit "return;" line.
 
 REFERENCE EXAMPLE (EPS RE_ControlTorque):
 {few_shot_example}
