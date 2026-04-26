@@ -778,8 +778,6 @@ class DrawIOExporter:
                 label_parts = [call_label]
         elif node.description:
             label_parts.append(node.description)
-        if node.trace_reqs:
-            label_parts.append(f"[{', '.join(node.trace_reqs)}]")
         return "\n".join(str(part or "") for part in label_parts if part is not None)
 
     @staticmethod

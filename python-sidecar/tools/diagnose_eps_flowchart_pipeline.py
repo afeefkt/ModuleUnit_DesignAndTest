@@ -178,6 +178,7 @@ def _make_markdown_report(
     imported_count: int,
     activity_summaries: list[dict[str, Any]],
     canonical_activity_summaries: list[dict[str, Any]],
+    section7_normalization: dict[str, Any] | None,
     mermaid_preview: dict[str, str],
     stages: list[StageResult],
     unreachable_counts: dict[str, int],
@@ -203,6 +204,36 @@ def _make_markdown_report(
         status = "" if stage.status_code is None else str(stage.status_code)
         ok_text = "yes" if stage.ok else "no"
         lines.append(f"| {stage.name} | {ok_text} | {status} | {stage.duration_ms} | {stage.detail or '-'} |")
+    lines.append("")
+    lines.append("## Section 7 Normalization")
+    lines.append("")
+    if not section7_normalization:
+        lines.append("No Section 7 normalization metadata was captured.")
+    else:
+        lines.append(
+            f"- Succeeded: `{section7_normalization.get('succeeded')}`"
+        )
+        lines.append(
+            f"- Runnable blocks: `{section7_normalization.get('normalized_runnable_count', 0)}`"
+        )
+        lines.append(
+            f"- Adjusted blocks: `{section7_normalization.get('changed_runnable_count', 0)}`"
+        )
+        lines.append(
+            f"- Warning count: `{section7_normalization.get('warning_count', 0)}`"
+        )
+        runnable_reports = section7_normalization.get("runnable_reports", [])
+        if runnable_reports:
+            lines.append("")
+            for report in runnable_reports:
+                lines.append(
+                    f"- `{report.get('runnable_name', 'unknown')}`: "
+                    f"changed={report.get('changed')}, "
+                    f"controls={','.join(report.get('control_structures', [])) or 'none'}, "
+                    f"mixed_rewrites={report.get('mixed_rewrites', 0)}, "
+                    f"ambiguous_lines={report.get('ambiguous_lines', 0)}, "
+                    f"warnings={len(report.get('warnings', []))}"
+                )
     lines.append("")
     lines.append("## Activity Diagram Summary")
     lines.append("")
@@ -295,6 +326,7 @@ def main() -> int:
     imported_count = 0
     activity_summaries: list[dict[str, Any]] = []
     canonical_activity_summaries: list[dict[str, Any]] = []
+    section7_normalization: dict[str, Any] | None = None
     mermaid_preview: dict[str, str] = {}
     unreachable_counts: dict[str, int] = {}
 
@@ -398,17 +430,23 @@ def main() -> int:
             mud_spec = ""
             if final_spec_event:
                 mud_spec = final_spec_event.get("data", {}).get("mud_spec_markdown", "")
+                section7_normalization = final_spec_event.get("data", {}).get("section7_normalization")
             if mud_spec:
                 _write_text(output_dir / "mud_spec.md", mud_spec)
+            if section7_normalization:
+                _write_json(output_dir / "section7_normalization.json", section7_normalization)
             stages.append(
                 StageResult(
                     "generate_mud_spec",
                     mud_resp.status_code == 200 and bool(mud_spec),
                     duration_ms,
                     status_code=mud_resp.status_code,
-                    detail=f"events={len(mud_events)} chars={len(mud_spec)}",
+                    detail=(
+                        f"events={len(mud_events)} chars={len(mud_spec)} "
+                        f"normalized={section7_normalization.get('changed_runnable_count', 0) if section7_normalization else 0}"
+                    ),
                     errors=[str(e.get('data')) for e in mud_events if e.get("event") == "error"],
-                    artifact="mud_spec.md" if mud_spec else "mud_spec_events.json",
+                    artifact="section7_normalization.json" if section7_normalization else ("mud_spec.md" if mud_spec else "mud_spec_events.json"),
                 )
             )
             if mud_resp.status_code != 200 or not mud_spec:
@@ -564,6 +602,7 @@ def main() -> int:
         imported_count=imported_count,
         activity_summaries=activity_summaries,
         canonical_activity_summaries=canonical_activity_summaries,
+        section7_normalization=section7_normalization,
         mermaid_preview=mermaid_preview,
         stages=stages,
         unreachable_counts=unreachable_counts,

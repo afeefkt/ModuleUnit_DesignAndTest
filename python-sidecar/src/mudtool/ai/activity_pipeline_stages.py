@@ -1061,6 +1061,9 @@ class ActivityPipeline:
             canonical = d.get("_pipeline_canonical")
             candidate = d
             runnable_name = d.get("owner_runnable") or d.get("name") or ""
+            existing_provenance = d.get("provenance")
+            if not isinstance(existing_provenance, dict):
+                existing_provenance = {}
 
             # Determine provenance mode before any mutation
             if canonical and ActivityPipeline._diagram_has_cfg_breakage(d, runnable_name):
@@ -1069,7 +1072,7 @@ class ActivityPipeline:
                 candidate["_pipeline_model"] = d.get("_pipeline_model", d.get("_pipeline_backend", "activity_pipeline"))
                 candidate["_pipeline_latency_ms"] = d.get("_pipeline_latency_ms", 0)
                 provenance_mode = "cfg_restored"
-            elif d.get("provenance", {}).get("prompt_version", "").startswith("activity_pipeline_cfg"):
+            elif existing_provenance.get("prompt_version", "").startswith("activity_pipeline_cfg"):
                 provenance_mode = "canonical_only"
             elif any(
                 isinstance(patch, dict) and patch.get("runnable") == runnable_name
@@ -1357,6 +1360,13 @@ class ActivityPipeline:
         )
         if decisions_missing_branch > 0:
             return True
+        if decision_count > 1 and merge_count == 0:
+            logger.info(
+                "[Activity Pipeline/breakage] %s: %d decisions with no merge nodes",
+                runnable_name,
+                decision_count,
+            )
+            return True
 
         # ── Check 2: unreachable nodes ────────────────────────────────────────
         # Any non-initial node that has zero incoming edges is unreachable —
@@ -1390,8 +1400,8 @@ class ActivityPipeline:
         )
         if lint.errors:
             return True
-        branch_warnings = [
+        decision_warnings = [
             warning for warning in lint.warnings
-            if "Decision node" in warning or "branching paths may be missing" in warning
+            if "Decision node" in warning
         ]
-        return bool(branch_warnings)
+        return bool(decision_warnings)

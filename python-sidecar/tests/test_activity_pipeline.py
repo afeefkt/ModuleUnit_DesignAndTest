@@ -878,6 +878,49 @@ class TestDrawIOExporterActivity:
         assert merge["y"] > max(high["y"], low["y"])
         assert high["y"] > decision["y"] and low["y"] > decision["y"]
 
+    def test_activity_drawio_labels_do_not_render_trace_requirements(self):
+        from mudtool.generator.drawio_exporter import DrawIOExporter
+
+        diagram = ActivityDiagram(
+            name="Trace Label Cleanup",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Trace",
+            nodes=[
+                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL, trace_reqs=["REQ-1", "REQ-2"]),
+                ActivityNode(
+                    id="N_01",
+                    name="Compute Assist",
+                    node_type=ActivityNodeType.ACTION,
+                    description="Use filtered torque demand",
+                    trace_reqs=["REQ-1", "REQ-2", "REQ-3"],
+                ),
+                ActivityNode(
+                    id="N_02",
+                    name="Rte_Write(PP_AssistTorque, assistTorque)",
+                    node_type=ActivityNodeType.CALL,
+                    rte_call="Rte_Write",
+                    port="PP_AssistTorque",
+                    element="AssistTorque",
+                    trace_reqs=["REQ-9"],
+                ),
+                ActivityNode(id="N_03", name="End", node_type=ActivityNodeType.FINAL, trace_reqs=["REQ-1"]),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="N_00", target="N_01"),
+                ActivityEdge(id="E_02", source="N_01", target="N_02"),
+                ActivityEdge(id="E_03", source="N_02", target="N_03"),
+            ],
+        )
+
+        xml_text = DrawIOExporter().export_diagram(diagram)
+
+        assert "REQ-1" not in xml_text
+        assert "REQ-2" not in xml_text
+        assert "REQ-9" not in xml_text
+        assert "Compute Assist" in xml_text
+        assert "Use filtered torque demand" in xml_text
+        assert "Rte_Write(PP_AssistTorque, AssistTorque)" in xml_text
+
     def test_nested_branching_and_loop_layout_has_no_overlaps(self):
         from mudtool.generator.drawio_exporter import DrawIOExporter
 

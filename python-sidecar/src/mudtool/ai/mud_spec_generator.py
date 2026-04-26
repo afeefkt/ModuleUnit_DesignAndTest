@@ -26,6 +26,11 @@ import re
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Optional
 
+from mudtool.ai.section7_normalizer import (
+    Section7NormalizationResult,
+    normalize_section7_markdown,
+)
+
 logger = logging.getLogger(__name__)
 
 # ── Generation system prompt ─────────────────────────────────────────────────
@@ -364,6 +369,11 @@ class MudSpecGenerator:
 
     def __init__(self, orchestrator):
         self._orchestrator = orchestrator
+        self._last_normalization_result = Section7NormalizationResult(normalized_markdown="")
+
+    @property
+    def last_normalization_result(self) -> Section7NormalizationResult:
+        return self._last_normalization_result
 
     async def generate_spec(
         self,
@@ -435,7 +445,12 @@ class MudSpecGenerator:
                         "generate_spec: pipeline produced %d chars for %s",
                         len(_pipeline_result), swc_name,
                     )
-                    return _pipeline_result
+                    return self._apply_section7_normalization(
+                        _pipeline_result,
+                        swc_name=swc_name,
+                        progress_callback=progress_callback,
+                        stage="mud_spec",
+                    )
                 else:
                     logger.warning(
                         "generate_spec: pipeline returned empty/short result (%d chars) "
@@ -603,7 +618,12 @@ class MudSpecGenerator:
             spec_md = re.sub(r"\n?```$", "", spec_md)
 
         logger.info("MudSpecGenerator: generated %d chars for %s", len(spec_md), swc_name)
-        return spec_md
+        return self._apply_section7_normalization(
+            spec_md,
+            swc_name=swc_name,
+            progress_callback=progress_callback,
+            stage="mud_spec",
+        )
 
     async def review_spec(
         self,
@@ -865,7 +885,13 @@ class MudSpecGenerator:
             "MudSpecGenerator: regenerated spec for %s (iteration %d) → %d chars",
             swc_name, regen_iter, len(spec_md),
         )
-        return spec_md
+        return self._apply_section7_normalization(
+            spec_md,
+            swc_name=swc_name,
+            progress_callback=progress_callback,
+            stage="mud_regen",
+            iteration=regen_iter,
+        )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -888,6 +914,74 @@ class MudSpecGenerator:
             )
             result.approved = False
         return result
+
+    def _apply_section7_normalization(
+        self,
+        spec_md: str,
+        *,
+        swc_name: str,
+        progress_callback=None,
+        stage: str = "mud_spec",
+        iteration: int | None = None,
+    ) -> str:
+        try:
+            normalization = normalize_section7_markdown(spec_md)
+        except Exception as exc:
+            logger.warning(
+                "Section 7 normalization failed for %s: %s",
+                swc_name,
+                exc,
+                exc_info=True,
+            )
+            self._last_normalization_result = Section7NormalizationResult(
+                normalized_markdown=spec_md,
+                warnings=[f"Section 7 normalization failed: {exc}"],
+                runnable_reports=[],
+                changed=False,
+                succeeded=False,
+            )
+            if progress_callback:
+                event = {
+                    "stage": stage,
+                    "message": f"Section 7 normalization skipped due to error: {exc}",
+                    "progress": 94,
+                    "section7_normalization": self._last_normalization_result.summary(),
+                }
+                if iteration is not None:
+                    event["iteration"] = iteration
+                progress_callback(event)
+            return spec_md
+
+        self._last_normalization_result = normalization
+        logger.info(
+            "Section 7 normalization for %s: runnables=%d changed=%d warnings=%d",
+            swc_name,
+            normalization.normalized_runnable_count,
+            normalization.changed_runnable_count,
+            normalization.warning_count,
+        )
+        if progress_callback:
+            summary = normalization.summary()
+            message = (
+                "Section 7 normalization complete - "
+                f"{summary['normalized_runnable_count']} runnable block(s), "
+                f"{summary['changed_runnable_count']} adjusted, "
+                f"{summary['warning_count']} warning(s)"
+            )
+            event = {
+                "stage": stage,
+                "message": message,
+                "progress": 94,
+                "section7_normalization": {
+                    **summary,
+                    "runnable_reports": [report.to_dict() for report in normalization.runnable_reports],
+                    "warnings": list(normalization.warnings),
+                },
+            }
+            if iteration is not None:
+                event["iteration"] = iteration
+            progress_callback(event)
+        return normalization.normalized_markdown
 
     def _parse_review(self, raw: str, iteration: int = 1) -> SpecReviewResult:
         """Parse JSON review result from AI response.

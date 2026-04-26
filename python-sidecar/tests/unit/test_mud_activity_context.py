@@ -121,8 +121,8 @@ def test_synthesize_activity_diagrams_from_context_builds_if_else_branching():
     assert len(decision_nodes) == 1
     assert merge_nodes
     assert exception_nodes
-    assert "[true]" in guards
-    assert "[false]" in guards
+    assert any("brakeRequest > threshold" in guard for guard in guards)
+    assert "[else]" in guards
 
 
 def test_synthesize_activity_diagrams_from_context_builds_nested_condition():
@@ -276,8 +276,8 @@ def test_synthesize_activity_diagrams_from_context_builds_branching_from_c_style
 
     assert len(decision_nodes) >= 3
     assert len(merge_nodes) >= 3
-    assert "[true]" in guards
-    assert "[false]" in guards
+    assert any("motorTemperature > 120" in guard for guard in guards)
+    assert "[else]" in guards
 
 
 def test_synthesize_activity_diagrams_from_context_normalizes_rte_iread_iwrite_and_return():

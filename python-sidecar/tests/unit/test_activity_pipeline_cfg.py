@@ -296,3 +296,38 @@ def test_diagram_has_cfg_breakage_when_rte_call_is_not_normalized():
     }
 
     assert ActivityPipeline._diagram_has_cfg_breakage(diagram, "RE_BadRte")
+
+
+def test_diagram_has_cfg_breakage_ignores_generic_branch_density_warning_for_single_decision():
+    diagram = {
+        "diagram_type": "activity",
+        "name": "RE_SingleDecision Code Flow",
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_SingleDecision",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.9},
+            {"id": "N_01", "name": "mode valid?", "node_type": "decision", "trace_reqs": ["REQ-1"], "description": "decision", "confidence": 0.9},
+            {"id": "N_02", "name": "Initialize", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "init", "confidence": 0.9},
+            {"id": "N_03", "name": "Skip init", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "skip", "confidence": 0.9},
+            {"id": "N_04", "name": "Merge", "node_type": "merge", "trace_reqs": ["REQ-1"], "description": "merge", "confidence": 0.9},
+            {"id": "N_05", "name": "Read 1", "node_type": "call", "trace_reqs": ["REQ-1"], "description": "r1", "confidence": 0.9, "rte_call": "Rte_Read"},
+            {"id": "N_06", "name": "Read 2", "node_type": "call", "trace_reqs": ["REQ-1"], "description": "r2", "confidence": 0.9, "rte_call": "Rte_Read"},
+            {"id": "N_07", "name": "Write", "node_type": "call", "trace_reqs": ["REQ-1"], "description": "w", "confidence": 0.9, "rte_call": "Rte_Write"},
+            {"id": "N_08", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.9},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02", "guard": "[mode valid]"},
+            {"id": "E_03", "source": "N_01", "target": "N_03", "guard": "[else]"},
+            {"id": "E_04", "source": "N_02", "target": "N_04"},
+            {"id": "E_05", "source": "N_03", "target": "N_04"},
+            {"id": "E_06", "source": "N_04", "target": "N_05"},
+            {"id": "E_07", "source": "N_05", "target": "N_06"},
+            {"id": "E_08", "source": "N_06", "target": "N_07"},
+            {"id": "E_09", "source": "N_07", "target": "N_08"},
+        ],
+        "sub_diagrams": [],
+    }
+
+    assert not ActivityPipeline._diagram_has_cfg_breakage(diagram, "RE_SingleDecision")

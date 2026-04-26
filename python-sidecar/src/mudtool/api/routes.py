@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json as json_mod
 import logging
+import math
 import tempfile
 from pathlib import Path
 from typing import Literal, Optional
@@ -25,6 +26,22 @@ from mudtool.models.validation import ValidationReport
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _sanitize_for_json(value):
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_for_json(item) for item in value]
+    return value
+
+
+def _sse_json(payload: dict) -> str:
+    return json_mod.dumps(_sanitize_for_json(payload), default=str, allow_nan=False)
 
 
 # ──────────────────────────────────────────────
@@ -510,24 +527,64 @@ async def _generate_activity_from_mud(
         build_mud_activity_context,
         synthesize_activity_diagrams_from_context,
     )
+    from mudtool.ai.section7_normalizer import normalize_section7_markdown
     from mudtool.models.json_uml import ActivityDiagram, DiagramType, GenerationResult
 
+    original_markdown = request.mud_spec_markdown or ""
+    normalization_warnings: list[str] = []
+    try:
+        normalization = normalize_section7_markdown(original_markdown)
+        normalized_markdown = normalization.normalized_markdown
+        if progress_callback:
+            summary = normalization.summary()
+            progress_callback({
+                "stage": "activity_normalization",
+                "diagram_type": "activity",
+                "source": "mud_spec",
+                "message": (
+                    f"[Activity:MUD] Section 7 normalized - "
+                    f"{summary['changed_runnable_count']}/{summary['normalized_runnable_count']} runnable block(s) adjusted, "
+                    f"{summary['warning_count']} warning(s)"
+                ),
+                "section7_normalization": {
+                    **summary,
+                    "runnable_reports": [report.to_dict() for report in normalization.runnable_reports],
+                    "warnings": list(normalization.warnings),
+                },
+            })
+        normalization_warnings.extend(
+            f"Section 7 normalization: {warning}" for warning in normalization.warnings
+        )
+    except Exception as exc:
+        logger.warning("_generate_activity_from_mud: Section 7 normalization failed: %s", exc, exc_info=True)
+        normalized_markdown = original_markdown
+        normalization_warnings.append(f"Section 7 normalization failed - using original markdown: {exc}")
+        if progress_callback:
+            progress_callback({
+                "stage": "activity_normalization",
+                "diagram_type": "activity",
+                "source": "mud_spec",
+                "message": f"[Activity:MUD] Section 7 normalization failed - using original markdown ({exc})",
+            })
+
     mud_context = build_mud_activity_context(
-        request.mud_spec_markdown or "",
+        normalized_markdown,
         module_context=request.module_context,
     )
     req_ids = [r.req_id for r in requirements]
     logger.info(
-        "_generate_activity_from_mud: swc=%s runnables=%d has_flow=%s structured_flow=%s md_len=%d",
+        "_generate_activity_from_mud: swc=%s runnables=%d has_flow=%s structured_flow=%s md_len=%d original_len=%d",
         mud_context.swc_name,
         len(mud_context.runnables),
         mud_context.has_usable_flow_source,
         mud_context.has_structured_flow_source,
-        len(request.mud_spec_markdown or ""),
+        len(normalized_markdown),
+        len(original_markdown),
     )
     if not mud_context.has_usable_flow_source:
         return GenerationResult(
             analyzed_requirements=req_ids,
+            warnings=normalization_warnings,
             errors=[
                 "Selected MUD spec does not contain runnable flow details usable for activity generation."
             ],
@@ -611,11 +668,13 @@ async def _generate_activity_from_mud(
             return GenerationResult(
                 diagrams=synthesized,
                 analyzed_requirements=req_ids,
-                warnings=result.warnings + [
+                warnings=result.warnings + normalization_warnings + [
                     "Activity AI output was too shallow; using deterministic flow generated from MUD Section 7."
                 ],
                 errors=result.errors,
             )
+    if normalization_warnings:
+        result.warnings.extend(normalization_warnings)
     return result
 
 
@@ -1224,7 +1283,7 @@ async def generate_diagrams_stream(request: GenerateRequest):
                         logger.error("SSE generation task completed without a terminal event")
                     yield (
                         f"event: error\n"
-                        f"data: {json_mod.dumps({'message': detail})}\n\n"
+                        f"data: {_sse_json({'message': detail})}\n\n"
                     )
                     break
                 try:
@@ -1237,12 +1296,12 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 if event.get("_final"):
                     emitted_terminal_event = True
                     try:
-                        payload = json_mod.dumps(event, default=str)
+                        payload = _sse_json(event)
                     except Exception as exc:
                         logger.error("Failed to serialize SSE complete event: %s", exc, exc_info=True)
                         yield (
                             f"event: error\n"
-                            f"data: {json_mod.dumps({'message': f'Failed to serialize final generation result: {exc}'})}\n\n"
+                            f"data: {_sse_json({'message': f'Failed to serialize final generation result: {exc}'})}\n\n"
                         )
                         break
                     yield (
@@ -1254,19 +1313,19 @@ async def generate_diagrams_stream(request: GenerateRequest):
                     emitted_terminal_event = True
                     yield (
                         f"event: error\n"
-                        f"data: {json_mod.dumps(event)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
                     break
                 else:
                     event_type = event.get("stage", "progress")
                     try:
-                        payload = json_mod.dumps(event, default=str)
+                        payload = _sse_json(event)
                     except Exception as exc:
                         logger.error("Failed to serialize SSE progress event '%s': %s", event_type, exc, exc_info=True)
                         emitted_terminal_event = True
                         yield (
                             f"event: error\n"
-                            f"data: {json_mod.dumps({'message': f'Failed to serialize progress event {event_type}: {exc}'})}\n\n"
+                            f"data: {_sse_json({'message': f'Failed to serialize progress event {event_type}: {exc}'})}\n\n"
                         )
                         break
                     yield (
@@ -1775,6 +1834,7 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
                 "mud_spec_markdown": spec_md,
                 "swc_name": request.swc_name,
                 "char_count": len(spec_md),
+                "section7_normalization": generator.last_normalization_result.to_dict(),
             })
         except Exception as exc:
             logger.exception("mud_spec generation failed for %s", request.swc_name)
@@ -1793,19 +1853,19 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
                 if event.get("_final"):
                     yield (
                         f"event: complete\n"
-                        f"data: {json_mod.dumps(event, default=str)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
                     break
                 elif event.get("_error"):
                     yield (
                         f"event: error\n"
-                        f"data: {json_mod.dumps(event)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
                     break
                 else:
                     yield (
                         f"event: mud_spec\n"
-                        f"data: {json_mod.dumps(event)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
         finally:
             if not task.done():
@@ -1880,6 +1940,7 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                 "swc_name": request.swc_name,
                 "iteration": review.iteration + 1,
                 "char_count": len(improved_md),
+                "section7_normalization": generator.last_normalization_result.to_dict(),
             })
         except Exception as exc:
             logger.exception("mud_spec regeneration failed for %s", request.swc_name)
@@ -1898,19 +1959,19 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                 if event.get("_final"):
                     yield (
                         f"event: complete\n"
-                        f"data: {json_mod.dumps(event, default=str)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
                     break
                 elif event.get("_error"):
                     yield (
                         f"event: error\n"
-                        f"data: {json_mod.dumps(event)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
                     break
                 else:
                     yield (
                         f"event: mud_regen\n"
-                        f"data: {json_mod.dumps(event)}\n\n"
+                        f"data: {_sse_json(event)}\n\n"
                     )
         finally:
             if not task.done():

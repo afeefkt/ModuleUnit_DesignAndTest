@@ -2077,6 +2077,13 @@
                   setStatus(data.message || `${data.stage}...`);
                 }
               } catch (parseErr) {
+                if (eventType === 'complete') {
+                  const snippet = line.slice(6, 246);
+                  throw new Error(`Invalid complete-event JSON: ${parseErr.message}. Payload starts with: ${snippet}`);
+                }
+                if (eventType === 'error') {
+                  throw new Error(`Invalid error-event JSON: ${parseErr.message}`);
+                }
                 if (parseErr.message && !parseErr.message.includes('JSON'))
                   throw parseErr;
               }
@@ -2203,14 +2210,17 @@
         const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
         const el = document.getElementById(safeId);
         if (!el) return;
-        mermaid.run({ nodes: [el] }).catch(e => {
-          el.innerHTML =
-            `<div class="mmd-render-error">⚠ Render error: ${e.message}<br>
-           <span style="color:#64748b">Source is valid</span></div>
-         <pre style="margin-top:8px;font-size:11px;background:#0f172a;color:#86efac;
-                     padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap"
-              >${escapeHtml(mmdText)}</pre>`;
-        });
+        mermaid.run({ nodes: [el] })
+          .then(() => {
+            const svg = el.querySelector('svg');
+            const blankReason = detectBlankMermaidSvg(svg);
+            if (blankReason) {
+              showMermaidFallback(el, mmdText, `Blank-looking diagram: ${blankReason}`);
+            }
+          })
+          .catch(e => {
+            showMermaidFallback(el, mmdText, `Render error: ${e.message}`);
+          });
       });
 
       if (entries.length) {
@@ -2220,6 +2230,57 @@
 
       // Attach click handlers to SVG nodes for interactive detail panel
       attachNodeClickHandlers();
+    }
+
+    function detectBlankMermaidSvg(svg) {
+      if (!svg) return 'no SVG was produced';
+
+      const viewBox = (svg.getAttribute('viewBox') || '').trim();
+      if (viewBox) {
+        const parts = viewBox.split(/\s+/).map(Number);
+        if (parts.length === 4) {
+          const vbWidth = parts[2];
+          const vbHeight = parts[3];
+          if (!(vbWidth > 1) || !(vbHeight > 1)) {
+            return `invalid viewBox ${viewBox}`;
+          }
+        }
+      }
+
+      const graphGroup = svg.querySelector('g.output, g.root, g.nodes, g[class*="output"]') || svg;
+      const renderedNodes = svg.querySelectorAll('.node, .cluster, .edgePath, .edgeLabel').length;
+      if (renderedNodes === 0) {
+        return 'SVG contains no rendered nodes or edges';
+      }
+
+      try {
+        const box = typeof graphGroup.getBBox === 'function' ? graphGroup.getBBox() : null;
+        if (!box) {
+          return null;
+        }
+        if (!(box.width > 4) || !(box.height > 4)) {
+          return `content bounds too small (${Math.round(box.width)}x${Math.round(box.height)})`;
+        }
+        if (!Number.isFinite(box.x) || !Number.isFinite(box.y)) {
+          return 'content bounds are non-finite';
+        }
+        if (Math.abs(box.x) > 50000 || Math.abs(box.y) > 50000) {
+          return `content is far off-canvas (${Math.round(box.x)}, ${Math.round(box.y)})`;
+        }
+      } catch (e) {
+        return `unable to inspect SVG bounds: ${e.message}`;
+      }
+
+      return null;
+    }
+
+    function showMermaidFallback(el, mmdText, reason) {
+      el.innerHTML =
+        `<div class="mmd-render-error">⚠ ${escapeHtml(reason)}<br>
+           <span style="color:#64748b">Showing Mermaid source instead</span></div>
+         <pre style="margin-top:8px;font-size:11px;background:#0f172a;color:#86efac;
+                     padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap"
+              >${escapeHtml(mmdText)}</pre>`;
     }
 
     // Click a card → highlight it + update source panel

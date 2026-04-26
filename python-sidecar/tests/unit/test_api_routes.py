@@ -400,6 +400,87 @@ class TestGenerateAndValidateRoutes:
         assert response.status_code == 200
         assert "event: complete" in response.text
 
+    def test_generate_stream_activity_sanitizes_nan_in_final_payload(self, monkeypatch):
+        activity_result = GenerationResult(
+            diagrams=[
+                ActivityDiagram(
+                    name="RE_Stream Code Flow",
+                    owner_swc="SWC_Stream",
+                    owner_runnable="RE_Stream",
+                    source_requirements=["REQ-STREAM-1"],
+                    nodes=[
+                        ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL, confidence=0.9),
+                        ActivityNode(id="N_01", name="Compute", node_type=ActivityNodeType.ACTION, confidence=0.9),
+                        ActivityNode(id="N_02", name="End", node_type=ActivityNodeType.FINAL, confidence=0.9),
+                    ],
+                    edges=[
+                        ActivityEdge(source="N_00", target="N_01"),
+                        ActivityEdge(source="N_01", target="N_02"),
+                    ],
+                )
+            ],
+            analyzed_requirements=["REQ-STREAM-1"],
+        )
+
+        async def _fake_generate_activity_from_mud(*args, **kwargs):
+            return activity_result
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
+        monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
+        monkeypatch.setattr(dependencies, "get_render_service", lambda: _DummyRenderService())
+        monkeypatch.setattr(dependencies, "get_trace_store", lambda: _FakeTraceStore())
+        monkeypatch.setattr(routes, "_generate_activity_from_mud", _fake_generate_activity_from_mud)
+        monkeypatch.setattr(
+            routes,
+            "_ensure_elaboration_data",
+            lambda *args, **kwargs: __import__("asyncio").sleep(
+                0,
+                result={"source": "test", "status": "ok", "elaborated": [], "req_hash": "test", "quality_score": float("nan")},
+            ),
+        )
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/generate/stream",
+                json={
+                    "requirements": {
+                        "requirements": [
+                            {
+                                "req_id": "REQ-STREAM-1",
+                                "title": "Stream test",
+                                "description": "Generate a simple activity.",
+                                "req_type": "functional",
+                                "priority": "must",
+                                "status": "approved",
+                            }
+                        ]
+                    },
+                    "diagram_types": ["activity"],
+                    "module_context": "SWC_Stream",
+                    "mud_spec_markdown": """
+# MUD Spec: SWC_Stream
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Stream | Cyclic | 10 ms | QM | Simple stream path |
+
+## 7. Functional Description
+### RE_Stream
+1. Start processing
+2. Write output
+3. End
+""",
+                    "activity_source": "mud_spec",
+                },
+            )
+
+        assert response.status_code == 200
+        assert "event: complete" in response.text
+        assert "NaN" not in response.text
+
     @pytest.mark.asyncio
     async def test_generate_activity_from_mud_replaces_placeholder_with_branched_fallback(self):
         class _PlaceholderOrchestrator(_DummyOrchestrator):
@@ -463,8 +544,71 @@ class TestGenerateAndValidateRoutes:
         )
 
         assert any(n.node_type == ActivityNodeType.DECISION for n in result.diagrams[0].nodes)
-        assert any(edge.guard == "[false]" for edge in result.diagrams[0].edges)
+        assert any((edge.guard or "") == "[else]" or "brakeRequest > threshold" in (edge.guard or "") for edge in result.diagrams[0].edges)
         assert any("deterministic flow generated from MUD Section 7" in w for w in result.warnings)
+
+    @pytest.mark.asyncio
+    async def test_generate_activity_from_mud_normalizes_section7_before_context_build(self):
+        class _PlaceholderOrchestrator(_DummyOrchestrator):
+            async def generate_diagram(self, *args, **kwargs):
+                return GenerationResult(
+                    diagrams=[
+                        ActivityDiagram(
+                            name="RE_Stream Code Flow",
+                            owner_swc="SWC_Stream",
+                            owner_runnable="RE_Stream",
+                            nodes=[
+                                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                                ActivityNode(id="N_01", name="Action", node_type=ActivityNodeType.ACTION),
+                                ActivityNode(id="N_02", name="End", node_type=ActivityNodeType.FINAL),
+                            ],
+                            edges=[
+                                ActivityEdge(source="N_00", target="N_01"),
+                                ActivityEdge(source="N_01", target="N_02"),
+                            ],
+                        )
+                    ],
+                    analyzed_requirements=["REQ-301"],
+                )
+
+        requirement = Requirement(
+            req_id="REQ-301",
+            title="Stream branch",
+            description="Normalize section 7 before activity generation.",
+            req_type=RequirementType.FUNCTIONAL,
+            priority=Priority.MUST,
+            status=RequirementStatus.APPROVED,
+        )
+        request = routes.GenerateRequest(
+            requirements=RequirementSet(requirements=[requirement]),
+            diagram_types=["activity"],
+            module_context="SWC_Stream",
+            mud_spec_markdown="""
+# MUD Spec: SWC_Stream
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Stream | Cyclic | 10 ms | ASIL-B | Stream flow |
+
+## 7. Functional Description
+### RE_Stream
+1. Guard: mode check: if (RteIRead(RP_IgnitionStatus) == false) { RteIWrite(PP_EPSStatus, 0); return; }
+2. Continue: RteWrite(PP_AssistLevel, assistLevel)
+""",
+            activity_source="mud_spec",
+        )
+
+        result = await routes._generate_activity_from_mud(
+            _PlaceholderOrchestrator(),
+            [requirement],
+            request,
+        )
+
+        diagram = result.diagrams[0]
+        assert any(node.node_type == ActivityNodeType.DECISION for node in diagram.nodes)
+        assert any((node.rte_call or "") == "Rte_IWrite" for node in diagram.nodes)
+        assert not any("normalization failed" in warning.lower() for warning in result.warnings)
 
 
 class TestModulePlanningRoutes:
@@ -503,6 +647,61 @@ class TestModulePlanningRoutes:
         assert payload["module_count"] == 1
         assert payload["modules"][0]["swc_name"] == "SWC_ElectricPowerSteering"
         assert "RE_ControlTorque" in payload["modules"][0]["runnables"]
+
+
+class TestMudSpecRoutes:
+    def test_mud_spec_stream_emits_section7_normalization_metadata(self, monkeypatch):
+        spec_text = """
+# MUD Spec: SWC_Stream
+
+## 1. Overview
+| Field | Value |
+|-------|-------|
+| SWC Name | SWC_Stream |
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Stream | Cyclic | 10 ms | ASIL-B | Stream flow |
+
+## 7. Functional Description
+### RE_Stream
+1. Guard: mode check: if (RteIRead(RP_IgnitionStatus) == false) { RteIWrite(PP_EPSStatus, 0); return; }
+"""
+
+        class _SpecBackend:
+            backend_name = "test-backend"
+
+            async def generate_stream(self, **kwargs):
+                yield spec_text
+
+        class _SpecOrchestrator(_DummyOrchestrator):
+            def _get_backend(self):
+                return _SpecBackend()
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _SpecOrchestrator())
+        monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
+        monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
+        monkeypatch.setattr(dependencies, "get_render_service", lambda: _DummyRenderService())
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/modules/mud-spec",
+                json={
+                    "swc_name": "SWC_Stream",
+                    "description": "Stream flow",
+                    "asil": "ASIL-B",
+                    "runnables": ["RE_Stream"],
+                    "req_ids": ["REQ-STREAM-1"],
+                    "requirements_text": "REQ-STREAM-1 stream behavior",
+                    "spec_pipeline": "single_pass",
+                },
+            )
+
+        assert response.status_code == 200
+        assert "event: complete" in response.text
+        assert "section7_normalization" in response.text
 
 
 class TestExportRoutes:
