@@ -543,6 +543,10 @@
     }
     .regen-btn:hover { opacity: 0.88; }
     .regen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .regen-btn.ready {
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18), 0 6px 18px rgba(59, 130, 246, 0.18);
+      opacity: 1;
+    }
 
     /* ── Fixed Info Panel (top of main content) ────────────── */
     #infoPanel {
@@ -3112,6 +3116,13 @@
       const canRegen = !approved && (errors + warnings + uncoveredCount) > 0;
       const regenBtn = document.getElementById('btnRegenMudSpec');
       regenBtn.disabled = !canRegen;
+      regenBtn.classList.toggle('ready', canRegen);
+      regenBtn.setAttribute('aria-disabled', String(!canRegen));
+      regenBtn.title = canRegen
+        ? 'Regenerate the MUD spec by applying the review fixes'
+        : approved
+          ? 'Spec is approved'
+          : 'No review fixes available yet';
       const fixParts = [];
       if (errors > 0)         fixParts.push(`${errors} error(s)`);
       if (warnings > 0)       fixParts.push(`${warnings} warning(s)`);

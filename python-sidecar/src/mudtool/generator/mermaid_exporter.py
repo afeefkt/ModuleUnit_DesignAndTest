@@ -11,6 +11,7 @@ Generates Mermaid diagram text (.mmd files) that render natively in:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from mudtool.models.json_uml import (
@@ -360,7 +361,11 @@ class MermaidExporter:
 
         def _safe(nid: str) -> str:
             """Convert node id to a safe Mermaid identifier."""
-            return nid.replace("-", "_").replace(".", "_")
+            safe = re.sub(r"[^A-Za-z0-9_]+", "_", nid or "")
+            safe = re.sub(r"_+", "_", safe).strip("_")
+            if not safe or not re.match(r"[A-Za-z_]", safe):
+                safe = f"N_{abs(hash(nid or 'node')) % 100000}"
+            return safe
 
         def _q(text: str) -> str:
             """Quote a label for safe use inside Mermaid node shapes.

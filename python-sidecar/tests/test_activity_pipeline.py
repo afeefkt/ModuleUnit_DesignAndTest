@@ -552,6 +552,44 @@ class TestParseResponseWrapper:
         assert child.edges[0].target == "s2"
         print("\n  [PASS] sub-diagram edge aliases normalized")
 
+    def test_wrapper_sanitizes_mud_style_node_ids(self):
+        """MUD-first activity payloads often reuse labels as ids; normalize them safely."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "RE_Control Flowchart",
+                "nodes": [
+                    {"id": "Start", "name": "Start", "node_type": "initial"},
+                    {"id": "Rte_Read(RP_Speed, &speed)", "name": "Rte_Read(RP_Speed, &speed)"},
+                    {"id": "assist = CalcAssist(speed)", "name": "assist = CalcAssist(speed)"},
+                    {"id": "End", "name": "End", "node_type": "final"},
+                ],
+                "edges": [
+                    {"source": "Start", "target": "Rte_Read(RP_Speed, &speed)"},
+                    {"source": "Rte_Read(RP_Speed, &speed)", "target": "assist = CalcAssist(speed)"},
+                    {"source": "assist = CalcAssist(speed)", "target": "End"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert [node.id for node in diag.nodes] == [
+            "Start",
+            "Rte_Read_RP_Speed_speed",
+            "assist_CalcAssist_speed",
+            "End",
+        ]
+        assert diag.edges[0].target == "Rte_Read_RP_Speed_speed"
+        assert diag.edges[1].source == "Rte_Read_RP_Speed_speed"
+        assert diag.edges[1].target == "assist_CalcAssist_speed"
+        print("\n  [PASS] MUD-style label ids sanitized and edge refs updated")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LAYER 2 — Mermaid Exporter
@@ -669,6 +707,39 @@ class TestMermaidExporterActivity:
         # Also ensure the guard content is still human-readable
         assert "l_bValid" in mmd
         print("\n  [PASS] C logical operators sanitized: || -> OR, && -> AND")
+
+    def test_special_character_node_ids_are_mermaid_safe(self):
+        """Exporter should not leak spaces, parens, or ampersands into node identifiers."""
+        diag = ActivityDiagram(
+            name="MUD Output",
+            nodes=[
+                ActivityNode(id="Start", name="Start", node_type=ActivityNodeType.INITIAL, trace_reqs=["R1"]),
+                ActivityNode(
+                    id="Rte_Read(RP_Speed, &speed)",
+                    name="Rte_Read(RP_Speed, &speed)",
+                    node_type=ActivityNodeType.CALL,
+                    trace_reqs=["R1"],
+                ),
+                ActivityNode(
+                    id="assist = CalcAssist(speed)",
+                    name="assist = CalcAssist(speed)",
+                    node_type=ActivityNodeType.ACTION,
+                    trace_reqs=["R1"],
+                ),
+                ActivityNode(id="End", name="End", node_type=ActivityNodeType.FINAL, trace_reqs=["R1"]),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="Start", target="Rte_Read(RP_Speed, &speed)"),
+                ActivityEdge(id="E_02", source="Rte_Read(RP_Speed, &speed)", target="assist = CalcAssist(speed)"),
+                ActivityEdge(id="E_03", source="assist = CalcAssist(speed)", target="End"),
+            ],
+        )
+        mmd = MermaidExporter().export_diagram(diag)
+        assert "Rte_Read(RP_Speed, &speed) -->" not in mmd
+        assert "assist = CalcAssist(speed) -->" not in mmd
+        assert "Rte_Read_RP_Speed_speed" in mmd
+        assert "assist_CalcAssist_speed" in mmd
+        print("\n  [PASS] exporter sanitizes special-character node ids")
 
     def test_inline_export_returns_dict(self, eps_generation_result):
         """export_result_inline must return {key: mermaid_text} with ≥1 entry."""
@@ -867,6 +938,26 @@ class TestLiveGenerate:
         ]
     }
 
+    EPS_MUD_SPEC = """# MUD Spec: SWC_ElectricPowerSteering
+
+## 3. Runnables
+### 3.1 Main Runnables (OS-scheduled via AUTOSAR RTE)
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_ControlTorque | Cyclic | 5 ms | ASIL-D | Main EPS assist loop |
+
+## 7. Functional Description
+### RE_ControlTorque
+// Reads: RP_TorqueSensor, RP_TorqueSensorRedundant, RP_VehicleSpeed
+// Writes: PP_MotorCurrent
+
+1. Rte_Read(RP_VehicleSpeed, &l_u16SpeedKmh)
+2. Rte_Read(RP_TorqueSensor, &l_f32TorqueMain)
+3. Rte_Read(RP_TorqueSensorRedundant, &l_f32TorqueRedundant)
+4. l_f32AssistTorque = EPS_CalcAssistTorque(l_f32TorqueMain, l_u16SpeedKmh)
+5. Rte_Write(PP_MotorCurrent, l_f32AssistTorque)
+"""
+
     def test_generate_activity_single_pass(self):
         """Single-pass generation must return ≥1 activity diagram with nodes."""
         import httpx
@@ -875,6 +966,9 @@ class TestLiveGenerate:
             "diagram_types": ["activity"],
             "pipeline_mode": "single_pass",
             "apply_autosar_mapping": False,
+            "activity_source": "mud_spec",
+            "mud_spec_markdown": self.EPS_MUD_SPEC,
+            "module_context": "SWC_ElectricPowerSteering",
         }
         r = httpx.post(
             f"{LIVE_BASE}/generate", json=payload,
@@ -928,6 +1022,9 @@ class TestLiveGenerate:
             "diagram_types": ["activity"],
             "pipeline_mode": "single_pass",
             "apply_autosar_mapping": False,
+            "activity_source": "mud_spec",
+            "mud_spec_markdown": self.EPS_MUD_SPEC,
+            "module_context": "SWC_ElectricPowerSteering",
         }
         r1 = httpx.post(f"{LIVE_BASE}/generate", json=gen_payload, timeout=300.0)
         assert r1.status_code == 200, f"Generate failed: {r1.status_code}"

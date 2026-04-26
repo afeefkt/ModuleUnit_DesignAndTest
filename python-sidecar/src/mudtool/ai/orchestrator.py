@@ -1123,6 +1123,40 @@ Output valid JSON with this structure:
         clean_id = clean_id.replace("_", " ").replace("-", " ")
         return clean_id or "Node"
 
+    @staticmethod
+    def _is_safe_activity_id(raw_id: Any) -> bool:
+        if not isinstance(raw_id, str):
+            return False
+        return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", raw_id.strip()))
+
+    @classmethod
+    def _make_safe_activity_id(
+        cls,
+        raw_id: Any,
+        fallback_name: str,
+        idx: int,
+        used_ids: set[str],
+    ) -> str:
+        candidate = str(raw_id).strip() if raw_id is not None else ""
+        if cls._is_safe_activity_id(candidate) and candidate not in used_ids:
+            used_ids.add(candidate)
+            return candidate
+
+        name_seed = fallback_name if isinstance(fallback_name, str) and fallback_name.strip() else candidate
+        base = re.sub(r"[^A-Za-z0-9_]+", "_", (name_seed or "").strip())
+        base = re.sub(r"_+", "_", base).strip("_")
+        if not base or not re.match(r"[A-Za-z_]", base):
+            base = f"N_{idx:02d}"
+
+        safe_id = base
+        suffix = 2
+        while safe_id in used_ids:
+            safe_id = f"{base}_{suffix}"
+            suffix += 1
+
+        used_ids.add(safe_id)
+        return safe_id
+
     @classmethod
     def _normalize_activity_payload(
         cls,
@@ -1130,14 +1164,25 @@ Output valid JSON with this structure:
         stats: Optional[dict[str, int]] = None,
     ) -> dict:
         """Normalize common non-schema activity payload variants before validation."""
+        node_id_map: dict[str, str] = {}
         nodes = payload.get("nodes")
         if isinstance(nodes, list):
+            used_ids: set[str] = set()
             for idx, node in enumerate(nodes, start=1):
                 if not isinstance(node, dict):
                     continue
-                if "id" not in node:
-                    node["id"] = f"N_{idx:02d}"
-                node["name"] = cls._normalize_activity_node_name(node, str(node.get("id", "")))
+                original_id = node.get("id")
+                if original_id is None:
+                    original_id = f"N_{idx:02d}"
+                node["name"] = cls._normalize_activity_node_name(node, str(original_id))
+                safe_id = cls._make_safe_activity_id(
+                    original_id,
+                    node["name"],
+                    idx,
+                    used_ids,
+                )
+                node["id"] = safe_id
+                node_id_map[str(original_id)] = safe_id
                 node_type, used_inference, defaulted = cls._resolve_activity_node_type(node)
                 node["node_type"] = node_type
                 if stats is not None:
@@ -1160,6 +1205,10 @@ Output valid JSON with this structure:
                     edge["target"] = edge["to"]
                 if "target" not in edge and "target_id" in edge:
                     edge["target"] = edge["target_id"]
+                if "source" in edge:
+                    edge["source"] = node_id_map.get(str(edge["source"]), edge["source"])
+                if "target" in edge:
+                    edge["target"] = node_id_map.get(str(edge["target"]), edge["target"])
 
         sub_diagrams = payload.get("sub_diagrams")
         if isinstance(sub_diagrams, list):

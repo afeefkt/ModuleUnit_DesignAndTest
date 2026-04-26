@@ -32,6 +32,10 @@ class MudActivityContext:
         # functions detected elsewhere in the markdown.
         return bool(self.runnables)
 
+    @property
+    def has_structured_flow_source(self) -> bool:
+        return any(_parse_numbered_steps(r.functional_description) for r in self.runnables)
+
     def to_prompt_block(self) -> str:
         runnable_lines = []
         for runnable in self.runnables:
@@ -138,6 +142,120 @@ def build_mud_activity_context(markdown: str, module_context: str | None = None)
     )
 
 
+def synthesize_activity_diagrams_from_context(
+    context: MudActivityContext,
+    req_ids: list[str],
+):
+    """Build deterministic activity diagrams from Section 7 numbered steps.
+
+    This is used as a fallback when the AI activity generator returns only a
+    placeholder flow despite the MUD spec already containing structured runnable
+    pseudo-code.
+    """
+    from mudtool.models.json_uml import (
+        ActivityDiagram,
+        ActivityEdge,
+        ActivityNode,
+        ActivityNodeType,
+    )
+
+    diagrams: list[ActivityDiagram] = []
+    trace_reqs = list(req_ids or [])
+    helper_names = set(context.helper_functions)
+
+    for runnable in context.runnables:
+        steps = _parse_numbered_steps(runnable.functional_description)
+        if not steps:
+            continue
+
+        nodes: list[ActivityNode] = [
+            ActivityNode(
+                id="N_00",
+                name="Start",
+                node_type=ActivityNodeType.INITIAL,
+                trace_reqs=trace_reqs[:1] if trace_reqs else [],
+                description=f"Entry point for {runnable.name}",
+                confidence=0.9,
+            )
+        ]
+        edges: list[ActivityEdge] = []
+        sub_diagrams: list[ActivityDiagram] = []
+        prev_id = "N_00"
+        sub_ids: set[str] = set()
+
+        for idx, step in enumerate(steps, start=1):
+            node_id = f"N_{idx:02d}"
+            node_type = ActivityNodeType.ACTION
+            callee = None
+            description = _short_step_description(step)
+            rte_meta = _extract_rte_metadata(step)
+            if rte_meta:
+                node_type = ActivityNodeType.CALL
+            else:
+                helper_name = _extract_helper_call(step, helper_names)
+                if helper_name:
+                    node_type = ActivityNodeType.FUNCTION_CALL
+                    callee = helper_name
+                elif "dem_reporterrorstatus" in step.lower() or "dem_seteventstatus" in step.lower():
+                    node_type = ActivityNodeType.EXCEPTION
+
+            nodes.append(
+                ActivityNode(
+                    id=node_id,
+                    name=step,
+                    node_type=node_type,
+                    rte_call=rte_meta["rte_call"] if rte_meta else None,
+                    port=rte_meta["port"] if rte_meta else None,
+                    element=rte_meta["element"] if rte_meta else None,
+                    callee=callee,
+                    trace_reqs=trace_reqs,
+                    description=description,
+                    confidence=0.88,
+                )
+            )
+            edges.append(ActivityEdge(id=f"E_{idx:02d}", source=prev_id, target=node_id))
+            prev_id = node_id
+
+            if callee and callee not in sub_ids:
+                sub_ids.add(callee)
+                sub_diagrams.append(
+                    _make_helper_subdiagram(
+                        swc_name=context.swc_name,
+                        runnable_name=runnable.name,
+                        callee=callee,
+                        step_text=step,
+                        req_ids=trace_reqs,
+                    )
+                )
+
+        final_id = f"N_{len(steps) + 1:02d}"
+        nodes.append(
+            ActivityNode(
+                id=final_id,
+                name="End",
+                node_type=ActivityNodeType.FINAL,
+                trace_reqs=trace_reqs[:1] if trace_reqs else [],
+                description=f"Exit point for {runnable.name}",
+                confidence=0.9,
+            )
+        )
+        edges.append(ActivityEdge(id=f"E_{len(steps) + 1:02d}", source=prev_id, target=final_id))
+
+        diagrams.append(
+            ActivityDiagram(
+                name=f"{runnable.name} Code Flow",
+                owner_swc=context.swc_name or None,
+                owner_runnable=runnable.name,
+                source_requirements=trace_reqs,
+                nodes=nodes,
+                edges=edges,
+                sub_diagrams=sub_diagrams,
+            )
+        )
+
+    return diagrams
+
+
 def _extract_swc_name(markdown: str) -> str:
     m = re.search(r"^#\s*MUD Spec:\s*(.+)$", markdown, flags=re.MULTILINE)
     if m:
@@ -147,7 +265,7 @@ def _extract_swc_name(markdown: str) -> str:
 
 
 def _extract_section(markdown: str, heading: str) -> str:
-    base_heading = re.sub(r'^\d+\.\s*', '', heading).strip('sS')
+    base_heading = _normalize_heading_title(heading)
     lines = markdown.splitlines()
     in_section = False
     section_level = 0
@@ -157,7 +275,7 @@ def _extract_section(markdown: str, heading: str) -> str:
         if m:
             level = len(m.group(1))
             title = m.group(2).strip()
-            clean_title = re.sub(r'^\d+\.\s*', '', title).strip(': ').strip('sS')
+            clean_title = _normalize_heading_title(title)
             if in_section:
                 if level <= section_level:
                     break
@@ -219,3 +337,111 @@ def _trim_markdown(markdown: str, limit: int = 4000) -> str:
 
 def _normalize_ws(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _normalize_heading_title(title: str) -> str:
+    normalized = re.sub(r"^\d+(?:\.\d+)*\.?\s*", "", title or "")
+    return normalized.strip(": ").strip("sS")
+
+
+def _parse_numbered_steps(text: str) -> list[str]:
+    steps: list[str] = []
+    current: list[str] = []
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        numbered = re.match(r"^\d+\.\s*(.+)$", line)
+        if numbered:
+            if current:
+                steps.append(_normalize_ws(" ".join(current)))
+            current = [numbered.group(1).strip()]
+        elif current:
+            current.append(line)
+    if current:
+        steps.append(_normalize_ws(" ".join(current)))
+    return steps
+
+
+def _extract_rte_metadata(step: str) -> dict[str, str] | None:
+    m = re.search(r"\b(Rte_(?:Read|Write|Call|Result)\w*)\s*\(\s*([A-Z]{2}_[A-Za-z0-9_]+)", step)
+    if not m:
+        return None
+    rte_call = m.group(1)
+    port = m.group(2)
+    element = ""
+    parts = port.split("_", 2)
+    if len(parts) >= 3:
+        element = parts[2]
+    return {"rte_call": rte_call, "port": port, "element": element}
+
+
+def _extract_helper_call(step: str, helper_names: set[str]) -> str | None:
+    for name in re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", step):
+        if name.startswith(("Rte_", "Dem_")):
+            continue
+        if helper_names and name in helper_names:
+            return name
+        if "_" in name or re.search(r"[A-Z]", name):
+            return name
+    return None
+
+
+def _short_step_description(step: str) -> str:
+    trimmed = _normalize_ws(step)
+    if len(trimmed) <= 72:
+        return trimmed
+    return trimmed[:69].rstrip() + "..."
+
+
+def _make_helper_subdiagram(
+    swc_name: str,
+    runnable_name: str,
+    callee: str,
+    step_text: str,
+    req_ids: list[str],
+):
+    from mudtool.models.json_uml import (
+        ActivityDiagram,
+        ActivityEdge,
+        ActivityNode,
+        ActivityNodeType,
+    )
+
+    return ActivityDiagram(
+        name=f"{callee} Code Flow",
+        function_name=callee,
+        parent_diagram=f"{runnable_name} Code Flow",
+        owner_swc=swc_name or None,
+        source_requirements=list(req_ids),
+        nodes=[
+            ActivityNode(
+                id="N_00",
+                name="Start",
+                node_type=ActivityNodeType.INITIAL,
+                trace_reqs=req_ids[:1] if req_ids else [],
+                description=f"Entry point for {callee}",
+                confidence=0.85,
+            ),
+            ActivityNode(
+                id="N_01",
+                name=step_text,
+                node_type=ActivityNodeType.ACTION,
+                trace_reqs=list(req_ids),
+                description=f"Helper logic for {callee}",
+                confidence=0.8,
+            ),
+            ActivityNode(
+                id="N_02",
+                name="End",
+                node_type=ActivityNodeType.FINAL,
+                trace_reqs=req_ids[:1] if req_ids else [],
+                description=f"Exit point for {callee}",
+                confidence=0.85,
+            ),
+        ],
+        edges=[
+            ActivityEdge(id="E_01", source="N_00", target="N_01"),
+            ActivityEdge(id="E_02", source="N_01", target="N_02"),
+        ],
+    )

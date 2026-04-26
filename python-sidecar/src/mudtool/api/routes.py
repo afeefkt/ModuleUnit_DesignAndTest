@@ -506,23 +506,28 @@ async def _generate_activity_from_mud(
     request: GenerateRequest,
     progress_callback: Optional[callable] = None,
 ) -> "GenerationResult":
-    from mudtool.ai.mud_activity_context import build_mud_activity_context
-    from mudtool.models.json_uml import DiagramType, GenerationResult
+    from mudtool.ai.mud_activity_context import (
+        build_mud_activity_context,
+        synthesize_activity_diagrams_from_context,
+    )
+    from mudtool.models.json_uml import ActivityDiagram, DiagramType, GenerationResult
 
     mud_context = build_mud_activity_context(
         request.mud_spec_markdown or "",
         module_context=request.module_context,
     )
+    req_ids = [r.req_id for r in requirements]
     logger.info(
-        "_generate_activity_from_mud: swc=%s runnables=%d has_flow=%s md_len=%d",
+        "_generate_activity_from_mud: swc=%s runnables=%d has_flow=%s structured_flow=%s md_len=%d",
         mud_context.swc_name,
         len(mud_context.runnables),
         mud_context.has_usable_flow_source,
+        mud_context.has_structured_flow_source,
         len(request.mud_spec_markdown or ""),
     )
     if not mud_context.has_usable_flow_source:
         return GenerationResult(
-            analyzed_requirements=[r.req_id for r in requirements],
+            analyzed_requirements=req_ids,
             errors=[
                 "Selected MUD spec does not contain runnable flow details usable for activity generation."
             ],
@@ -553,6 +558,56 @@ async def _generate_activity_from_mud(
         activity_source="mud_spec",
         mud_activity_context=mud_context.to_prompt_block(),
     )
+
+    def _looks_like_placeholder_activity(result_obj: "GenerationResult") -> bool:
+        diagrams = [d for d in result_obj.diagrams if isinstance(d, ActivityDiagram) and not d.function_name]
+        if not diagrams:
+            return True
+        if not mud_context.has_structured_flow_source:
+            return False
+        for diagram in diagrams:
+            non_terminal = [
+                n for n in diagram.nodes
+                if n.node_type.value not in ("initial", "final")
+            ]
+            if diagram.sub_diagrams:
+                return False
+            if len(non_terminal) >= 2:
+                return False
+            if non_terminal:
+                label = (non_terminal[0].name or "").strip().lower()
+                if label not in {
+                    "action",
+                    (diagram.owner_runnable or "").strip().lower(),
+                    diagram.name.replace(" Code Flow", "").replace(" Flowchart", "").strip().lower(),
+                }:
+                    return False
+        return True
+
+    if _looks_like_placeholder_activity(result):
+        synthesized = synthesize_activity_diagrams_from_context(mud_context, req_ids)
+        if synthesized:
+            logger.warning(
+                "_generate_activity_from_mud: replacing placeholder AI activity output with deterministic MUD Section 7 flow"
+            )
+            if progress_callback:
+                progress_callback({
+                    "stage": "activity_fallback",
+                    "diagram_type": "activity",
+                    "source": "mud_spec",
+                    "runnable_count": len(synthesized),
+                    "message": (
+                        f"[Activity:MUD] AI returned placeholder flow; built {len(synthesized)} runnable diagram(s) from Section 7."
+                    ),
+                })
+            return GenerationResult(
+                diagrams=synthesized,
+                analyzed_requirements=req_ids,
+                warnings=result.warnings + [
+                    "Activity AI output was too shallow; using deterministic flow generated from MUD Section 7."
+                ],
+                errors=result.errors,
+            )
     return result
 
 
