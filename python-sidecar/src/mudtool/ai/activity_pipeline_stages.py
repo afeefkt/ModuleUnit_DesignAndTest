@@ -95,69 +95,174 @@ def _extract_json(raw: str) -> Any:
 # ── Edge cleanup helper ───────────────────────────────────────────────────────
 
 def _scrub_orphan_edges(diagram: dict, runnable_name: str = "") -> None:
-    """Remove edges whose source/target don't match any node id.
+    """Repair / drop edges whose source/target don't match any node id, then
+    auto-fill missing branches on decision nodes with <2 outgoing edges.
 
-    First tries to repair by mapping semantic-ID references back to N_xx by
-    matching on node.name (case-insensitive substring).  If no match found,
-    the edge is dropped (logged at INFO).  Mutates ``diagram`` in place.
+    Repair strategy for orphan refs:
+      1. exact id match
+      2. exact lowercased node-name match
+      3. **substring** match (e.g. ``RP_IgnitionStatus`` → node named
+         ``RP_IgnitionStatus == ON``)
+      4. token-prefix match (first identifier in the name)
+    If none match the edge is dropped.
+
+    Decision branch auto-fill:
+      For every node with node_type=='decision' that has <2 outgoing edges
+      after orphan scrubbing, synthesise an ``[else]`` edge to the next
+      successor (next node in source order, or the diagram's final node).
+      Mutates ``diagram`` in place.
     """
     nodes = diagram.get("nodes") or []
     edges = diagram.get("edges") or []
     if not isinstance(nodes, list) or not isinstance(edges, list):
         return
 
-    # Build lookup: id → node, plus a name-based fallback dict
+    # ── Build lookups ────────────────────────────────────────────────────
     valid_ids: set[str] = set()
     name_to_id: dict[str, str] = {}
-    for n in nodes:
+    name_pairs: list[tuple[str, str]] = []   # (lowered_name, id) — for substring match
+    final_id: Optional[str] = None
+    nodes_by_id: dict[str, dict] = {}
+    node_order_index: dict[str, int] = {}
+    for idx, n in enumerate(nodes):
         if not isinstance(n, dict):
             continue
         nid = n.get("id")
-        if nid:
-            valid_ids.add(nid)
-            nm = (n.get("name") or "").strip().lower()
-            if nm:
-                name_to_id.setdefault(nm, nid)
+        if not nid:
+            continue
+        valid_ids.add(nid)
+        nodes_by_id[nid] = n
+        node_order_index[nid] = idx
+        nm = (n.get("name") or "").strip().lower()
+        if nm:
+            name_to_id.setdefault(nm, nid)
+            name_pairs.append((nm, nid))
+        if (n.get("node_type") or "").lower() == "final" and final_id is None:
+            final_id = nid
+
+    def _first_token(s: str) -> str:
+        # Pull the leading identifier out of "RP_IgnitionStatus == ON"
+        s = s.strip()
+        if not s:
+            return ""
+        m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", s)
+        return (m.group(0) if m else "").lower()
 
     def _resolve(ref: str) -> Optional[str]:
         if not ref:
             return None
         if ref in valid_ids:
             return ref
-        # Try semantic-ID → node-name match (e.g. "current_mode" → node named "current_mode")
         key = ref.strip().lower().replace("-", "_")
+        if not key:
+            return None
         if key in name_to_id:
             return name_to_id[key]
-        # Try matching against node ids ignoring case
+        # Case-insensitive id match
         for vid in valid_ids:
             if vid.lower() == key:
                 return vid
+        # Substring match: ref appears inside a node name
+        for nm, nid in name_pairs:
+            if key in nm:
+                return nid
+        # Token-prefix match: ref equals the first identifier in some node name
+        for nm, nid in name_pairs:
+            if _first_token(nm) == key:
+                return nid
         return None
 
+    # ── Scrub edges ──────────────────────────────────────────────────────
     cleaned: list[dict] = []
     dropped = 0
     repaired = 0
     for e in edges:
         if not isinstance(e, dict):
             continue
-        src = _resolve(e.get("source", ""))
-        tgt = _resolve(e.get("target", ""))
-        if src and tgt:
-            if src != e.get("source") or tgt != e.get("target"):
+        orig_src = e.get("source", "")
+        orig_tgt = e.get("target", "")
+        src = _resolve(orig_src)
+        tgt = _resolve(orig_tgt)
+        if src and tgt and src != tgt:
+            if src != orig_src or tgt != orig_tgt:
                 repaired += 1
                 e["source"] = src
                 e["target"] = tgt
             cleaned.append(e)
         else:
+            # No match, or repair would produce a self-loop → drop
             dropped += 1
-    if dropped or repaired:
+    diagram["edges"] = cleaned
+
+    # ── Auto-fill missing decision branches ──────────────────────────────
+    branches_added = 0
+    out_count: dict[str, int] = {}
+    for e in cleaned:
+        s = e.get("source")
+        if s:
+            out_count[s] = out_count.get(s, 0) + 1
+    next_eid = max(
+        (int(re.search(r"\d+", e.get("id", "E_0")).group(0))
+         for e in cleaned if isinstance(e.get("id"), str) and re.search(r"\d+", e.get("id"))),
+        default=len(cleaned),
+    )
+
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        if (n.get("node_type") or "").lower() != "decision":
+            continue
+        nid = n.get("id")
+        if not nid:
+            continue
+        if out_count.get(nid, 0) >= 2:
+            continue
+        # Pick a successor: the next node in source order that isn't this
+        # one, isn't already the existing branch target, and isn't itself
+        # a decision (avoid chains of empty diamonds).  Fallback to final.
+        existing_targets = {
+            e.get("target") for e in cleaned if e.get("source") == nid
+        }
+        successor: Optional[str] = None
+        my_idx = node_order_index.get(nid, -1)
+        for cand in nodes:
+            if not isinstance(cand, dict):
+                continue
+            cid = cand.get("id")
+            if not cid or cid == nid or cid in existing_targets:
+                continue
+            if node_order_index.get(cid, -1) <= my_idx:
+                continue
+            ctype = (cand.get("node_type") or "").lower()
+            if ctype == "decision":
+                continue
+            successor = cid
+            break
+        if successor is None and final_id and final_id != nid and final_id not in existing_targets:
+            successor = final_id
+        if successor is None:
+            continue
+        next_eid += 1
+        cleaned.append({
+            "id": f"E_{next_eid:02d}",
+            "source": nid,
+            "target": successor,
+            "guard": "[else]",
+        })
+        out_count[nid] = out_count.get(nid, 0) + 1
+        branches_added += 1
+
+    diagram["edges"] = cleaned
+
+    if dropped or repaired or branches_added:
         logger.info(
-            "[Activity Pipeline/cleanup] %s: repaired=%d, dropped=%d orphan edge(s)",
+            "[Activity Pipeline/cleanup] %s: repaired=%d, dropped=%d, "
+            "decision_branches_added=%d",
             runnable_name or diagram.get("name", "?"),
             repaired,
             dropped,
+            branches_added,
         )
-    diagram["edges"] = cleaned
 
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
