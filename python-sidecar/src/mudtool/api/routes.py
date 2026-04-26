@@ -812,10 +812,14 @@ async def generate_diagrams(request: GenerateRequest):
         autosar_compliant=request.autosar_compliant,
     )
 
-    # Store trace links (unchanged)
-    from mudtool.api.dependencies import get_trace_store
-    trace_store = get_trace_store()
-    trace_store.extract_and_store_traces(result)
+    # Store trace links, but don't let traceability persistence undo a successful generation.
+    try:
+        from mudtool.api.dependencies import get_trace_store
+        trace_store = get_trace_store()
+        trace_store.extract_and_store_traces(result)
+    except Exception as exc:
+        logger.warning("Traceability store write failed during /generate: %s", exc, exc_info=True)
+        result.warnings.append(f"Traceability persistence failed: {exc}")
 
     return GenerateResponse(
         result=result,
@@ -1116,9 +1120,13 @@ async def generate_diagrams_stream(request: GenerateRequest):
             )
 
             # ── Stage 6: Traceability ─────────────────────────────────────────
-            from mudtool.api.dependencies import get_trace_store
-            trace_store = get_trace_store()
-            trace_store.extract_and_store_traces(result)
+            try:
+                from mudtool.api.dependencies import get_trace_store
+                trace_store = get_trace_store()
+                trace_store.extract_and_store_traces(result)
+            except Exception as exc:
+                logger.warning("Traceability store write failed during /generate/stream: %s", exc, exc_info=True)
+                result.warnings.append(f"Traceability persistence failed: {exc}")
 
             # ── Stage 7: Visual QA + Correction Loop ─────────────────────────
             if settings.visual_qa_enabled and pipeline_config is not None:
@@ -1196,9 +1204,29 @@ async def generate_diagrams_stream(request: GenerateRequest):
         """Yields SSE-formatted events from the queue."""
         # Start generation as a background task
         task = asyncio.create_task(run_generation())
+        emitted_terminal_event = False
 
         try:
             while True:
+                if task.done() and queue.empty() and not emitted_terminal_event:
+                    detail = "Generation finished without emitting a final result."
+                    try:
+                        task_exc = task.exception()
+                    except asyncio.CancelledError:
+                        task_exc = None
+                    if task_exc is not None:
+                        logger.error(
+                            "SSE generation task completed with exception after queue drained",
+                            exc_info=(type(task_exc), task_exc, task_exc.__traceback__),
+                        )
+                        detail = str(task_exc)
+                    else:
+                        logger.error("SSE generation task completed without a terminal event")
+                    yield (
+                        f"event: error\n"
+                        f"data: {json_mod.dumps({'message': detail})}\n\n"
+                    )
+                    break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=120)
                 except asyncio.TimeoutError:
@@ -1207,12 +1235,23 @@ async def generate_diagrams_stream(request: GenerateRequest):
                     continue
 
                 if event.get("_final"):
+                    emitted_terminal_event = True
+                    try:
+                        payload = json_mod.dumps(event, default=str)
+                    except Exception as exc:
+                        logger.error("Failed to serialize SSE complete event: %s", exc, exc_info=True)
+                        yield (
+                            f"event: error\n"
+                            f"data: {json_mod.dumps({'message': f'Failed to serialize final generation result: {exc}'})}\n\n"
+                        )
+                        break
                     yield (
                         f"event: complete\n"
-                        f"data: {json_mod.dumps(event, default=str)}\n\n"
+                        f"data: {payload}\n\n"
                     )
                     break
                 elif event.get("_error"):
+                    emitted_terminal_event = True
                     yield (
                         f"event: error\n"
                         f"data: {json_mod.dumps(event)}\n\n"
@@ -1220,9 +1259,19 @@ async def generate_diagrams_stream(request: GenerateRequest):
                     break
                 else:
                     event_type = event.get("stage", "progress")
+                    try:
+                        payload = json_mod.dumps(event, default=str)
+                    except Exception as exc:
+                        logger.error("Failed to serialize SSE progress event '%s': %s", event_type, exc, exc_info=True)
+                        emitted_terminal_event = True
+                        yield (
+                            f"event: error\n"
+                            f"data: {json_mod.dumps({'message': f'Failed to serialize progress event {event_type}: {exc}'})}\n\n"
+                        )
+                        break
                     yield (
                         f"event: {event_type}\n"
-                        f"data: {json_mod.dumps(event)}\n\n"
+                        f"data: {payload}\n\n"
                     )
         finally:
             if not task.done():

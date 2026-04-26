@@ -1,0 +1,298 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from mudtool.ai.activity_pipeline_stages import ActivityPipeline
+from mudtool.ai.base_backend import AIResponse
+from mudtool.ai.mud_activity_context import MudActivityContext, RunnableContext
+from mudtool.models.requirements import Priority, Requirement, RequirementStatus, RequirementType
+
+
+class _FakeBackend:
+    def __init__(self, payloads: list[dict | str]):
+        self._payloads = list(payloads)
+        self.backend_name = "fake"
+
+    async def generate(self, **kwargs):
+        payload = self._payloads.pop(0)
+        content = payload if isinstance(payload, str) else json.dumps(payload)
+        return AIResponse(content=content, model="fake-model", latency_ms=12)
+
+
+def _make_requirement(req_id: str) -> Requirement:
+    return Requirement(
+        req_id=req_id,
+        title=req_id,
+        description=req_id,
+        req_type=RequirementType.FUNCTIONAL,
+        priority=Priority.MUST,
+        status=RequirementStatus.APPROVED,
+    )
+
+
+@pytest.mark.asyncio
+async def test_stage3_runnable_rebuilds_invalid_ai_topology_from_cfg():
+    pipeline = ActivityPipeline(
+        backend=_FakeBackend(
+            [
+                {
+                    "name": "RE_ControlTorque Code Flow",
+                    "owner_swc": "SWC_ElectricPowerSteering",
+                    "owner_runnable": "RE_ControlTorque",
+                    "nodes": [
+                        {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.8},
+                        {"id": "N_01", "name": "speed > 10", "node_type": "decision", "trace_reqs": ["REQ-1"], "description": "decision", "confidence": 0.8},
+                        {"id": "N_02", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.8},
+                    ],
+                    "edges": [
+                        {"id": "E_01", "source": "N_00", "target": "N_01"},
+                        {"id": "E_02", "source": "N_01", "target": "vehicleSpeed", "guard": "[true]"},
+                    ],
+                    "sub_diagrams": [],
+                }
+            ]
+        ),
+        skeleton_backend=_FakeBackend([]),
+        reviewer_backend=_FakeBackend([]),
+    )
+    mud_ctx = MudActivityContext(
+        swc_name="SWC_ElectricPowerSteering",
+        runnables=[
+            RunnableContext(
+                name="RE_ControlTorque",
+                trigger="5ms",
+                asil="ASIL-D",
+                functional_description="\n".join(
+                    [
+                        "1. If vehicleSpeed > 10",
+                        "1.1. Rte_Write(PP_AssistLevel, HIGH)",
+                        "2. Else",
+                        "2.1. Rte_Write(PP_AssistLevel, LOW)",
+                        "3. End If",
+                    ]
+                ),
+            )
+        ],
+        rte_calls=[],
+        helper_functions=[],
+        raw_markdown="",
+    )
+    sk_run = {
+        "name": "RE_ControlTorque",
+        "trigger": "5ms",
+        "asil": "ASIL-D",
+        "key_steps": ["If vehicleSpeed > 10", "Write assist high", "Else", "Write assist low"],
+    }
+
+    result = await pipeline._stage3_runnable(
+        sk_run=sk_run,
+        mud_activity_context=mud_ctx,
+        swc_name="SWC_ElectricPowerSteering",
+        requirements=[_make_requirement("REQ-1")],
+        activity_label_style="pseudocode",
+        temperature=0.1,
+    )
+
+    assert result is not None
+    node_ids = {node["id"] for node in result["nodes"]}
+    assert all(edge["source"] in node_ids and edge["target"] in node_ids for edge in result["edges"])
+    decision_ids = [node["id"] for node in result["nodes"] if node["node_type"] == "decision"]
+    assert decision_ids
+    for did in decision_ids:
+        assert sum(1 for edge in result["edges"] if edge["source"] == did) >= 2
+
+
+def test_stage5_finalise_rebuilds_from_canonical_when_lint_fails():
+    canonical = {
+        "diagram_type": "activity",
+        "name": "RE_Test Code Flow",
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_Test",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.9},
+            {"id": "N_01", "name": "x > 0", "node_type": "decision", "trace_reqs": ["REQ-1"], "description": "decision", "confidence": 0.9},
+            {"id": "N_02", "name": "Then", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "then", "confidence": 0.9},
+            {"id": "N_03", "name": "Else", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "else", "confidence": 0.9},
+            {"id": "N_04", "name": "Merge", "node_type": "merge", "trace_reqs": ["REQ-1"], "description": "merge", "confidence": 0.9},
+            {"id": "N_05", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.9},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02", "guard": "[true]"},
+            {"id": "E_03", "source": "N_01", "target": "N_03", "guard": "[false]"},
+            {"id": "E_04", "source": "N_02", "target": "N_04"},
+            {"id": "E_05", "source": "N_03", "target": "N_04"},
+            {"id": "E_06", "source": "N_04", "target": "N_05"},
+        ],
+        "sub_diagrams": [],
+        "_pipeline_backend": "fake",
+        "_pipeline_model": "fake-model",
+        "_pipeline_latency_ms": 1,
+    }
+    broken = {
+        **canonical,
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "true", "guard": "[true]"},
+        ],
+        "_pipeline_canonical": canonical,
+    }
+
+    finalised = ActivityPipeline._stage5_finalise([broken], patches=[])
+
+    assert len(finalised) == 1
+    restored = finalised[0]
+    assert all(edge["target"] != "true" for edge in restored["edges"])
+    assert len([edge for edge in restored["edges"] if edge["source"] == "N_01"]) == 2
+
+
+def test_stage5_finalise_recovers_when_provenance_is_none():
+    draft = {
+        "diagram_type": "activity",
+        "name": "RE_Test Code Flow",
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_Test",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.9},
+            {"id": "N_01", "name": "Do work", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "work", "confidence": 0.9},
+            {"id": "N_02", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.9},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02"},
+        ],
+        "sub_diagrams": [],
+        "provenance": None,
+        "_pipeline_backend": "fake",
+        "_pipeline_model": "fake-model",
+        "_pipeline_latency_ms": 12,
+    }
+
+    finalised = ActivityPipeline._stage5_finalise([draft], patches=[])
+
+    assert len(finalised) == 1
+    assert isinstance(finalised[0]["provenance"], dict)
+    assert finalised[0]["provenance"]["ai_model"] == "fake-model"
+    assert finalised[0]["provenance"]["backend"] == "fake"
+
+
+def test_overlay_ai_on_cfg_preserves_canonical_rte_metadata():
+    canonical = {
+        "diagram_type": "activity",
+        "name": "RE_ReadInputs Code Flow",
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_ReadInputs",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.9},
+            {
+                "id": "N_01",
+                "name": "Rte_IRead(RP_IgnitionStatus)",
+                "node_type": "call",
+                "trace_reqs": ["REQ-1"],
+                "description": "read ignition",
+                "confidence": 0.9,
+                "rte_call": "Rte_IRead",
+                "port": "RP_IgnitionStatus",
+                "element": "IgnitionStatus",
+            },
+            {"id": "N_02", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.9},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02"},
+        ],
+        "sub_diagrams": [],
+    }
+    ai_diagram = {
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial"},
+            {
+                "id": "N_01",
+                "name": "Read ignition state",
+                "node_type": "call",
+                "description": "AI wording",
+                "confidence": 0.71,
+                "rte_call": "IRead",
+                "port": "wrongPort",
+                "element": "wrongElement",
+            },
+            {"id": "N_02", "name": "End", "node_type": "final"},
+        ],
+        "edges": [],
+    }
+
+    merged = ActivityPipeline._overlay_ai_on_cfg(canonical, ai_diagram)
+    call_node = next(node for node in merged["nodes"] if node["id"] == "N_01")
+
+    assert call_node["description"] == "AI wording"
+    assert call_node["confidence"] == 0.71
+    assert call_node["rte_call"] == "Rte_IRead"
+    assert call_node["port"] == "RP_IgnitionStatus"
+    assert call_node["element"] == "IgnitionStatus"
+
+
+def test_diagram_has_cfg_breakage_when_multiple_decisions_have_no_merge():
+    diagram = {
+        "diagram_type": "activity",
+        "name": "RE_NoMerge Code Flow",
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_NoMerge",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.9},
+            {"id": "N_01", "name": "a > 0", "node_type": "decision", "trace_reqs": ["REQ-1"], "description": "d1", "confidence": 0.9},
+            {"id": "N_02", "name": "Then A", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "then", "confidence": 0.9},
+            {"id": "N_03", "name": "b > 0", "node_type": "decision", "trace_reqs": ["REQ-1"], "description": "d2", "confidence": 0.9},
+            {"id": "N_04", "name": "Then B", "node_type": "action", "trace_reqs": ["REQ-1"], "description": "then", "confidence": 0.9},
+            {"id": "N_05", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.9},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02", "guard": "[true]"},
+            {"id": "E_03", "source": "N_01", "target": "N_03", "guard": "[false]"},
+            {"id": "E_04", "source": "N_02", "target": "N_05"},
+            {"id": "E_05", "source": "N_03", "target": "N_04", "guard": "[true]"},
+            {"id": "E_06", "source": "N_03", "target": "N_05", "guard": "[false]"},
+            {"id": "E_07", "source": "N_04", "target": "N_05"},
+        ],
+        "sub_diagrams": [],
+    }
+
+    assert ActivityPipeline._diagram_has_cfg_breakage(diagram, "RE_NoMerge")
+
+
+def test_diagram_has_cfg_breakage_when_rte_call_is_not_normalized():
+    diagram = {
+        "diagram_type": "activity",
+        "name": "RE_BadRte Code Flow",
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_BadRte",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": ["REQ-1"], "description": "start", "confidence": 0.9},
+            {
+                "id": "N_01",
+                "name": "Rte_IRead(RP_IgnitionStatus)",
+                "node_type": "call",
+                "trace_reqs": ["REQ-1"],
+                "description": "read ignition",
+                "confidence": 0.9,
+                "rte_call": "IRead",
+                "port": "RP_IgnitionStatus",
+                "element": "IgnitionStatus",
+            },
+            {"id": "N_02", "name": "End", "node_type": "final", "trace_reqs": ["REQ-1"], "description": "end", "confidence": 0.9},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02"},
+        ],
+        "sub_diagrams": [],
+    }
+
+    assert ActivityPipeline._diagram_has_cfg_breakage(diagram, "RE_BadRte")

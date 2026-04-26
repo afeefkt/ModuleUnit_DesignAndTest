@@ -863,14 +863,31 @@
             <label class="text-xs text-slate-600 cursor-pointer" for="autosarCompliant">AUTOSAR compliant</label>
           </div>
           <div id="pipelineProgress"></div>
-          <div class="flex flex-wrap gap-1 mb-2" id="diagramTypeToggles">
-            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="sequence" checked class="diag-type" /> Sequence</label>
-            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="state_machine" checked class="diag-type" /> State Machine</label>
-            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="class" checked class="diag-type" /> Class</label>
-            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" value="component" class="diag-type" /> Component</label>
-            <label id="activityToggleLabel" class="flex items-center gap-1 text-xs cursor-pointer text-slate-400"><input id="activityToggle" type="checkbox" value="activity" class="diag-type" disabled /> Activity</label>
+          <div class="space-y-3 mb-2">
+            <div id="architectureDiagramSection" class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <input id="generationScopeArchitecture" type="radio" name="generationScope" value="architecture" checked />
+                <label class="text-xs font-semibold text-slate-600 cursor-pointer" for="generationScopeArchitecture">Section 1: Architecture Diagrams</label>
+              </div>
+              <label class="block text-[11px] text-slate-500 mb-1" for="architectureDiagramSelect">Generate one architecture diagram at a time</label>
+              <select id="architectureDiagramSelect" class="w-full text-xs">
+                <option value="sequence">Sequence</option>
+                <option value="state_machine">State Machine</option>
+                <option value="class">Class</option>
+                <option value="component">Component</option>
+              </select>
+            </div>
+            <div id="mudDiagramSection" class="rounded-lg border border-slate-200 bg-white p-3">
+              <div class="flex items-center gap-2 mb-1">
+                <input id="generationScopeMud" type="radio" name="generationScope" value="mud" disabled />
+                <label id="activityToggleLabel" class="text-xs font-semibold text-slate-400 cursor-pointer" for="generationScopeMud">Section 2: MUD Diagrams</label>
+              </div>
+              <div class="ml-6">
+                <div class="text-xs text-slate-600">Activity diagram</div>
+                <div id="activityToggleHint" class="text-[11px] text-slate-400 mt-1">Activity flowcharts require a selected module MUD spec.</div>
+              </div>
+            </div>
           </div>
-          <div id="activityToggleHint" class="text-[11px] text-slate-400 mb-2">Activity flowcharts require a selected module MUD spec.</div>
           <div class="flex gap-2">
             <button class="primary flex-1" id="btnGenerate" disabled>
               <span id="genLabel">Generate</span>
@@ -881,21 +898,20 @@
             </button>
             <button class="secondary px-3 text-base" id="btnClear" title="Clear results" disabled>Reset</button>
           </div>
+          <div id="aiModelBadge" class="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Gen:</span>
+              <span id="genModelName" class="font-mono text-slate-600 truncate ml-1 max-w-[160px]" title="">—</span>
+            </div>
+            <div class="flex items-center justify-between mt-0.5">
+              <span class="text-slate-400">Review:</span>
+              <span id="reviewModelName" class="font-mono text-slate-600 truncate ml-1 max-w-[160px]" title="">—</span>
+            </div>
+          </div>
         </div>
 
       </div>
 
-      <!-- AI model badges (populated by health check) -->
-      <div id="aiModelBadge" class="text-xs text-slate-500 px-3 py-2 border-t border-slate-100 flex-shrink-0">
-        <div class="flex items-center justify-between">
-          <span class="text-slate-400">⚡ Gen:</span>
-          <span id="genModelName" class="font-mono text-slate-600 truncate ml-1 max-w-[160px]" title="">—</span>
-        </div>
-        <div class="flex items-center justify-between mt-0.5">
-          <span class="text-slate-400">🔍 Review:</span>
-          <span id="reviewModelName" class="font-mono text-slate-600 truncate ml-1 max-w-[160px]" title="">—</span>
-        </div>
-      </div>
     </aside>
 
     <!-- ── CENTER: DIAGRAMS ── -->
@@ -1283,6 +1299,7 @@
       // --- Info panel ---
       infoActiveTab: 'requirements',
       aiStreamBuffer: '',      // accumulated raw tokens for AI Live Stream tab
+      progressLogKeys: new Set(),
     };
 
     // ── Helpers ─────────────────────────────────────────────
@@ -1301,20 +1318,74 @@
       document.getElementById('statusMsg').textContent = msg;
     }
 
-    function syncActivityGenerationAvailability() {
-      const activityToggle = document.getElementById('activityToggle');
+    function currentGenerationScope() {
+      const mudScope = document.getElementById('generationScopeMud');
+      return mudScope && mudScope.checked ? 'mud' : 'architecture';
+    }
+
+    function getSelectedDiagramTypes() {
+      if (currentGenerationScope() === 'mud') {
+        return isMudActivityAvailable() ? ['activity'] : [];
+      }
+      const architectureSelect = document.getElementById('architectureDiagramSelect');
+      return architectureSelect && architectureSelect.value ? [architectureSelect.value] : [];
+    }
+
+    function isMudActivityAvailable() {
+      return !!(state.selectedModule && state.mudSpec);
+    }
+
+    function describeSelectedGeneration() {
+      const selectedTypes = getSelectedDiagramTypes();
+      if (!selectedTypes.length) return 'diagram';
+      const only = selectedTypes[0];
+      if (only === 'activity') return 'MUD activity diagram';
+      return `${only.replace(/_/g, ' ')} diagram`;
+    }
+
+    function syncGenerationSectionState() {
+      const hasMud = isMudActivityAvailable();
+      const architectureScope = document.getElementById('generationScopeArchitecture');
+      const mudScope = document.getElementById('generationScopeMud');
+      const architectureSection = document.getElementById('architectureDiagramSection');
+      const mudSection = document.getElementById('mudDiagramSection');
+      const architectureSelect = document.getElementById('architectureDiagramSelect');
       const activityLabel = document.getElementById('activityToggleLabel');
       const activityHint = document.getElementById('activityToggleHint');
-      const hasMud = !!(state.selectedModule && state.mudSpec);
+      const btnGenerate = document.getElementById('btnGenerate');
+      const genLabel = document.getElementById('genLabel');
 
-      activityToggle.disabled = !hasMud;
-      if (!hasMud) activityToggle.checked = false;
+      mudScope.disabled = !hasMud;
+      if (!hasMud && mudScope.checked) architectureScope.checked = true;
+
+      const scope = currentGenerationScope();
+      architectureSelect.disabled = scope !== 'architecture';
+
+      architectureSection.className = `rounded-lg border p-3 transition-colors ${
+        scope === 'architecture'
+          ? 'border-blue-200 bg-blue-50'
+          : 'border-slate-200 bg-slate-50'
+      }`;
+      mudSection.className = `rounded-lg border p-3 transition-colors ${
+        scope === 'mud'
+          ? 'border-blue-200 bg-blue-50'
+          : 'border-slate-200 bg-white'
+      }`;
+
       activityLabel.classList.toggle('text-slate-400', !hasMud);
       activityLabel.classList.toggle('text-slate-600', hasMud);
       activityHint.textContent = hasMud
         ? `Activity: generated from MUD spec for ${state.selectedModule.swc_name}.`
         : 'Activity flowcharts require a selected module MUD spec.';
-      state.activitySource = hasMud ? 'mud_spec' : 'requirements';
+
+      const canGenerate = !!state.requirements && getSelectedDiagramTypes().length > 0;
+      btnGenerate.disabled = !canGenerate;
+      genLabel.textContent = currentGenerationScope() === 'mud' ? 'Generate Activity' : 'Generate Diagram';
+    }
+
+    function syncActivityGenerationAvailability() {
+      state.activitySource = isMudActivityAvailable() ? 'mud_spec' : 'requirements';
+      syncGenerationSectionState();
     }
 
     function summarizeGenerationDiagnostics(data) {
@@ -1355,6 +1426,9 @@
       return items;
     }
 
+    document.getElementById('generationScopeArchitecture').addEventListener('change', syncGenerationSectionState);
+    document.getElementById('generationScopeMud').addEventListener('change', syncGenerationSectionState);
+    document.getElementById('architectureDiagramSelect').addEventListener('change', syncGenerationSectionState);
     syncActivityGenerationAvailability();
 
     function mergeGenerationIssuesIntoReview(review, diagIssues) {
@@ -1424,7 +1498,7 @@
         console.log("[DEBUG] Calling renderReqList...");
         renderReqList(d.requirement_set.requirements);
         console.log("[DEBUG] renderReqList completed successfully.");
-        document.getElementById('btnGenerate').disabled = false;
+        syncGenerationSectionState();
         document.getElementById('btnElaborate').disabled = false;
         document.getElementById('btnPlanModules').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
@@ -1471,7 +1545,7 @@
         console.log("[DEBUG] Calling renderReqList...");
         renderReqList(d.requirement_set.requirements);
         console.log("[DEBUG] renderReqList completed successfully.");
-        document.getElementById('btnGenerate').disabled = false;
+        syncGenerationSectionState();
         document.getElementById('btnElaborate').disabled = false;
         document.getElementById('btnPlanModules').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
@@ -1488,8 +1562,8 @@
       const btn = document.getElementById('btnGenerate');
       const lbl = document.getElementById('genLabel');
       const spinner = document.getElementById('genSpinner');
-      btn.disabled = active || !state.requirements;
-      lbl.textContent = active ? 'Generating…' : 'Generate';
+      btn.disabled = active || !state.requirements || getSelectedDiagramTypes().length === 0;
+      lbl.textContent = active ? 'Generating…' : (currentGenerationScope() === 'mud' ? 'Generate Activity' : 'Generate Diagram');
       spinner.classList.toggle('active', active);
     }
 
@@ -1584,8 +1658,20 @@
       </div>`;
     }
 
+    function resetProgressLogCache() {
+      state.progressLogKeys = new Set();
+    }
+
+    function shouldLogProgressEvent(signature) {
+      if (!signature) return true;
+      if (!state.progressLogKeys) state.progressLogKeys = new Set();
+      if (state.progressLogKeys.has(signature)) return false;
+      state.progressLogKeys.add(signature);
+      return true;
+    }
+
     // Append a one-line entry to the pipeline log panel (below progress bars)
-    function logPipelineEvent(msg, colorClass) {
+    function logPipelineEvent(msg, colorClass, signature) {
       const log = document.getElementById('pipelineLog');
       if (log) {
         const row = document.createElement('div');
@@ -1594,11 +1680,13 @@
         log.appendChild(row);
         log.scrollTop = log.scrollHeight;  // auto-scroll to latest
       }
-      
+
       let type = 'ok';
       if (colorClass && colorClass.includes('red')) type = 'err';
       if (colorClass && (colorClass.includes('yellow') || colorClass.includes('orange'))) type = 'warn';
-      addActivityLog(msg, type);
+      if (shouldLogProgressEvent(signature || msg)) {
+        addActivityLog(msg, type);
+      }
     }
 
     function updateProgress(event) {
@@ -1695,6 +1783,26 @@
         return;
       }
 
+      if (stage === 'activity_pipeline') {
+        const runnable = event.runnable || event.runnable_name || '';
+        const signature = ['activity_pipeline', event.stage_num || '', runnable, event.message || ''].join('|');
+        logPipelineEvent(event.message || '[Activity Pipeline]', 'text-indigo-600', signature);
+        setStatus(event.message || 'Building activity diagram...');
+        const activityDt = dt || 'activity';
+        if (document.getElementById(`progBar_${activityDt}`)) {
+          const pct = Math.max(12, Math.min(95, event.progress || 0));
+          _setBar(
+            activityDt,
+            pct,
+            pct >= 90 ? 'bg-indigo-500' : 'bg-blue-500',
+            'text-indigo-600',
+            '<span class="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>',
+            event.message || 'Building activity diagram...'
+          );
+        }
+        return;
+      }
+
       // Per-diagram bar events
       if (!dt) return;
       const icon  = document.getElementById(`progIcon_${dt}`);
@@ -1720,7 +1828,7 @@
         icon.innerHTML = `<span class="inline-block w-2 h-2 rounded-full ${dotColor} animate-pulse"></span>`;
         bar.style.width = (stageNum === 1 ? 20 : stageNum === 2 ? 50 : 75) + '%';
         label.className = label.className.replace(/text-(slate-400|yellow-600|green-600|red-600)/, 'text-slate-600');
-        logPipelineEvent(stageMessage, 'text-blue-500');
+        logPipelineEvent(stageMessage, 'text-blue-500', ['pipeline_stage', dt, stageNum, stageMessage].join('|'));
 
       } else if (stage === 'generate') {
         if (label.dataset.pipelineStageActive !== 'true') {
@@ -1860,6 +1968,7 @@
           : '';
         setStatus(`Generated ${nDiags} diagram(s) via ${modeLabel} | ${generationMode}${refinedNote}${issueNote}${activitySourceNote}${elabSuffix}`);
         toast(`Generated ${nDiags} diagrams (${modeLabel}, ${generationMode})${refinedNote}${issueNote}${activitySourceNote}`);
+        addActivityLog(`Generation complete: ${nDiags} diagram(s) via ${modeLabel}${issueNote}`, diagErrors.length ? 'warn' : 'ok');
         // Show stage badges
         const ppEl = document.getElementById('pipelineProgress');
         if (ppEl) {
@@ -1875,6 +1984,7 @@
       } else {
         setStatus(`Generated ${nDiags} diagram(s) | ${generationMode}${activitySourceNote}${elabSuffix}`);
         toast(`Generated ${nDiags} diagrams successfully (${generationMode})${activitySourceNote}`);
+        addActivityLog(`Generation complete: ${nDiags} diagram(s)`, diagErrors.length ? 'warn' : 'ok');
       }
     }
 
@@ -1882,13 +1992,18 @@
       if (!state.requirements) return;
       setGenerating(true);
       const pipelineMode = document.getElementById('pipelineMode').value;
-      setStatus(`Generating diagrams via ${modeLabels[pipelineMode] || pipelineMode}...`);
+      setStatus(`Generating ${describeSelectedGeneration()} via ${modeLabels[pipelineMode] || pipelineMode}...`);
 
       const ppEl = document.getElementById('pipelineProgress');
       if (ppEl) ppEl.innerHTML = '';
+      resetProgressLogCache();
 
-      const selectedTypes = [...document.querySelectorAll('.diag-type:checked')]
-        .map(cb => cb.value);
+      const selectedTypes = getSelectedDiagramTypes();
+      if (!selectedTypes.length) {
+        toast('Select a diagram to generate first.', true);
+        setGenerating(false);
+        return;
+      }
       const autosarCompliant = document.getElementById('autosarCompliant').checked;
       const usesMudForActivity = selectedTypes.includes('activity');
 
@@ -1902,7 +2017,10 @@
       const tabsEl = document.getElementById('diagramTabs');
       tabsEl.innerHTML = buildProgressHTML(selectedTypes);
       if (usesMudForActivity) {
-        setStatus(`Generating activity from MUD spec and architecture diagrams via ${modeLabels[pipelineMode] || pipelineMode}...`);
+        addActivityLog(`Started MUD activity generation for ${state.selectedModule?.swc_name || 'selected module'}`, 'info');
+        setStatus(`Generating activity from MUD spec via ${modeLabels[pipelineMode] || pipelineMode}...`);
+      } else if (selectedTypes.length) {
+        addActivityLog(`Started architecture generation for ${selectedTypes[0].replace(/_/g, ' ')} diagram`, 'info');
       }
 
       // If a module was selected via the enhanced workflow, focus generation on it
@@ -1972,6 +2090,7 @@
       } catch (e) {
         toast('Generation failed: ' + e.message, true);
         setStatus('Generation failed - check Ollama is running');
+        addActivityLog(`Generation failed: ${e.message}`, 'err');
         tabsEl.innerHTML =
           `<div class="py-3 px-4 text-red-500 text-xs">
             <p class="font-semibold mb-1">Generation Failed</p>
@@ -3318,7 +3437,7 @@
     document.getElementById('btnUseMudSpecForDiagrams').addEventListener('click', () => {
       if (!state.mudSpec || !state.selectedModule) return;
       state.activitySource = 'mud_spec';
-      document.getElementById('activityToggle').checked = true;
+      document.getElementById('generationScopeMud').checked = true;
       syncActivityGenerationAvailability();
       showDiagramPanel();
       toast(`Activity diagrams will now use ${state.selectedModule.swc_name} MUD spec as the flow source`);

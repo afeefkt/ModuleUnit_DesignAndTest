@@ -122,11 +122,40 @@ def _activity_diagram_summary(result_json: dict[str, Any]) -> list[dict[str, Any
                 "node_types": node_types,
                 "has_decision": "decision" in node_types,
                 "has_merge": "merge" in node_types,
+                "merge_count": sum(1 for node_type in node_types if node_type == "merge"),
                 "has_function_call": "function_call" in node_types,
                 "guarded_edges": sum(1 for edge in edges if edge.get("guard")),
+                "early_return_count": sum(
+                    1
+                    for node in nodes
+                    if (node.get("name") or "").strip().lower() == "return"
+                ),
             }
         )
     return summaries
+
+
+def _canonical_activity_summary(mud_spec_markdown: str, swc_name: str, req_ids: list[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    from mudtool.ai.mud_activity_context import build_mud_activity_context, synthesize_activity_diagrams_from_context
+
+    context = build_mud_activity_context(mud_spec_markdown, module_context=swc_name)
+    diagrams = synthesize_activity_diagrams_from_context(context, req_ids)
+    payload = {
+        "result": {
+            "diagrams": [diagram.model_dump(mode="json") for diagram in diagrams],
+        }
+    }
+    return _activity_diagram_summary(payload), payload
+
+
+def _unreachable_count_by_diagram(validation_report: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for issue in validation_report.get("issues", []):
+        if issue.get("rule_id") != "STR-023":
+            continue
+        diagram_name = issue.get("diagram_name") or ""
+        counts[diagram_name] = counts.get(diagram_name, 0) + 1
+    return counts
 
 
 def _looks_like_placeholder_summary(activity_summaries: list[dict[str, Any]]) -> bool:
@@ -148,8 +177,10 @@ def _make_markdown_report(
     selected_module: dict[str, Any] | None,
     imported_count: int,
     activity_summaries: list[dict[str, Any]],
+    canonical_activity_summaries: list[dict[str, Any]],
     mermaid_preview: dict[str, str],
     stages: list[StageResult],
+    unreachable_counts: dict[str, int],
 ) -> str:
     lines: list[str] = []
     lines.append("# EPS Flowchart Diagnostic Report")
@@ -181,8 +212,21 @@ def _make_markdown_report(
         for summary in activity_summaries:
             lines.append(
                 f"- `{summary['name']}`: nodes={summary['node_count']}, edges={summary['edge_count']}, "
-                f"decision={summary['has_decision']}, merge={summary['has_merge']}, "
-                f"function_call={summary['has_function_call']}, guarded_edges={summary['guarded_edges']}"
+                f"decision={summary['has_decision']}, merge={summary['has_merge']} ({summary['merge_count']}), "
+                f"function_call={summary['has_function_call']}, guarded_edges={summary['guarded_edges']}, "
+                f"early_returns={summary['early_return_count']}, unreachable={unreachable_counts.get(summary['name'], 0)}"
+            )
+    lines.append("")
+    lines.append("## Canonical CFG Summary")
+    lines.append("")
+    if not canonical_activity_summaries:
+        lines.append("No canonical deterministic activity diagrams were reconstructed.")
+    else:
+        for summary in canonical_activity_summaries:
+            lines.append(
+                f"- `{summary['name']}`: nodes={summary['node_count']}, edges={summary['edge_count']}, "
+                f"decision={summary['has_decision']}, merge={summary['has_merge']} ({summary['merge_count']}), "
+                f"guarded_edges={summary['guarded_edges']}, early_returns={summary['early_return_count']}"
             )
     lines.append("")
     lines.append("## Mermaid Preview Keys")
@@ -250,7 +294,9 @@ def main() -> int:
     selected_module: dict[str, Any] | None = None
     imported_count = 0
     activity_summaries: list[dict[str, Any]] = []
+    canonical_activity_summaries: list[dict[str, Any]] = []
     mermaid_preview: dict[str, str] = {}
+    unreachable_counts: dict[str, int] = {}
 
     if not csv_path.exists():
         print(f"[FAIL] CSV not found: {csv_path}")
@@ -423,6 +469,13 @@ def main() -> int:
             _write_json(output_dir / "generate_activity_response.json", generate_json)
             activity_summaries = _activity_diagram_summary(generate_json)
             _write_json(output_dir / "activity_diagram_summary.json", activity_summaries)
+            canonical_activity_summaries, canonical_payload = _canonical_activity_summary(
+                mud_spec,
+                selected_module.get("swc_name", ""),
+                selected_module.get("req_ids", []),
+            )
+            _write_json(output_dir / "canonical_activity_from_mud.json", canonical_payload)
+            _write_json(output_dir / "canonical_activity_summary.json", canonical_activity_summaries)
             result_warnings = generate_json.get("result", {}).get("warnings", [])
             result_errors = generate_json.get("result", {}).get("errors", [])
             stages.append(
@@ -475,6 +528,7 @@ def main() -> int:
                 raise exc
             validate_json = validate_resp.json()
             _write_json(output_dir / "validation_report.json", validate_json)
+            unreachable_counts = _unreachable_count_by_diagram(validate_json)
             stages.append(
                 StageResult(
                     "validate_generated_activity",
@@ -509,8 +563,10 @@ def main() -> int:
         selected_module=selected_module,
         imported_count=imported_count,
         activity_summaries=activity_summaries,
+        canonical_activity_summaries=canonical_activity_summaries,
         mermaid_preview=mermaid_preview,
         stages=stages,
+        unreachable_counts=unreachable_counts,
     )
     _write_text(output_dir / "report.md", report)
     _write_json(output_dir / "stage_results.json", [asdict(stage) for stage in stages])

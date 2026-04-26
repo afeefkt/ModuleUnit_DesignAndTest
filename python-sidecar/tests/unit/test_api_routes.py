@@ -33,11 +33,12 @@ class _DummyOrchestrator:
 
 
 class _DummyMapper:
-    pass
+    def map_generation_result(self, result):
+        return result
 
 
 class _DummyValidator:
-    def validate(self, result, requirement_ids=None) -> ValidationReport:
+    def validate(self, result, requirement_ids=None, **kwargs) -> ValidationReport:
         return ValidationReport(
             diagrams_checked=len(result.diagrams),
             elements_checked=sum(
@@ -71,6 +72,14 @@ class _FakeTraceStore:
 
     def accept_element(self, element_id, accepted_by="engineer"):
         return self._accept_counts.get(element_id, 0)
+
+    def extract_and_store_traces(self, result):
+        return 0
+
+
+class _FailingTraceStore(_FakeTraceStore):
+    def extract_and_store_traces(self, result):
+        raise OSError("disk I/O error")
 
 
 @pytest.fixture
@@ -206,6 +215,190 @@ class TestGenerateAndValidateRoutes:
         payload = response.json()
         assert payload["passed"] is True
         assert payload["diagrams_checked"] == len(sample_generation_result.diagrams)
+
+    def test_generate_tolerates_traceability_store_failure(
+        self, monkeypatch, sample_requirement_set, sample_generation_result
+    ):
+        async def _fake_generate_activity_from_mud(*args, **kwargs):
+            return sample_generation_result
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
+        monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
+        monkeypatch.setattr(dependencies, "get_render_service", lambda: _DummyRenderService())
+        monkeypatch.setattr(dependencies, "get_trace_store", lambda: _FailingTraceStore())
+        monkeypatch.setattr(routes, "_generate_activity_from_mud", _fake_generate_activity_from_mud)
+        monkeypatch.setattr(
+            routes,
+            "_ensure_elaboration_data",
+            lambda *args, **kwargs: __import__("asyncio").sleep(
+                0,
+                result={"source": "test", "status": "ok", "elaborated": [], "req_hash": "test", "quality_score": 1.0},
+            ),
+        )
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/generate",
+                json={
+                    "requirements": sample_requirement_set.model_dump(mode="json"),
+                    "diagram_types": ["activity"],
+                    "module_context": "SWC_Test",
+                    "mud_spec_markdown": """
+# MUD Spec: SWC_Test
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Test | Cyclic | 10 ms | QM | Simple path |
+
+## 7. Functional Description
+### RE_Test
+1. Start processing
+2. Write output
+3. End
+""",
+                    "activity_source": "mud_spec",
+                },
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["result"]["diagrams"]
+        assert any("Traceability persistence failed" in warning for warning in payload["result"]["warnings"])
+
+    def test_generate_tolerates_traceability_store_initialization_failure(
+        self, monkeypatch, sample_requirement_set, sample_generation_result
+    ):
+        async def _fake_generate_activity_from_mud(*args, **kwargs):
+            return sample_generation_result
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
+        monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
+        monkeypatch.setattr(dependencies, "get_render_service", lambda: _DummyRenderService())
+        monkeypatch.setattr(dependencies, "get_trace_store", lambda: (_ for _ in ()).throw(OSError("disk I/O error")))
+        monkeypatch.setattr(routes, "_generate_activity_from_mud", _fake_generate_activity_from_mud)
+        monkeypatch.setattr(
+            routes,
+            "_ensure_elaboration_data",
+            lambda *args, **kwargs: __import__("asyncio").sleep(
+                0,
+                result={"source": "test", "status": "ok", "elaborated": [], "req_hash": "test", "quality_score": 1.0},
+            ),
+        )
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/generate",
+                json={
+                    "requirements": sample_requirement_set.model_dump(mode="json"),
+                    "diagram_types": ["activity"],
+                    "module_context": "SWC_Test",
+                    "mud_spec_markdown": """
+# MUD Spec: SWC_Test
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Test | Cyclic | 10 ms | QM | Simple path |
+
+## 7. Functional Description
+### RE_Test
+1. Start processing
+2. Write output
+3. End
+""",
+                    "activity_source": "mud_spec",
+                },
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["result"]["diagrams"]
+        assert any("Traceability persistence failed: disk I/O error" in warning for warning in payload["result"]["warnings"])
+
+    def test_generate_stream_activity_emits_complete_event(self, monkeypatch):
+        activity_result = GenerationResult(
+            diagrams=[
+                ActivityDiagram(
+                    name="RE_Stream Code Flow",
+                    owner_swc="SWC_Stream",
+                    owner_runnable="RE_Stream",
+                    source_requirements=["REQ-STREAM-1"],
+                    nodes=[
+                        ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                        ActivityNode(id="N_01", name="Compute", node_type=ActivityNodeType.ACTION),
+                        ActivityNode(id="N_02", name="End", node_type=ActivityNodeType.FINAL),
+                    ],
+                    edges=[
+                        ActivityEdge(source="N_00", target="N_01"),
+                        ActivityEdge(source="N_01", target="N_02"),
+                    ],
+                )
+            ],
+            analyzed_requirements=["REQ-STREAM-1"],
+        )
+
+        class _StreamingOrchestrator(_DummyOrchestrator):
+            async def generate_diagram(self, *args, **kwargs):
+                return activity_result
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _StreamingOrchestrator())
+        monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
+        monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
+        monkeypatch.setattr(dependencies, "get_render_service", lambda: _DummyRenderService())
+        monkeypatch.setattr(dependencies, "get_trace_store", lambda: _FakeTraceStore())
+        monkeypatch.setattr(
+            routes,
+            "_ensure_elaboration_data",
+            lambda *args, **kwargs: __import__("asyncio").sleep(
+                0,
+                result={"source": "test", "status": "ok", "elaborated": [], "req_hash": "test", "quality_score": 1.0},
+            ),
+        )
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/generate/stream",
+                json={
+                    "requirements": {
+                        "requirements": [
+                            {
+                                "req_id": "REQ-STREAM-1",
+                                "title": "Stream test",
+                                "description": "Generate a simple activity.",
+                                "req_type": "functional",
+                                "priority": "must",
+                                "status": "approved",
+                            }
+                        ]
+                    },
+                    "diagram_types": ["activity"],
+                    "module_context": "SWC_Stream",
+                    "mud_spec_markdown": """
+# MUD Spec: SWC_Stream
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Stream | Cyclic | 10 ms | QM | Simple stream path |
+
+## 7. Functional Description
+### RE_Stream
+1. Start processing
+2. Write output
+3. End
+""",
+                    "activity_source": "mud_spec",
+                },
+            )
+
+        assert response.status_code == 200
+        assert "event: complete" in response.text
 
     @pytest.mark.asyncio
     async def test_generate_activity_from_mud_replaces_placeholder_with_branched_fallback(self):

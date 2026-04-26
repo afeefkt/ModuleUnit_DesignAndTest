@@ -52,6 +52,7 @@ Usage (from AIOrchestrator.generate_diagram):
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -60,6 +61,15 @@ import time
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+from mudtool.ai.mud_activity_context import (
+    MudActivityContext,
+    RunnableContext,
+    synthesize_activity_diagrams_from_context,
+)
+from mudtool.generator.mermaid_exporter import MermaidExporter
+from mudtool.models.json_uml import ActivityDiagram, DiagramType
+from mudtool.validation.mermaid_linter import MermaidLinter
 
 
 # ── JSON extraction helper (mirrors mud_pipeline_stages._extract_json) ────────
@@ -303,8 +313,15 @@ RULES:
   - Use ONLY runnable names that appear in the MUD spec.
   - Do NOT invent runnables.
   - key_steps must be ordered (entry → exit).
+  - Write every guard/validation/check step as "if <C-expression>" so the
+    downstream classifier can emit a decision diamond.
+      WRONG: "Validate torque range"   →   RIGHT: "if l_f32Torque > TORQUE_MAX"
+      WRONG: "Check speed valid"       →   RIGHT: "if l_f32Speed < SPEED_MIN"
+  - Write RTE reads  as: "Rte_Read_RP_<Port>(&l_var)"
+  - Write RTE writes as: "Rte_Write_PP_<Port>(&l_var)"
+  - Write DEM calls  as: "Dem_SetEventStatus(<DTC>, FAILED)"
   - If the MUD pseudo-code has guards / decisions, include them as steps
-    like "Decision: l_f32Speed > MAX".
+    starting with "if" exactly.
   - If unsure of a field, return [] or "" rather than guessing.
 """
 
@@ -385,10 +402,19 @@ KEY STEPS (from skeleton):
 NUMBERED PSEUDO-CODE FROM MUD SECTION 7:
 {pseudo_code}
 
+CANONICAL CFG SCAFFOLD (use this exact topology and these exact node ids / edge ids):
+{cfg_scaffold}
+
 ARCHITECTURAL REQUIREMENTS (use these IDs in trace_reqs):
 {requirements_block}
 
 Produce ONE ActivityDiagram JSON object for runnable {runnable_name}.
+The CFG scaffold is authoritative for topology:
+  - keep the same nodes[] ids, edge ids, edge source/target pairs, and branch count
+  - you may enrich node names, descriptions, confidence, rte_call, port, element,
+    callee, and edge guards
+  - do NOT invent extra semantic edge endpoints like "vehicleSpeed", "true",
+    "RP_IgnitionStatus", "abs", or signal names as source/target
 Map each numbered pseudo-code step to ONE node:
   - "Rte_Read…" / "Rte_Write…"  → call node
   - "if X" / "Validate X"        → decision node (with both branches)
@@ -399,6 +425,32 @@ Map each numbered pseudo-code step to ONE node:
 Add "Start" (initial) at the top and "End" (final) at the bottom.
 
 Output ONLY the JSON object.  No text before or after.
+
+CONCRETE ONE-SHOT EXAMPLE (6-node pattern — replace names/ids with actual runnable content):
+{{
+  "diagram_type": "activity",
+  "name": "RE_TorqueCtrl Code Flow",
+  "owner_swc": "SWC_Eps",
+  "owner_runnable": "RE_TorqueCtrl",
+  "source_requirements": ["REQ-01"],
+  "nodes": [
+    {{"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-01"],"description":"Entry 10ms","confidence":0.95}},
+    {{"id":"N_02","name":"Rte_Read_RP_Torque(&l_f32T)","node_type":"call","rte_call":"Rte_Read","port":"RP_Torque","element":"Torque","trace_reqs":["REQ-01"],"description":"Read torque sensor","confidence":0.95}},
+    {{"id":"N_03","name":"l_f32T > TORQUE_MAX","node_type":"decision","trace_reqs":["REQ-01"],"description":"Range check","confidence":0.9}},
+    {{"id":"N_04","name":"Dem_SetEventStatus(DTC_Torque, DEM_EVENT_STATUS_FAILED)","node_type":"exception","trace_reqs":["REQ-01"],"description":"Report fault","confidence":0.9}},
+    {{"id":"N_05","name":"Rte_Write_PP_TorqueOut(&l_f32Out)","node_type":"call","rte_call":"Rte_Write","port":"PP_TorqueOut","element":"TorqueOut","trace_reqs":["REQ-01"],"description":"Write output","confidence":0.95}},
+    {{"id":"N_06","name":"End","node_type":"final","trace_reqs":["REQ-01"],"description":"Exit","confidence":0.95}}
+  ],
+  "edges": [
+    {{"id":"E_01","source":"N_01","target":"N_02"}},
+    {{"id":"E_02","source":"N_02","target":"N_03"}},
+    {{"id":"E_03","source":"N_03","target":"N_04","guard":"[l_f32T > TORQUE_MAX]"}},
+    {{"id":"E_04","source":"N_03","target":"N_05","guard":"[else]"}},
+    {{"id":"E_05","source":"N_04","target":"N_06"}},
+    {{"id":"E_06","source":"N_05","target":"N_06"}}
+  ],
+  "sub_diagrams": []
+}}
 """
 
 
@@ -523,7 +575,7 @@ class ActivityPipeline:
         )
 
         # ── Stage 2: Cross-reference map ───────────────────────────────────
-        xref = self._stage2_xref(runnables)
+        xref = self._stage2_xref(runnables, mud_activity_context)
         logger.info(
             "[Activity Pipeline] Stage 2 xref: %d IRV producers, %d DEM raisers",
             len(xref["irv_writers"]),
@@ -677,8 +729,19 @@ class ActivityPipeline:
     # ─── Stage 2 ──────────────────────────────────────────────────────────
 
     @staticmethod
-    def _stage2_xref(runnables: list[dict]) -> dict:
-        """Build IRV and DEM cross-reference dicts for the reviewer."""
+    def _stage2_xref(runnables: list[dict], mud_activity_context=None) -> dict:
+        """Build IRV and DEM cross-reference dicts for the reviewer.
+
+        Primary source: the skeleton AI's ``writes_irvs`` / ``reads_irvs`` /
+        ``raises_dem`` fields.  These are often ``[]`` because 7B models
+        frequently omit them.
+
+        Fallback: deterministically scan ``mud_activity_context.rte_calls``
+        (already parsed by ``build_mud_activity_context`` from the raw
+        markdown) to populate IRV writer/reader maps.  This guarantees the
+        Stage 4 reviewer receives useful cross-reference data even when the
+        skeleton model returns empty lists.
+        """
         irv_writers: dict[str, list[str]] = {}
         irv_readers: dict[str, list[str]] = {}
         dem_raisers: dict[str, list[str]] = {}
@@ -690,6 +753,23 @@ class ActivityPipeline:
                 irv_readers.setdefault(irv, []).append(rname)
             for dem in r.get("raises_dem") or []:
                 dem_raisers.setdefault(dem, []).append(rname)
+
+        # Fallback: parse rte_calls from MudActivityContext when AI returned nothing
+        if not irv_writers and not irv_readers and mud_activity_context is not None:
+            for call in getattr(mud_activity_context, "rte_calls", []) or []:
+                m = re.search(r"Rte_IWrite_(\w+)", call)
+                if m:
+                    irv_writers.setdefault(m.group(1), ["(auto-detected)"])
+                m = re.search(r"Rte_IRead_(\w+)", call)
+                if m:
+                    irv_readers.setdefault(m.group(1), ["(auto-detected)"])
+            # Attribute DEM events from per-runnable pseudo-code
+            for r in getattr(mud_activity_context, "runnables", []) or []:
+                rname = getattr(r, "name", "")
+                desc = getattr(r, "functional_description", "") or ""
+                for dtc in re.findall(r"Dem_(?:SetEventStatus|ReportErrorStatus)\s*\(\s*(\w+)", desc):
+                    dem_raisers.setdefault(dtc, []).append(rname)
+
         return {
             "irv_writers": irv_writers,
             "irv_readers": irv_readers,
@@ -728,6 +808,19 @@ class ActivityPipeline:
         key_steps_block = "\n".join(
             f"  {i+1}. {s}" for i, s in enumerate(sk_run.get("key_steps") or [])
         ) or "  (none — derive from pseudo-code)"
+        req_ids = [getattr(req, "req_id", "") for req in requirements or [] if getattr(req, "req_id", "")]
+        cfg_scaffold_obj = self._build_cfg_scaffold(
+            mud_activity_context=mud_activity_context,
+            sk_run=sk_run,
+            swc_name=swc_name,
+            pseudo_code=pseudo_code,
+            req_ids=req_ids,
+        )
+        cfg_scaffold = (
+            json.dumps(cfg_scaffold_obj, ensure_ascii=False, indent=2)
+            if cfg_scaffold_obj
+            else "  (no deterministic scaffold available)"
+        )
 
         # Compact requirements list with IDs only
         req_lines: list[str] = []
@@ -749,6 +842,7 @@ class ActivityPipeline:
             label_style=activity_label_style,
             key_steps_block=key_steps_block,
             pseudo_code=pseudo_code or "(no pseudo-code; produce a minimal Start/End diagram)",
+            cfg_scaffold=cfg_scaffold,
             requirements_block=requirements_block,
         )
 
@@ -784,7 +878,14 @@ class ActivityPipeline:
                 "[Activity Pipeline/Stage3] no JSON diagram for %s: %s",
                 rname, (response.content or "")[:200],
             )
-            return None
+            return self._finalize_cfg_fallback(
+                cfg_scaffold_obj,
+                rname,
+                swc_name,
+                backend_name,
+                response,
+                reason="ai_no_json",
+            )
 
         # Stamp identity fields the orchestrator expects
         diagram["diagram_type"] = "activity"
@@ -800,10 +901,27 @@ class ActivityPipeline:
         # (e.g. "current_mode") that don't match any node.  Rather than let
         # those propagate as Mermaid lint warnings, scrub them here.
         _scrub_orphan_edges(diagram, rname)
+        if cfg_scaffold_obj:
+            diagram = self._overlay_ai_on_cfg(cfg_scaffold_obj, diagram)
+            if self._diagram_has_cfg_breakage(diagram, rname):
+                logger.warning(
+                    "[Activity Pipeline/Stage3] %s failed CFG/mermaid checks; using deterministic scaffold",
+                    rname,
+                )
+                return self._finalize_cfg_fallback(
+                    cfg_scaffold_obj,
+                    rname,
+                    swc_name,
+                    backend_name,
+                    response,
+                    reason="cfg_rebuild",
+                )
         # Store backend hint so the orchestrator can record provenance
         diagram.setdefault("_pipeline_backend", backend_name)
         diagram.setdefault("_pipeline_model", getattr(response, "model", backend_name))
         diagram.setdefault("_pipeline_latency_ms", getattr(response, "latency_ms", 0))
+        if cfg_scaffold_obj:
+            diagram["_pipeline_canonical"] = copy.deepcopy(cfg_scaffold_obj)
         return diagram
 
     # ─── Stage 4 ──────────────────────────────────────────────────────────
@@ -928,10 +1046,22 @@ class ActivityPipeline:
         # Stamp provenance hash + version on every diagram
         finalised: list[dict] = []
         for d in drafts:
+            canonical = d.get("_pipeline_canonical")
+            candidate = d
+            if canonical and ActivityPipeline._diagram_has_cfg_breakage(d, d.get("owner_runnable") or d.get("name") or ""):
+                candidate = copy.deepcopy(canonical)
+                candidate["_pipeline_backend"] = d.get("_pipeline_backend", "activity_pipeline")
+                candidate["_pipeline_model"] = d.get("_pipeline_model", d.get("_pipeline_backend", "activity_pipeline"))
+                candidate["_pipeline_latency_ms"] = d.get("_pipeline_latency_ms", 0)
+            d = candidate
             backend_name = d.pop("_pipeline_backend", "activity_pipeline")
             model = d.pop("_pipeline_model", backend_name)
             latency = d.pop("_pipeline_latency_ms", 0)
-            prov = d.setdefault("provenance", {})
+            d.pop("_pipeline_canonical", None)
+            prov = d.get("provenance")
+            if not isinstance(prov, dict):
+                prov = {}
+                d["provenance"] = prov
             prov.setdefault("ai_model", model)
             prov.setdefault("backend", backend_name)
             prov.setdefault("prompt_version", "activity_pipeline_v1")
@@ -943,3 +1073,244 @@ class ActivityPipeline:
             prov.setdefault("prompt_hash", prov_hash)
             finalised.append(d)
         return finalised
+
+    def _build_cfg_scaffold(
+        self,
+        mud_activity_context,
+        sk_run: dict,
+        swc_name: str,
+        pseudo_code: str,
+        req_ids: list[str],
+    ) -> Optional[dict]:
+        runnable = RunnableContext(
+            name=sk_run.get("name") or "RE_Unknown",
+            trigger=sk_run.get("trigger", "") or "",
+            asil=sk_run.get("asil", "") or "",
+            summary="",
+            functional_description=pseudo_code or "",
+        )
+        ctx = MudActivityContext(
+            swc_name=swc_name or getattr(mud_activity_context, "swc_name", "") or "",
+            runnables=[runnable],
+            rte_calls=list(getattr(mud_activity_context, "rte_calls", []) or []),
+            helper_functions=list(getattr(mud_activity_context, "helper_functions", []) or []),
+            raw_markdown="",
+        )
+        diagrams = synthesize_activity_diagrams_from_context(ctx, req_ids)
+        if not diagrams:
+            return None
+        return diagrams[0].model_dump(mode="json")
+
+    @staticmethod
+    def _finalize_cfg_fallback(
+        cfg_scaffold_obj: Optional[dict],
+        rname: str,
+        swc_name: str,
+        backend_name: str,
+        response,
+        reason: str,
+    ) -> Optional[dict]:
+        if not cfg_scaffold_obj:
+            return None
+        diagram = copy.deepcopy(cfg_scaffold_obj)
+        diagram["diagram_type"] = "activity"
+        diagram.setdefault("owner_swc", swc_name or "")
+        diagram.setdefault("owner_runnable", rname)
+        diagram.setdefault("name", f"{rname} Code Flow")
+        diagram["_pipeline_backend"] = backend_name
+        diagram["_pipeline_model"] = getattr(response, "model", backend_name)
+        diagram["_pipeline_latency_ms"] = getattr(response, "latency_ms", 0)
+        diagram["_pipeline_canonical"] = copy.deepcopy(cfg_scaffold_obj)
+        if not isinstance(diagram.get("provenance"), dict):
+            diagram["provenance"] = {}
+        diagram["provenance"]["prompt_version"] = f"activity_pipeline_cfg_{reason}"
+        return diagram
+
+    @staticmethod
+    def _overlay_ai_on_cfg(cfg_scaffold_obj: dict, ai_diagram: dict) -> dict:
+        """Merge AI-enriched content (names, guards, rte metadata) onto the
+        deterministic scaffold topology.
+
+        Three-tier node matching (in priority order):
+          1. Exact ID match  — ``N_01`` == ``N_01``
+          2. List-index + same node_type  — positional alignment for clean outputs
+          3. Position within same-type subsequence — catches models that use
+             ``N_1`` / ``N_A`` / random IDs but emit nodes in the right order.
+
+        This ensures AI-provided names, guard text, rte_call metadata, and
+        confidence values are never silently discarded even when the model
+        ignores the requested ``N_xx`` ID format.
+        """
+        from collections import defaultdict
+
+        merged = copy.deepcopy(cfg_scaffold_obj)
+        ai_nodes = ai_diagram.get("nodes") if isinstance(ai_diagram.get("nodes"), list) else []
+
+        # Strategy 1 lookup: exact id
+        ai_by_id = {
+            str(node.get("id")): node
+            for node in ai_nodes
+            if isinstance(node, dict) and node.get("id")
+        }
+
+        # Strategy 3 lookup: per-type ordered list (Nth decision → Nth decision)
+        ai_by_type_pos: dict[str, list] = defaultdict(list)
+        for ai_node in ai_nodes:
+            if isinstance(ai_node, dict):
+                ai_by_type_pos[(ai_node.get("node_type") or "").lower()].append(ai_node)
+        type_pos_counters: dict[str, int] = defaultdict(int)
+
+        merged_nodes = merged.get("nodes", [])
+        for idx, node in enumerate(merged_nodes):
+            if not isinstance(node, dict):
+                continue
+            ntype = (node.get("node_type") or "").lower()
+
+            # Strategy 1: exact id
+            ai_node = ai_by_id.get(node.get("id"))
+
+            # Strategy 2: list index with same node_type
+            if ai_node is None and idx < len(ai_nodes) and isinstance(ai_nodes[idx], dict):
+                if (ai_nodes[idx].get("node_type") or "").lower() == ntype:
+                    ai_node = ai_nodes[idx]
+
+            # Strategy 3: Nth occurrence of same node_type
+            if ai_node is None:
+                pos = type_pos_counters[ntype]
+                peers = ai_by_type_pos[ntype]
+                if pos < len(peers):
+                    ai_node = peers[pos]
+
+            type_pos_counters[ntype] += 1
+
+            if not ai_node:
+                continue
+
+            # Enrich scalar fields from AI
+            for key in ("description", "confidence", "callee"):
+                value = ai_node.get(key)
+                if value not in (None, "", []):
+                    node[key] = value
+
+            # Fill missing RTE metadata from AI
+            for key in ("rte_call", "port", "element"):
+                if not node.get(key):
+                    value = ai_node.get(key)
+                    if value not in (None, "", []):
+                        node[key] = value
+
+            # Use AI name when it is more specific (longer), but never shorten
+            # a good Rte_/Dem_ scaffold name to a vague AI phrase.
+            ai_name = (ai_node.get("name") or "").strip()
+            scaffold_name = str(node.get("name", ""))
+            is_rte_scaffold = scaffold_name.startswith(("Rte_", "Dem_"))
+            is_rte_ai = ai_name.startswith(("Rte_", "Dem_"))
+            if ntype not in {"initial", "final", "merge"} and ai_name:
+                if is_rte_scaffold and not is_rte_ai:
+                    # Keep the precise Rte_/Dem_ scaffold name — AI shortened it
+                    pass
+                elif len(ai_name) >= len(scaffold_name) // 2:
+                    node["name"] = ai_name
+
+            if ai_node.get("trace_reqs"):
+                node["trace_reqs"] = ai_node["trace_reqs"]
+
+        # Overlay edge guards — try exact (src,tgt) match first, then
+        # positional match by source-node type-sequence index.
+        ai_edges = ai_diagram.get("edges") if isinstance(ai_diagram.get("edges"), list) else []
+        ai_edge_pairs = {
+            (str(edge.get("source")), str(edge.get("target"))): edge
+            for edge in ai_edges
+            if isinstance(edge, dict) and edge.get("source") and edge.get("target")
+        }
+
+        # Also build a per-source-decision ordered list of AI edges so we can
+        # match guards positionally when IDs differ.
+        ai_edges_by_src: dict[str, list] = defaultdict(list)
+        for edge in ai_edges:
+            if isinstance(edge, dict) and edge.get("source"):
+                ai_edges_by_src[str(edge["source"])].append(edge)
+        scaffold_edge_src_counters: dict[str, int] = defaultdict(int)
+
+        for edge in merged.get("edges", []):
+            if not isinstance(edge, dict):
+                continue
+            src = str(edge.get("source") or "")
+            tgt = str(edge.get("target") or "")
+
+            # Strategy 1: exact (src, tgt) pair
+            ai_edge = ai_edge_pairs.get((src, tgt))
+
+            # Strategy 2: Nth outgoing edge from the same source node
+            if ai_edge is None and src:
+                pos = scaffold_edge_src_counters[src]
+                src_ai_edges = ai_edges_by_src.get(src, [])
+                if pos < len(src_ai_edges):
+                    ai_edge = src_ai_edges[pos]
+            scaffold_edge_src_counters[src] += 1
+
+            if ai_edge:
+                # Prefer AI guard when it is semantically richer than the
+                # scaffold's generic [true]/[false].
+                ai_guard = (ai_edge.get("guard") or "").strip()
+                cur_guard = (edge.get("guard") or "").strip()
+                if ai_guard and ai_guard not in ("[true]", "[false]", "[loop]", "[else]"):
+                    edge["guard"] = ai_guard
+                elif ai_guard and not cur_guard:
+                    edge["guard"] = ai_guard
+                if not ai_guard and ai_edge.get("label"):
+                    edge.setdefault("label", ai_edge["label"])
+
+        merged["sub_diagrams"] = cfg_scaffold_obj.get("sub_diagrams", [])
+        merged.setdefault("source_requirements", ai_diagram.get("source_requirements", cfg_scaffold_obj.get("source_requirements", [])))
+        merged.setdefault("owner_swc", ai_diagram.get("owner_swc", cfg_scaffold_obj.get("owner_swc", "")))
+        merged.setdefault("owner_runnable", ai_diagram.get("owner_runnable", cfg_scaffold_obj.get("owner_runnable", "")))
+        merged.setdefault("name", ai_diagram.get("name", cfg_scaffold_obj.get("name", "")))
+        return merged
+
+    @staticmethod
+    def _diagram_has_cfg_breakage(diagram: dict, runnable_name: str) -> bool:
+        try:
+            model = ActivityDiagram.model_validate({**diagram, "diagram_type": "activity"})
+            mermaid_text = MermaidExporter().export_diagram(model)
+        except Exception:
+            return True
+        node_dicts = [node for node in diagram.get("nodes", []) if isinstance(node, dict)]
+        decision_count = sum(1 for node in node_dicts if (node.get("node_type") or "").lower() == "decision")
+        merge_count = sum(1 for node in node_dicts if (node.get("node_type") or "").lower() == "merge")
+        # Only flag as broken when decision nodes are actually missing outgoing branches.
+        # The old check (decision_count > 1 and merge_count == 0) was a false positive:
+        # sequential independent guards (two separate if-statements) are perfectly valid
+        # without a merge node.  Instead, count decisions that have fewer than 2 outgoing
+        # edges — those are genuinely broken (missing an [else] branch).
+        out_edges: dict[str, int] = {}
+        for e in (diagram.get("edges") or []):
+            s = e.get("source") if isinstance(e, dict) else None
+            if s:
+                out_edges[s] = out_edges.get(s, 0) + 1
+        decisions_missing_branch = sum(
+            1 for n in node_dicts
+            if (n.get("node_type") or "").lower() == "decision"
+            and out_edges.get(n.get("id"), 0) < 2
+        )
+        if decisions_missing_branch > 0:
+            return True
+        for node in node_dicts:
+            if (node.get("node_type") or "").lower() != "call":
+                continue
+            name = (node.get("name") or "").strip()
+            rte_call = (node.get("rte_call") or "").strip()
+            if name.startswith("Rte_") and (not rte_call or not rte_call.startswith("Rte_")):
+                return True
+        lint = MermaidLinter().lint(
+            mermaid_text,
+            DiagramType.ACTIVITY,
+            diagram_key=runnable_name or diagram.get("name", ""),
+        )
+        if lint.errors:
+            return True
+        branch_warnings = [
+            warning for warning in lint.warnings
+            if "Decision node" in warning or "branching paths may be missing" in warning
+        ]
+        return bool(branch_warnings)

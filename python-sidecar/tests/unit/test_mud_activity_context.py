@@ -1,4 +1,5 @@
 from mudtool.ai.mud_activity_context import (
+    _parse_numbered_step_entries,
     build_mud_activity_context,
     synthesize_activity_diagrams_from_context,
 )
@@ -201,3 +202,113 @@ def test_synthesize_activity_diagrams_from_context_builds_for_each_loop_and_help
     assert any(n.node_type == ActivityNodeType.DECISION for n in diagram.nodes)
     assert diagram.sub_diagrams
     assert diagram.sub_diagrams[0].function_name == "EvaluateDtc"
+
+
+def test_parse_numbered_step_entries_expands_c_style_pseudocode_blocks():
+    text = """
+1. Guard: mode check:
+   if (RP_IgnitionStatus == false) {
+       Rte_IWrite(PP_MotorCurrentDemand, 0);
+       return;
+   }
+2. Write PP_ output:
+   if (motorTemperature > 120) {
+       Rte_IWrite(PP_EPSStatus, 3);
+   } else if (assistDemand > 50) {
+       Rte_IWrite(PP_EPSStatus, 2);
+   } else {
+       Rte_IWrite(PP_EPSStatus, 1);
+   }
+"""
+    steps = _parse_numbered_step_entries(text)
+
+    kinds = [step.kind for step in steps]
+    texts = [step.text for step in steps]
+
+    assert "if" in kinds
+    assert "else_if" in kinds
+    assert "else" in kinds
+    assert any("Rte_IWrite(PP_EPSStatus, 3)" in text for text in texts)
+    assert any(step.depth > 1 for step in steps)
+
+
+def test_synthesize_activity_diagrams_from_context_builds_branching_from_c_style_section7_blocks():
+    markdown = """
+# MUD Spec: SWC_ElectricPowerSteering
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_ControlTorque | Cyclic | 5 ms | ASIL-D | Main EPS control loop |
+
+## 7. Functional Description
+### RE_ControlTorque
+1. Guard: mode check:
+   if (RP_IgnitionStatus == false) {
+       Rte_IWrite(PP_MotorCurrentDemand, 0);
+       Rte_IWrite(PP_EPSStatus, 0);
+       return;
+   }
+2. Core computation step:
+   if (assistDemand > 100) {
+       assistDemand = 100;
+   }
+   if (assistDemand < -100) {
+       assistDemand = -100;
+   }
+3. Write PP_ output:
+   if (motorTemperature > 120) {
+       Rte_IWrite(PP_EPSStatus, 3);
+   } else if (assistDemand > 50) {
+       Rte_IWrite(PP_EPSStatus, 2);
+   } else {
+       Rte_IWrite(PP_EPSStatus, 1);
+   }
+"""
+    context = build_mud_activity_context(markdown, module_context="SWC_ElectricPowerSteering")
+
+    assert context.has_structured_flow_source is True
+
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-201"])[0]
+    decision_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.DECISION]
+    merge_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.MERGE]
+    guards = {edge.guard for edge in diagram.edges if edge.guard}
+
+    assert len(decision_nodes) >= 3
+    assert len(merge_nodes) >= 3
+    assert "[true]" in guards
+    assert "[false]" in guards
+
+
+def test_synthesize_activity_diagrams_from_context_normalizes_rte_iread_iwrite_and_return():
+    markdown = """
+# MUD Spec: SWC_Stream
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Stream | Cyclic | 5 ms | ASIL-B | Stream flow |
+
+## 7. Functional Description
+### RE_Stream
+1. Guard: check status:
+   if (Rte_IRead(RP_IgnitionStatus) == false) {
+       Rte_IWrite(PP_EPSStatus, 0);
+       return;
+   }
+2. Continue:
+   Rte_IWrite(PP_AssistLevel, assistLevel);
+"""
+    context = build_mud_activity_context(markdown, module_context="SWC_Stream")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-301"])[0]
+
+    call_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.CALL]
+    decision_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.DECISION]
+    return_nodes = [n for n in diagram.nodes if (n.name or "").strip().lower() == "return"]
+    final_id = next(n.id for n in diagram.nodes if n.node_type == ActivityNodeType.FINAL)
+
+    assert any(n.rte_call == "Rte_IRead" for n in diagram.nodes if getattr(n, "rte_call", None))
+    assert any(n.rte_call == "Rte_IWrite" for n in call_nodes)
+    assert any(n.rte_call == "Rte_IRead" for n in decision_nodes)
+    assert return_nodes
+    assert any(edge.source == return_nodes[0].id and edge.target == final_id for edge in diagram.edges)

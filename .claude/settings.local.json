@@ -49,7 +49,9 @@
       "Bash(.venv\\\\Scripts\\\\python.exe tools\\\\csv_to_reference_json.py --csv \"C:\\\\Users\\\\afeef\\\\Downloads\\\\EPS_MUD_Enhanced.csv\" --out \"knowledge\\\\eps_reference.json\")",
       "Bash(python -m py_compile src/mudtool/ai/activity_pipeline_stages.py src/mudtool/ai/orchestrator.py src/mudtool/config/settings.py src/mudtool/api/routes.py)",
       "Bash(cat)",
-      "Bash(python /tmp/settings_test.py)"
+      "Bash(python /tmp/settings_test.py)",
+      "Bash(python -m py_compile src/mudtool/ai/activity_pipeline_stages.py)",
+      "Bash(python -m py_compile src/mudtool/ai/mud_activity_context.py)"
     ]
   }
 }

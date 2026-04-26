@@ -137,7 +137,14 @@ def build_mud_activity_context(markdown: str, module_context: str | None = None)
             if len(re_name) >= 4:
                 runnable_map[re_name] = RunnableContext(name=re_name)
 
-    rte_calls = sorted(set(re.findall(r"\bRte_(?:Read|Write|Call|Result)\w*(?:\([^)]*\))?", markdown)))
+    rte_calls = sorted(
+        set(
+            re.findall(
+                r"\bRte_(?:IRead|IWrite|Read|Write|Call|Result|Receive|Send|Switch)\w*(?:\([^)]*\))?",
+                markdown,
+            )
+        )
+    )
     helper_functions = sorted(_extract_helper_functions(markdown))
 
     return MudActivityContext(
@@ -204,7 +211,7 @@ def synthesize_activity_diagrams_from_context(
             description=f"Exit point for {runnable.name}",
             confidence=0.9,
         )
-        builder.connect_pending(exits, final_id)
+        builder.connect_pending(exits + builder.terminal_exits, final_id)
 
         diagrams.append(
             ActivityDiagram(
@@ -244,6 +251,7 @@ class _ActivityGraphBuilder:
         self._sub_ids: set[str] = set()
         self._node_counter = 1
         self._edge_counter = 1
+        self.terminal_exits: list[tuple[str, str | None]] = []
 
     def add_node(
         self,
@@ -343,6 +351,9 @@ class _ActivityGraphBuilder:
             return self.emit_loop(steps, index, pending, depth)
         if kind == "switch":
             return self.emit_switch(steps, index, pending, depth)
+        if kind == "return":
+            self.emit_return_step(steps[index].text, pending)
+            return index + 1, []
         node_pending = self.emit_action_step(steps[index].text, pending)
         return index + 1, [node_pending]
 
@@ -388,6 +399,20 @@ class _ActivityGraphBuilder:
             )
         return (node_id, None)
 
+    def emit_return_step(
+        self,
+        step_text: str,
+        pending: list[tuple[str, str | None]],
+    ) -> None:
+        node_id = self.add_node(
+            name=step_text,
+            node_type=self.ActivityNodeType.ACTION,
+            description=_short_step_description(step_text),
+            confidence=0.88,
+        )
+        self.connect_pending(pending, node_id)
+        self.terminal_exits.append((node_id, None))
+
     def emit_if(
         self,
         steps: list[NumberedStep],
@@ -395,43 +420,60 @@ class _ActivityGraphBuilder:
         pending: list[tuple[str, str | None]],
         depth: int,
     ) -> tuple[int, list[tuple[str, str | None]]]:
+        rte_meta = _extract_rte_metadata(steps[index].text)
         decision_id = self.add_node(
             name=_strip_control_prefix(steps[index].text),
             node_type=self.ActivityNodeType.DECISION,
             description=_short_step_description(steps[index].text),
             confidence=0.9,
+            rte_call=rte_meta["rte_call"] if rte_meta else None,
+            port=rte_meta["port"] if rte_meta else None,
+            element=rte_meta["element"] if rte_meta else None,
         )
         self.connect_pending(pending, decision_id)
         index += 1
+
+        # Use the actual condition expression as the branch guard so the
+        # rendered diagram shows e.g. "[l_f32Torque > LIMIT]" rather than the
+        # generic "[true]" / "[false]" labels.
+        condition_text = _strip_control_prefix(steps[index - 1].text)
+        true_guard  = f"[{condition_text}]" if condition_text else "[true]"
+        false_guard = "[else]"
 
         index, true_exits, _ = self.emit_branch_body(
             steps,
             index,
             depth,
-            pending=[(decision_id, "[true]")],
+            pending=[(decision_id, true_guard)],
             stop_kinds={"else_if", "else", "end_if"},
         )
         branch_exits = list(true_exits)
-        false_pending = [(decision_id, "[false]")]
+        false_pending = [(decision_id, false_guard)]
 
         while index < len(steps) and steps[index].depth == depth and steps[index].kind == "else_if":
+            rte_meta = _extract_rte_metadata(steps[index].text)
+            else_if_condition = _strip_control_prefix(steps[index].text)
             else_if_decision = self.add_node(
-                name=_strip_control_prefix(steps[index].text),
+                name=else_if_condition or _strip_control_prefix(steps[index].text),
                 node_type=self.ActivityNodeType.DECISION,
                 description=_short_step_description(steps[index].text),
                 confidence=0.9,
+                rte_call=rte_meta["rte_call"] if rte_meta else None,
+                port=rte_meta["port"] if rte_meta else None,
+                element=rte_meta["element"] if rte_meta else None,
             )
             self.connect_pending(false_pending, else_if_decision)
             index += 1
+            elseif_true_guard = f"[{else_if_condition}]" if else_if_condition else "[true]"
             index, elseif_exits, _ = self.emit_branch_body(
                 steps,
                 index,
                 depth,
-                pending=[(else_if_decision, "[true]")],
+                pending=[(else_if_decision, elseif_true_guard)],
                 stop_kinds={"else_if", "else", "end_if"},
             )
             branch_exits.extend(elseif_exits)
-            false_pending = [(else_if_decision, "[false]")]
+            false_pending = [(else_if_decision, "[else]")]
 
         if index < len(steps) and steps[index].depth == depth and steps[index].kind == "else":
             index += 1
@@ -466,11 +508,15 @@ class _ActivityGraphBuilder:
         depth: int,
     ) -> tuple[int, list[tuple[str, str | None]]]:
         loop_step = steps[index]
+        rte_meta = _extract_rte_metadata(loop_step.text)
         decision_id = self.add_node(
             name=_strip_control_prefix(loop_step.text),
             node_type=self.ActivityNodeType.DECISION,
             description=_short_step_description(loop_step.text),
             confidence=0.9,
+            rte_call=rte_meta["rte_call"] if rte_meta else None,
+            port=rte_meta["port"] if rte_meta else None,
+            element=rte_meta["element"] if rte_meta else None,
         )
         self.connect_pending(pending, decision_id)
         index += 1
@@ -478,11 +524,13 @@ class _ActivityGraphBuilder:
         stop_kinds = {"end_loop"}
         if loop_step.kind == "until":
             stop_kinds = {"end_loop", "until"}
+        loop_condition = _strip_control_prefix(loop_step.text)
+        loop_guard = f"[{loop_condition}]" if loop_condition else "[loop]"
         index, body_exits, consumed = self.emit_branch_body(
             steps,
             index,
             depth,
-            pending=[(decision_id, "[loop]")],
+            pending=[(decision_id, loop_guard)],
             stop_kinds=stop_kinds,
         )
         if consumed:
@@ -508,11 +556,15 @@ class _ActivityGraphBuilder:
         pending: list[tuple[str, str | None]],
         depth: int,
     ) -> tuple[int, list[tuple[str, str | None]]]:
+        rte_meta = _extract_rte_metadata(steps[index].text)
         decision_id = self.add_node(
             name=_strip_control_prefix(steps[index].text),
             node_type=self.ActivityNodeType.DECISION,
             description=_short_step_description(steps[index].text),
             confidence=0.9,
+            rte_call=rte_meta["rte_call"] if rte_meta else None,
+            port=rte_meta["port"] if rte_meta else None,
+            element=rte_meta["element"] if rte_meta else None,
         )
         self.connect_pending(pending, decision_id)
         index += 1
@@ -669,36 +721,142 @@ def _parse_numbered_steps(text: str) -> list[str]:
 
 def _parse_numbered_step_entries(text: str) -> list[NumberedStep]:
     steps: list[NumberedStep] = []
-    current_chunks: list[str] = []
+    current_header: str | None = None
+    current_body_lines: list[str] = []
     current_depth = 1
     for raw_line in (text or "").splitlines():
         if not raw_line.strip():
             continue
         numbered = re.match(r"^(\s*)(\d+(?:\.\d+)*)(?:[.)])\s*(.+)$", raw_line)
         if numbered:
-            if current_chunks:
-                normalized = _normalize_ws(" ".join(current_chunks))
-                steps.append(
-                    NumberedStep(
-                        text=normalized,
-                        depth=current_depth,
-                        kind=_classify_step_kind(normalized),
-                    )
-                )
+            if current_header is not None:
+                steps.extend(_expand_numbered_step_block(current_header, current_body_lines, current_depth))
             current_depth = max(1, len(numbered.group(2).split(".")))
-            current_chunks = [numbered.group(3).strip()]
-        elif current_chunks:
-            current_chunks.append(raw_line.strip())
-    if current_chunks:
-        normalized = _normalize_ws(" ".join(current_chunks))
-        steps.append(
-            NumberedStep(
-                text=normalized,
-                depth=current_depth,
-                kind=_classify_step_kind(normalized),
-            )
-        )
+            current_header = numbered.group(3).strip()
+            current_body_lines = []
+        elif current_header is not None:
+            current_body_lines.append(raw_line.rstrip())
+    if current_header is not None:
+        steps.extend(_expand_numbered_step_block(current_header, current_body_lines, current_depth))
     return steps
+
+
+def _expand_numbered_step_block(header: str, body_lines: list[str], base_depth: int) -> list[NumberedStep]:
+    header_text = _normalize_ws(header)
+    body_lines = [line.rstrip() for line in body_lines if line.strip()]
+    if not body_lines:
+        return [
+            NumberedStep(
+                text=header_text,
+                depth=base_depth,
+                kind=_classify_step_kind(header_text),
+            )
+        ]
+
+    expanded = _parse_pseudocode_block_lines(body_lines, base_depth + 1)
+    if expanded:
+        if not _looks_like_container_heading(header_text):
+            expanded.insert(
+                0,
+                NumberedStep(
+                    text=header_text,
+                    depth=base_depth,
+                    kind=_classify_step_kind(header_text),
+                ),
+            )
+        return expanded
+
+    merged = _normalize_ws(" ".join([header_text, *body_lines]))
+    return [
+        NumberedStep(
+            text=merged,
+            depth=base_depth,
+            kind=_classify_step_kind(merged),
+        )
+    ]
+
+
+def _parse_pseudocode_block_lines(lines: list[str], base_depth: int) -> list[NumberedStep]:
+    steps: list[NumberedStep] = []
+    depth_offset = 0
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("//"):
+            continue
+
+        # Process closing braces before the current statement so "} else {" lands
+        # back on the parent branch depth.
+        while line.startswith("}"):
+            depth_offset = max(0, depth_offset - 1)
+            line = line[1:].strip()
+        if not line:
+            continue
+
+        opens_block = line.endswith("{")
+        if opens_block:
+            line = line[:-1].rstrip()
+        line = line.rstrip(";").strip()
+        if not line:
+            if opens_block:
+                depth_offset += 1
+            continue
+
+        normalized = _normalize_control_line(line)
+        if normalized:
+            steps.append(
+                NumberedStep(
+                    text=normalized,
+                    depth=max(1, base_depth + depth_offset),
+                    kind=_classify_step_kind(normalized),
+                )
+            )
+
+        if opens_block:
+            depth_offset += 1
+
+        leading_match = re.match(r"^\s*}*", raw_line)
+        leading_closes = leading_match.group(0).count("}") if leading_match else 0
+        trailing_closes = max(0, raw_line.count("}") - leading_closes)
+        if trailing_closes > 0 and not raw_line.strip().startswith("}"):
+            depth_offset = max(0, depth_offset - trailing_closes)
+
+    return steps
+
+
+def _looks_like_container_heading(text: str) -> bool:
+    lowered = _normalize_ws(text).lower()
+    if lowered.startswith("//"):
+        return True
+    return lowered.endswith(":") or lowered in {
+        "read inputs",
+        "validate inputs",
+        "core computation step",
+        "core computation step(s)",
+        "write pp_ output",
+        "last step",
+        "watchdog update",
+    }
+
+
+def _normalize_control_line(text: str) -> str:
+    cleaned = _normalize_ws(text)
+    replacements = [
+        (r"^else\s+if\s*\((.+)\)$", r"Else if \1"),
+        (r"^if\s*\((.+)\)$", r"If \1"),
+        (r"^while\s*\((.+)\)$", r"While \1"),
+        (r"^for\s*\((.+)\)$", r"For \1"),
+        (r"^switch\s*\((.+)\)$", r"Switch \1"),
+        (r"^case\s+(.+):?$", r"Case \1"),
+        (r"^default\s*:?\s*$", "Default"),
+    ]
+    for pattern, replacement in replacements:
+        updated = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+        if updated != cleaned:
+            return updated.strip()
+    return cleaned
 
 
 def _classify_step_kind(step: str) -> str:
@@ -727,6 +885,21 @@ def _classify_step_kind(step: str) -> str:
         return "default"
     if re.match(r"^(end\s*switch|endswitch)\b", lowered):
         return "end_switch"
+    if re.match(r"^return\b", lowered):
+        return "return"
+    # Implicit decision patterns — AUTOSAR pseudo-code often writes guards
+    # without the literal "if" keyword.  Treat these as decision nodes so the
+    # CFG builder emits a diamond rather than a flat action box.
+    _IMPLICIT_IF_PATTERNS = (
+        r"^validate\s+if\b",
+        r"^check\s+(if|whether|that)\b",
+        r"^guard\s*:",
+        r"^verify\s+if\b",
+        r"^determine\s+if\b",
+    )
+    for p in _IMPLICIT_IF_PATTERNS:
+        if re.match(p, lowered):
+            return "if"
     return "action"
 
 
@@ -759,16 +932,51 @@ def _switch_guard(step: str) -> str:
 
 
 def _extract_rte_metadata(step: str) -> dict[str, str] | None:
-    m = re.search(r"\b(Rte_(?:Read|Write|Call|Result)\w*)\s*\(\s*([A-Z]{2}_[A-Za-z0-9_]+)", step)
+    m = re.search(
+        r"\b(Rte_(?:IRead|IWrite|Read|Write|Call|Result|Receive|Send|Switch)\w*)\s*\(\s*([A-Z]{2}_[A-Za-z0-9_]+)",
+        step,
+    )
     if not m:
         return None
-    rte_call = m.group(1)
+    rte_call = _normalize_rte_call_name(m.group(1))
     port = m.group(2)
-    element = ""
-    parts = port.split("_", 2)
-    if len(parts) >= 3:
-        element = parts[2]
+    element = _infer_element_name(port, step, rte_call)
     return {"rte_call": rte_call, "port": port, "element": element}
+
+
+def _normalize_rte_call_name(rte_call: str) -> str:
+    raw = (rte_call or "").strip()
+    if not raw:
+        return raw
+    if raw.startswith("Rte_"):
+        return raw
+    if raw.startswith("IRead"):
+        return "Rte_IRead"
+    if raw.startswith("IWrite"):
+        return "Rte_IWrite"
+    return f"Rte_{raw}"
+
+
+def _infer_element_name(port: str, step: str, rte_call: str) -> str:
+    parts = port.split("_", 2)
+    if len(parts) >= 3 and parts[2]:
+        return parts[2]
+
+    if rte_call in {"Rte_IRead", "Rte_Read", "Rte_Receive", "Rte_Result"}:
+        m = re.search(rf"{re.escape(rte_call)}\s*\(\s*{re.escape(port)}\s*,\s*&?\s*([A-Za-z_][A-Za-z0-9_]*)", step)
+        if m:
+            return m.group(1)
+
+    if rte_call in {"Rte_IWrite", "Rte_Write", "Rte_Send", "Rte_Switch"}:
+        m = re.search(rf"{re.escape(rte_call)}\s*\(\s*{re.escape(port)}\s*,\s*([^)]+)\)", step)
+        if m:
+            expr = m.group(1).strip()
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr):
+                return expr
+
+    if len(parts) >= 2 and parts[1]:
+        return parts[1]
+    return ""
 
 
 def _extract_helper_call(step: str, helper_names: set[str]) -> str | None:
