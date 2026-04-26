@@ -635,9 +635,21 @@ class ActivityPipeline:
         finalised = self._stage5_finalise(drafts, patches)
 
         total_nodes = sum(len(d.get("nodes", [])) for d in finalised)
+        # Collect per-runnable provenance modes for the summary event
+        prov_summary = {
+            d.get("owner_runnable") or d.get("name", "?"): (
+                d.get("provenance", {}).get("provenance_mode", "?")
+            )
+            for d in finalised
+        }
+        modes_str = ", ".join(
+            f"{r}: {m}" for r, m in list(prov_summary.items())[:8]
+        )
         self._emit(
-            f"[Activity Pipeline] Complete — {len(finalised)} diagrams, {total_nodes} nodes total",
+            f"[Activity Pipeline] Complete — {len(finalised)} diagrams, "
+            f"{total_nodes} nodes total | {modes_str}",
             100,
+            quality_summary=prov_summary,
         )
         return finalised
 
@@ -1043,21 +1055,64 @@ class ActivityPipeline:
                             "target": new_id,
                         })
 
-        # Stamp provenance hash + version on every diagram
+        # Stamp provenance hash + version + quality metrics on every diagram
         finalised: list[dict] = []
         for d in drafts:
             canonical = d.get("_pipeline_canonical")
             candidate = d
-            if canonical and ActivityPipeline._diagram_has_cfg_breakage(d, d.get("owner_runnable") or d.get("name") or ""):
+            runnable_name = d.get("owner_runnable") or d.get("name") or ""
+
+            # Determine provenance mode before any mutation
+            if canonical and ActivityPipeline._diagram_has_cfg_breakage(d, runnable_name):
                 candidate = copy.deepcopy(canonical)
                 candidate["_pipeline_backend"] = d.get("_pipeline_backend", "activity_pipeline")
                 candidate["_pipeline_model"] = d.get("_pipeline_model", d.get("_pipeline_backend", "activity_pipeline"))
                 candidate["_pipeline_latency_ms"] = d.get("_pipeline_latency_ms", 0)
+                provenance_mode = "cfg_restored"
+            elif d.get("provenance", {}).get("prompt_version", "").startswith("activity_pipeline_cfg"):
+                provenance_mode = "canonical_only"
+            elif any(
+                isinstance(patch, dict) and patch.get("runnable") == runnable_name
+                for patch in patches or []
+            ):
+                provenance_mode = "reviewer_patched"
+            else:
+                provenance_mode = "ai_enriched"
+
             d = candidate
             backend_name = d.pop("_pipeline_backend", "activity_pipeline")
             model = d.pop("_pipeline_model", backend_name)
             latency = d.pop("_pipeline_latency_ms", 0)
             d.pop("_pipeline_canonical", None)
+
+            # Compute per-runnable quality metrics
+            node_dicts = [n for n in d.get("nodes", []) if isinstance(n, dict)]
+            edge_dicts = [e for e in d.get("edges", []) if isinstance(e, dict)]
+            out_edges: dict[str, int] = {}
+            for e in edge_dicts:
+                s = e.get("source")
+                if s:
+                    out_edges[s] = out_edges.get(s, 0) + 1
+            in_edges: dict[str, int] = {}
+            for e in edge_dicts:
+                t = e.get("target")
+                if t:
+                    in_edges[t] = in_edges.get(t, 0) + 1
+            initial_ids = {n.get("id") for n in node_dicts if (n.get("node_type") or "").lower() == "initial"}
+            unreachable_count = sum(
+                1 for n in node_dicts
+                if n.get("id") not in initial_ids
+                and in_edges.get(n.get("id"), 0) == 0
+            )
+            quality_metrics = {
+                "node_count": len(node_dicts),
+                "decision_count": sum(1 for n in node_dicts if (n.get("node_type") or "").lower() == "decision"),
+                "merge_count": sum(1 for n in node_dicts if (n.get("node_type") or "").lower() == "merge"),
+                "guarded_edge_count": sum(1 for e in edge_dicts if e.get("guard")),
+                "unreachable_count": unreachable_count,
+                "provenance_mode": provenance_mode,
+            }
+
             prov = d.get("provenance")
             if not isinstance(prov, dict):
                 prov = {}
@@ -1067,6 +1122,8 @@ class ActivityPipeline:
             prov.setdefault("prompt_version", "activity_pipeline_v1")
             prov.setdefault("confidence", 0.85)
             prov.setdefault("generation_time_ms", latency)
+            prov["provenance_mode"] = provenance_mode
+            prov["quality_metrics"] = quality_metrics
             prov_hash = hashlib.sha256(
                 f"{d.get('name')}|{len(d.get('nodes', []))}|{int(time.time())}".encode()
             ).hexdigest()[:12]
@@ -1278,22 +1335,46 @@ class ActivityPipeline:
         node_dicts = [node for node in diagram.get("nodes", []) if isinstance(node, dict)]
         decision_count = sum(1 for node in node_dicts if (node.get("node_type") or "").lower() == "decision")
         merge_count = sum(1 for node in node_dicts if (node.get("node_type") or "").lower() == "merge")
-        # Only flag as broken when decision nodes are actually missing outgoing branches.
-        # The old check (decision_count > 1 and merge_count == 0) was a false positive:
-        # sequential independent guards (two separate if-statements) are perfectly valid
-        # without a merge node.  Instead, count decisions that have fewer than 2 outgoing
-        # edges — those are genuinely broken (missing an [else] branch).
-        out_edges: dict[str, int] = {}
+        # ── Check 1: decision nodes missing outgoing branches ────────────────
+        # Count decisions that have < 2 outgoing edges — genuinely broken
+        # (missing an [else] or second branch).  Note: sequential independent
+        # guards (2+ decisions, no merge) are valid — do NOT flag those.
+        out_edges_count: dict[str, int] = {}
+        in_edges_count: dict[str, int] = {}
         for e in (diagram.get("edges") or []):
-            s = e.get("source") if isinstance(e, dict) else None
+            if not isinstance(e, dict):
+                continue
+            s = e.get("source")
+            t = e.get("target")
             if s:
-                out_edges[s] = out_edges.get(s, 0) + 1
+                out_edges_count[s] = out_edges_count.get(s, 0) + 1
+            if t:
+                in_edges_count[t] = in_edges_count.get(t, 0) + 1
         decisions_missing_branch = sum(
             1 for n in node_dicts
             if (n.get("node_type") or "").lower() == "decision"
-            and out_edges.get(n.get("id"), 0) < 2
+            and out_edges_count.get(n.get("id"), 0) < 2
         )
         if decisions_missing_branch > 0:
+            return True
+
+        # ── Check 2: unreachable nodes ────────────────────────────────────────
+        # Any non-initial node that has zero incoming edges is unreachable —
+        # the AI invented an orphan node or connected it only via a dropped edge.
+        initial_ids = {
+            n.get("id") for n in node_dicts
+            if (n.get("node_type") or "").lower() == "initial"
+        }
+        unreachable = [
+            n.get("id") for n in node_dicts
+            if n.get("id") not in initial_ids
+            and in_edges_count.get(n.get("id"), 0) == 0
+        ]
+        if unreachable:
+            logger.info(
+                "[Activity Pipeline/breakage] %s: %d unreachable node(s): %s",
+                runnable_name, len(unreachable), unreachable[:5],
+            )
             return True
         for node in node_dicts:
             if (node.get("node_type") or "").lower() != "call":

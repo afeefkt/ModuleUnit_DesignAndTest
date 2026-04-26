@@ -624,6 +624,379 @@ Final Output + Traceability Links
 
 ---
 
+## Current Implementation Architecture (Updated)
+
+This section describes the architecture as it exists in the codebase today. It is the authoritative high-level view for the current Python sidecar, built-in web UI, MUD workflow, activity-flow pipeline, validation, exporters, and traceability stack.
+
+### 1. System shape
+
+At runtime, the project is a **FastAPI sidecar** with a built-in browser UI:
+
+- the **web UI** is served at `/`
+- the **API** is served under `/api/v1/*`
+- the same sidecar handles:
+  - requirement import
+  - optional AI elaboration
+  - SWC/module planning
+  - MUD spec generation, review, and regeneration
+  - architecture diagram generation
+  - MUD-first activity/code-flow generation
+  - validation
+  - export and rendering
+  - requirement-to-model traceability
+
+In practice, the browser, curl/scripts, diagnostics, and the optional Modelio plugin all talk to the same sidecar.
+
+### 2. Main runtime layers
+
+#### Application shell
+
+- `python-sidecar/src/mudtool/main.py`
+  - creates the FastAPI app
+  - sets up logging, lifespan, CORS, and route mounting
+  - mounts:
+    - API router at `/api/v1`
+    - web router at `/`
+
+- `python-sidecar/src/mudtool/web/app.py`
+  - serves the built-in browser dashboard
+  - UI remains a client of the API rather than containing server logic
+
+#### Dependency / service layer
+
+- `python-sidecar/src/mudtool/api/dependencies.py`
+  - central factory for long-lived services
+  - exposes singleton-style access to:
+    - `AIOrchestrator`
+    - `ValidationEngine`
+    - `AUTOSARMapper`
+    - `RenderService`
+    - `TraceabilityStore`
+
+This gives the codebase one shared service graph instead of recreating backends or validators per request.
+
+### 3. API architecture
+
+#### Central API router
+
+- `python-sidecar/src/mudtool/api/routes.py`
+
+This file is the main orchestration surface of the product. It contains the current HTTP contract for:
+
+- health and runtime config
+- file/text requirement import
+- requirement elaboration
+- diagram generation (`/generate`, `/generate/stream`)
+- validation
+- export and inline Mermaid export
+- rendering
+- guidelines utilities
+- traceability queries
+- module planning
+- MUD spec generation
+- MUD spec review
+- MUD spec regeneration
+
+#### Two generation entrypoints
+
+The architecture intentionally keeps two user-facing generation modes:
+
+- **synchronous generation**
+  - `POST /generate`
+  - best for programmatic callers
+
+- **streaming generation**
+  - `POST /generate/stream`
+  - emits SSE progress events for the browser UI
+  - used heavily for activity pipeline progress, MUD spec progress, review progress, and visual QA events
+
+### 4. AI subsystem architecture
+
+The AI subsystem is not a single file or a single prompt. It is split into focused responsibilities.
+
+#### Core orchestrator and pipelines
+
+- `ai/orchestrator.py`
+  - top-level AI execution coordinator
+  - chooses backends/models
+  - handles retries, parsing, fallback, confidence, and specialized generation paths
+
+- `ai/pipeline.py`
+  - general diagram-generation pipeline for non-MUD architecture diagrams and refinement
+
+#### Requirement and module understanding
+
+- `ai/elaborator.py`
+  - optional requirement enrichment
+  - extracts richer context before later stages
+
+- `ai/chunked_elaborator.py`
+  - chunk-based elaboration path for larger requirement sets
+
+- `ai/module_planner.py`
+  - converts requirements into SWC/module candidates
+  - current output shape includes:
+    - `swc_name`
+    - `asil`
+    - `runnables`
+    - `req_ids`
+    - complexity/description metadata
+  - includes robustness logic so weak AI planning does not collapse the whole workflow
+
+#### MUD-spec generation
+
+- `ai/mud_spec_generator.py`
+  - selected-module MUD Markdown generation
+  - MUD review and regeneration
+
+- `ai/mud_pipeline_stages.py`
+  - internal staged MUD-spec pipeline
+  - used to create better structured specs than a single markdown prompt alone
+
+#### Activity / flowchart generation
+
+- `ai/mud_activity_context.py`
+  - parses generated MUD specs back into runnable flow context
+  - extracts Section 7 pseudo-code and related semantics
+  - can synthesize activity diagrams deterministically from that context
+
+- `ai/activity_pipeline_stages.py`
+  - specialized multi-stage activity pipeline
+  - current staged shape:
+    - Stage 1: runnable skeleton extraction
+    - Stage 2: cross-reference map
+    - Stage 3: per-runnable generation
+    - Stage 4: reviewer pass
+    - Stage 5: deterministic repair + provenance
+  - overlays AI output onto canonical CFG scaffolds
+  - uses Mermaid lint and internal breakage checks to reject malformed topology
+
+#### Prompt, guidelines, and backend adapters
+
+- `ai/prompt_engine.py`
+  - YAML/Jinja prompt rendering
+
+- `ai/guidelines_reader.py`
+  - loads and chunks guidelines/design references for injection
+
+- `ai/skill_loader.py`
+  - appends local skill blocks that stabilize structured output
+
+- `ai/cloud_backend.py`, `ai/local_backend.py`, `ai/base_backend.py`
+  - backend abstraction for:
+    - Anthropic
+    - OpenAI-compatible endpoints
+    - Ollama over HTTP
+    - local model execution paths
+
+- `ai/visual_qa.py`
+  - optional post-generation rendered-diagram QA/correction loop
+
+### 5. Current MUD-first workflow architecture
+
+The current workflow is no longer just “requirements in, diagrams out.” It is now explicitly staged:
+
+1. **Import**
+   - requirements become `RequirementSet`
+
+2. **Optional elaboration**
+   - enrich requirement context
+
+3. **Module planning**
+   - AI detects SWCs/modules from the full requirement set
+
+4. **Module selection**
+   - user selects a single module/SWC
+
+5. **MUD spec generation**
+   - selected SWC becomes a detailed MUD Markdown spec
+
+6. **MUD spec review/regeneration**
+   - independent review pass returns coverage and issues
+
+7. **Diagram generation**
+   - architecture diagrams and MUD activity diagrams are generated with different strategies
+
+8. **Validation + traceability**
+   - generated models are checked and linked back to requirements
+
+9. **Export / rendering**
+   - same internal model can be exported many ways
+
+This is important architecturally because the MUD spec has become a **first-class intermediate design artifact**, not just a debug text file.
+
+### 6. Activity / flowchart architecture
+
+This is the part of the system that has changed the most and is now the most specialized.
+
+#### Why activity generation is separate
+
+Sequence, class, component, and state-machine diagrams are still more prompt-driven and can be validated after generation.
+
+Activity diagrams are harder because they must preserve:
+
+- branch logic
+- merge structure
+- loop topology
+- early returns
+- RTE call semantics
+- renderer-safe geometry
+
+Because of that, the current architecture does **not** rely on a 7B model alone to invent runnable logic topology.
+
+#### Current activity path
+
+1. `routes.py` builds `MudActivityContext` from selected MUD Markdown.
+2. `mud_activity_context.py` extracts runnable pseudo-code from Section 7.
+3. The system can synthesize deterministic activity graphs directly from that pseudo-code.
+4. `activity_pipeline_stages.py` runs a staged AI pipeline on top of that structure.
+5. If AI output is broken or too shallow, the route falls back to deterministic Section 7 flow instead of returning placeholder diagrams.
+
+#### What the activity architecture now combines
+
+- **deterministic parsing**
+  - numbered pseudo-code
+  - `if / else if / else`
+  - loops
+  - switch/case
+  - early `return`
+
+- **AI enrichment**
+  - labels
+  - descriptions
+  - cross-runnable critique
+  - metadata fill where safe
+
+- **structural acceptance gates**
+  - Mermaid lint
+  - CFG breakage checks
+  - unreachable-path checks
+  - normalized RTE metadata checks
+
+- **route-level fallback**
+  - placeholder activity output is replaced by deterministic MUD-derived flow
+
+So the current activity subsystem is a **hybrid architecture**:
+
+- deterministic control-flow truth
+- AI enrichment and review
+- lint/validation gates
+- deterministic fallback
+
+### 7. Data model and validation architecture
+
+#### Canonical internal model
+
+- `models/json_uml.py`
+
+This is the central interchange model inside the project. All major layers depend on it:
+
+- AI generation
+- validation
+- exporters
+- traceability extraction
+- UI preview/export
+
+This separation is one of the strongest parts of the architecture: generation and export are decoupled by a shared normalized model.
+
+#### Validation stack
+
+- `validation/engine.py`
+  - orchestrates all validation passes
+
+- `validation/structural_validator.py`
+  - graph/UML shape checks
+
+- `validation/autosar_validator.py`
+  - AUTOSAR naming, port, runnable, safety, and ASIL-related checks
+
+- `validation/consistency_validator.py`
+  - cross-diagram consistency checks
+
+- `validation/mermaid_linter.py`
+  - syntax and activity-graph linting
+  - especially useful for branch/merge correctness in flowcharts
+
+The result is a multi-layer acceptance model instead of trusting AI output blindly.
+
+### 8. Export architecture
+
+The export layer is now clearly separated from generation.
+
+#### Exporters
+
+- `generator/mermaid_exporter.py`
+  - live preview format
+  - sanitizes node IDs and preserves guards/branches
+
+- `generator/drawio_exporter.py`
+  - editable draw.io export
+  - now includes:
+    - deterministic activity layout
+    - content-aware node sizing
+    - branch-aware spacing
+    - collision / overlap avoidance
+
+- `generator/plantuml_exporter.py`
+  - textual UML exchange
+
+- `generator/xmi_exporter.py`
+  - model-tool interoperability
+
+- `generator/c_skeleton_exporter.py`
+  - activity/code-flow to C skeleton
+
+- `generator/render_service.py`
+  - SVG/PNG rendering
+
+- `generator/autosar_mapper.py`
+  - AUTOSAR-specific post-processing
+
+The architectural point here is that exporters are downstream consumers of the same internal model. They do not re-run AI.
+
+### 9. Persistence and traceability architecture
+
+- `traceability/store.py`
+  - SQLite-backed traceability store
+  - stores requirement-to-model element links
+  - supports coverage reporting and later acceptance tracking
+
+The generate routes attempt to persist traceability after successful generation, but non-critical persistence failures are handled as warnings so the whole generation result is not lost unnecessarily.
+
+### 10. UI architecture
+
+- `web/templates/index.html`
+
+The built-in UI is a single HTML dashboard that:
+
+- imports requirements
+- runs elaboration
+- plans modules
+- shows selected module context
+- generates/reviews/regenerates MUD specs
+- generates architecture diagrams and MUD activity diagrams
+- streams activity-pipeline and visual-QA logs
+- shows validation and traceability feedback
+- exports artifacts
+
+The important architectural point is that the UI is a **thin orchestration client** over the API, not a separate business-logic tier.
+
+### 11. Design philosophy of the current architecture
+
+The current project has moved toward a more robust layered design:
+
+1. requirements are normalized first
+2. MUD spec is treated as an explicit intermediate design artifact
+3. architecture diagrams and activity diagrams can use different strategies
+4. activity flowcharts use deterministic structure plus AI enrichment
+5. validation and linting are first-class acceptance gates
+6. exporters are independent from generation logic
+7. traceability is built in rather than bolted on afterward
+
+That is the clearest description of how the architecture looks today, based on the current code rather than the earlier simpler workflow diagrams.
+
+---
+
 ## Export Formats
 
 | Format | Extension | Best for | Tool |

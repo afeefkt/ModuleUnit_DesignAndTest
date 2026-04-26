@@ -62,12 +62,32 @@ class TraceabilityStore:
         self._conn: Optional[sqlite3.Connection] = None
 
     def initialize(self) -> None:
-        """Create the database and tables if they don't exist."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path))
-        self._conn.row_factory = sqlite3.Row
-        self._create_tables()
-        logger.info(f"Traceability store initialized at {self.db_path}")
+        """Create the database and tables if they don't exist.
+
+        Failures are caught and logged as warnings rather than raised so that
+        the server can continue running without traceability on read-only paths
+        or locked databases (common in network/container deployments).
+        """
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn.row_factory = sqlite3.Row
+            self._create_tables()
+            logger.info("Traceability store initialized at %s", self.db_path)
+        except Exception as exc:
+            logger.warning(
+                "Traceability store could not be initialized at %s — "
+                "traceability features will be disabled for this session. "
+                "Reason: %s",
+                self.db_path,
+                exc,
+            )
+            self._conn = None  # leave store in degraded mode
+
+    @property
+    def is_available(self) -> bool:
+        """True when the SQLite connection is open and usable."""
+        return self._conn is not None
 
     def _create_tables(self) -> None:
         assert self._conn is not None
@@ -123,7 +143,8 @@ class TraceabilityStore:
 
     def add_trace_link(self, link: TraceLink) -> int:
         """Add a single trace link. Returns the link ID."""
-        assert self._conn is not None
+        if self._conn is None:
+            return 0
         cursor = self._conn.execute(
             """INSERT INTO trace_links
                (requirement_id, element_id, element_name, element_type,
@@ -143,8 +164,11 @@ class TraceabilityStore:
     def extract_and_store_traces(self, result: GenerationResult) -> int:
         """Extract trace links from a GenerationResult and store them.
 
-        Returns the number of trace links created.
+        Returns the number of trace links created.  Returns 0 immediately
+        when the store is in degraded mode (SQLite unavailable).
         """
+        if self._conn is None:
+            return 0
         count = 0
 
         for diagram in result.diagrams:
@@ -289,7 +313,8 @@ class TraceabilityStore:
 
     def get_traces_for_requirement(self, req_id: str) -> list[TraceLink]:
         """Get all model elements traced to a requirement."""
-        assert self._conn is not None
+        if self._conn is None:
+            return []
         rows = self._conn.execute(
             "SELECT * FROM trace_links WHERE requirement_id = ? ORDER BY created_at",
             (req_id,),
@@ -298,7 +323,8 @@ class TraceabilityStore:
 
     def get_traces_for_element(self, element_id: str) -> list[TraceLink]:
         """Get all requirements traced to a model element."""
-        assert self._conn is not None
+        if self._conn is None:
+            return []
         rows = self._conn.execute(
             "SELECT * FROM trace_links WHERE element_id = ? ORDER BY created_at",
             (element_id,),
@@ -311,7 +337,14 @@ class TraceabilityStore:
         Returns:
             Dict with coverage statistics and uncovered requirements.
         """
-        assert self._conn is not None
+        if self._conn is None:
+            return {
+                "total_requirements": len(requirement_ids),
+                "covered_requirements": 0,
+                "uncovered_requirements": len(requirement_ids),
+                "coverage_percentage": 0,
+                "uncovered_ids": sorted(requirement_ids),
+            }
         covered = set()
         rows = self._conn.execute(
             "SELECT DISTINCT requirement_id FROM trace_links"
@@ -337,7 +370,8 @@ class TraceabilityStore:
 
         Returns list of dicts with requirement_id, element mappings.
         """
-        assert self._conn is not None
+        if self._conn is None:
+            return []
         rows = self._conn.execute("""
             SELECT requirement_id, element_name, element_type,
                    diagram_type, diagram_name, confidence, accepted
@@ -371,7 +405,8 @@ class TraceabilityStore:
 
         Returns number of trace links updated.
         """
-        assert self._conn is not None
+        if self._conn is None:
+            return 0
         now = datetime.utcnow().isoformat()
         cursor = self._conn.execute(
             """UPDATE trace_links

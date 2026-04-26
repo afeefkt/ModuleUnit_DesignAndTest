@@ -51,7 +51,8 @@
       "Bash(cat)",
       "Bash(python /tmp/settings_test.py)",
       "Bash(python -m py_compile src/mudtool/ai/activity_pipeline_stages.py)",
-      "Bash(python -m py_compile src/mudtool/ai/mud_activity_context.py)"
+      "Bash(python -m py_compile src/mudtool/ai/mud_activity_context.py)",
+      "Bash(python -m py_compile src/mudtool/traceability/store.py)"
     ]
   }
 }

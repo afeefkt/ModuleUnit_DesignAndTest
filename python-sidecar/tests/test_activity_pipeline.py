@@ -44,6 +44,7 @@ import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -775,6 +776,37 @@ class TestMermaidExporterActivity:
 class TestDrawIOExporterActivity:
     """Verify DrawIOExporter produces non-empty XML for activity diagrams."""
 
+    @staticmethod
+    def _activity_boxes_from_xml(xml_text: str) -> dict[str, dict[str, float]]:
+        root = ET.fromstring(xml_text)
+        boxes: dict[str, dict[str, float]] = {}
+        for cell in root.findall(".//mxCell[@vertex='1']"):
+            cell_id = cell.get("id", "")
+            geo = cell.find("mxGeometry")
+            if geo is None:
+                continue
+            boxes[cell_id] = {
+                "x": float(geo.get("x", "0")),
+                "y": float(geo.get("y", "0")),
+                "w": float(geo.get("width", "0")),
+                "h": float(geo.get("height", "0")),
+                "value": cell.get("value", ""),
+            }
+        return boxes
+
+    @staticmethod
+    def _assert_no_overlaps(boxes: dict[str, dict[str, float]], margin_x: float = 16.0, margin_y: float = 12.0) -> None:
+        items = list(boxes.items())
+        for i, (left_id, left) in enumerate(items):
+            for right_id, right in items[i + 1:]:
+                overlap = not (
+                    left["x"] + left["w"] + margin_x <= right["x"]
+                    or right["x"] + right["w"] + margin_x <= left["x"]
+                    or left["y"] + left["h"] + margin_y <= right["y"]
+                    or right["y"] + right["h"] + margin_y <= left["y"]
+                )
+                assert not overlap, f"Boxes overlap or are too tight: {left_id} vs {right_id}"
+
     def test_produces_xml_cells(self, tmp_path, eps_generation_result):
         """DrawIO export must create a .drawio file with actual cell elements."""
         from mudtool.generator.drawio_exporter import DrawIOExporter
@@ -807,6 +839,88 @@ class TestDrawIOExporterActivity:
                 f"DrawIO file suspiciously small ({size} bytes) — likely empty:\n{p}"
             )
         print(f"\n  [PASS] DrawIO file size = {size} bytes (not blank)")
+
+    def test_branching_layout_has_no_overlaps_and_visible_fanout(self):
+        from mudtool.generator.drawio_exporter import DrawIOExporter
+
+        diagram = ActivityDiagram(
+            name="Branch Layout",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Branch",
+            nodes=[
+                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                ActivityNode(id="N_01", name="vehicleSpeed > threshold", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_02", name="Rte_IWrite(PP_AssistLevel, HighAssistCommand)", node_type=ActivityNodeType.CALL),
+                ActivityNode(id="N_03", name="Rte_IWrite(PP_AssistLevel, LowAssistCommand)", node_type=ActivityNodeType.CALL),
+                ActivityNode(id="N_04", name="Merge", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_05", name="End", node_type=ActivityNodeType.FINAL),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="N_00", target="N_01"),
+                ActivityEdge(id="E_02", source="N_01", target="N_02", guard="[true]"),
+                ActivityEdge(id="E_03", source="N_01", target="N_03", guard="[false]"),
+                ActivityEdge(id="E_04", source="N_02", target="N_04"),
+                ActivityEdge(id="E_05", source="N_03", target="N_04"),
+                ActivityEdge(id="E_06", source="N_04", target="N_05"),
+            ],
+        )
+
+        xml_text = DrawIOExporter().export_diagram(diagram)
+        boxes = self._activity_boxes_from_xml(xml_text)
+        self._assert_no_overlaps(boxes)
+
+        decision = next(box for box in boxes.values() if "vehicleSpeed > threshold" in box["value"])
+        high = next(box for box in boxes.values() if "HighAssistCommand" in box["value"])
+        low = next(box for box in boxes.values() if "LowAssistCommand" in box["value"])
+        merge = next(box for box in boxes.values() if box["value"] == "Merge")
+
+        assert abs((high["x"] + high["w"] / 2) - (low["x"] + low["w"] / 2)) >= 180
+        assert merge["y"] > max(high["y"], low["y"])
+        assert high["y"] > decision["y"] and low["y"] > decision["y"]
+
+    def test_nested_branching_and_loop_layout_has_no_overlaps(self):
+        from mudtool.generator.drawio_exporter import DrawIOExporter
+
+        diagram = ActivityDiagram(
+            name="Nested Layout",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Nested",
+            nodes=[
+                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                ActivityNode(id="N_01", name="mode == ACTIVE", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_02", name="speed > limit", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_03", name="Rte_IRead(RP_VehicleSpeed, vehicleSpeedBuffer, CurrentVehicleSpeedValue, SafetyMonitoredLongName)", node_type=ActivityNodeType.CALL),
+                ActivityNode(id="N_04", name="Dem_ReportErrorStatus(DTC_LIMIT_EXCEEDED, DEM_EVENT_STATUS_FAILED)", node_type=ActivityNodeType.EXCEPTION),
+                ActivityNode(id="N_05", name="Inner Merge", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_06", name="retryCounter < 3", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_07", name="UpdateRetryCounter()", node_type=ActivityNodeType.FUNCTION_CALL),
+                ActivityNode(id="N_08", name="Loop exit", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_09", name="Outer Merge", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_10", name="End", node_type=ActivityNodeType.FINAL),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="N_00", target="N_01"),
+                ActivityEdge(id="E_02", source="N_01", target="N_02", guard="[true]"),
+                ActivityEdge(id="E_03", source="N_01", target="N_09", guard="[false]"),
+                ActivityEdge(id="E_04", source="N_02", target="N_03", guard="[true]"),
+                ActivityEdge(id="E_05", source="N_02", target="N_04", guard="[false]"),
+                ActivityEdge(id="E_06", source="N_03", target="N_05"),
+                ActivityEdge(id="E_07", source="N_04", target="N_05"),
+                ActivityEdge(id="E_08", source="N_05", target="N_06"),
+                ActivityEdge(id="E_09", source="N_06", target="N_07", guard="[loop]"),
+                ActivityEdge(id="E_10", source="N_07", target="N_06"),
+                ActivityEdge(id="E_11", source="N_06", target="N_08", guard="[done]"),
+                ActivityEdge(id="E_12", source="N_08", target="N_09"),
+                ActivityEdge(id="E_13", source="N_09", target="N_10"),
+            ],
+        )
+
+        xml_text = DrawIOExporter().export_diagram(diagram)
+        boxes = self._activity_boxes_from_xml(xml_text)
+        self._assert_no_overlaps(boxes)
+
+        long_call = next(box for box in boxes.values() if "CurrentVehicleSpeedValue" in box["value"])
+        assert long_call["w"] >= 300
 
 
 # ══════════════════════════════════════════════════════════════════════════════

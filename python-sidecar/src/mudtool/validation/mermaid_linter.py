@@ -203,7 +203,13 @@ class MermaidLinter:
 
         # ── Collect referenced IDs from edges ─────────────────────────────────
         # Handles: A --> B, A -->|label| B, A -- text --> B
-        edge_re = re.compile(r"\b(\w+)\s*(?:--[->|]+(?:\|[^|]*\|)?\s*(\w+))")
+        #
+        # IMPORTANT: the arrow character class is [->]+ (NOT [->|]+).
+        # Including | in the class causes the regex to greedily consume
+        # the opening | of -->|guard| syntax, leaving the first word of
+        # the guard text as the captured target — producing false-positive
+        # "undefined node" errors for every guarded edge.
+        edge_re = re.compile(r"\b(\w+)\s*(?:--[->]+(?:\|[^|]*\|)?\s*(\w+))")
         referenced: set[str] = set()
         for line in content_lines:
             for m in edge_re.finditer(line):
