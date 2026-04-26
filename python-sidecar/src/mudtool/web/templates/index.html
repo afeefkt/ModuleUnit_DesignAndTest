@@ -822,6 +822,13 @@
           <select id="moduleSelect" class="w-full text-xs mb-2" disabled>
             <option value="">— plan modules first —</option>
           </select>
+          <div class="flex items-center gap-2 mb-2">
+            <label class="text-xs text-slate-500 whitespace-nowrap" for="specPipelineMode">Quality:</label>
+            <select id="specPipelineMode" class="flex-1 text-xs" title="single_pass: fast 1-call generation&#10;two_stage: skeleton+Section7+validation (~3x slower, better pseudo-code)">
+              <option value="single_pass" selected>1-pass · fast</option>
+              <option value="two_stage">2-stage · best quality</option>
+            </select>
+          </div>
           <button class="primary w-full text-xs mb-1" id="btnGenerateMudSpec" disabled>
             <span id="mudSpecLabel">Generate MUD Spec</span>
             <svg id="mudSpecSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
@@ -2809,6 +2816,7 @@
             req_ids: m.req_ids || [],
             requirements_text: getRequirementsText(),
             temperature: 0.25,
+            spec_pipeline: document.getElementById('specPipelineMode')?.value || 'single_pass',
           }),
         });
 
@@ -3502,6 +3510,11 @@
         }
         if (d.confidence_threshold) document.getElementById('cfgConfidence').value = d.confidence_threshold;
         if (d.max_retries) document.getElementById('cfgRetries').value = d.max_retries;
+        // Initialise spec pipeline dropdown from server default
+        if (d.mud_spec_pipeline) {
+          const sel = document.getElementById('specPipelineMode');
+          if (sel) sel.value = d.mud_spec_pipeline;
+        }
       } catch { /* show defaults */ }
     }
 

@@ -52,9 +52,14 @@ class MudActivityContext:
             if runnable.summary:
                 runnable_lines.append(f"  Summary: {runnable.summary}")
             if runnable.functional_description:
-                runnable_lines.append(
-                    f"  Functional flow: {runnable.functional_description.strip()}"
-                )
+                # Preserve multi-line layout so the activity-diagram AI can
+                # see each numbered step (Guard / Read / Validate / Compute /
+                # Write / Watchdog) as a separate line and emit one node per
+                # step.
+                runnable_lines.append("  Functional flow:")
+                for ln in runnable.functional_description.splitlines():
+                    if ln.strip():
+                        runnable_lines.append(f"    {ln}")
 
         rte_lines = "\n".join(f"- {call}" for call in self.rte_calls[:20]) or "- none detected"
         helper_lines = (
@@ -106,7 +111,12 @@ def build_mud_activity_context(markdown: str, module_context: str | None = None)
         if not name:
             continue
         runnable = runnable_map.setdefault(name, RunnableContext(name=name))
-        runnable.functional_description = _normalize_ws(body)
+        # IMPORTANT: keep newlines intact — Section 7 pseudo-code is multi-line
+        # numbered steps.  Collapsing whitespace via _normalize_ws() would turn
+        # the entire pseudo-code into one giant unreadable string and the
+        # activity-diagram AI would return nodes:[] → repair fallback produces
+        # the placeholder Start → Action → End.
+        runnable.functional_description = body.strip()
 
     # Last-resort: if structured parsing yielded nothing, extract RE_/Init_/Cyclic_ names
     # directly from the raw markdown text so activity diagrams can still be generated.

@@ -147,6 +147,21 @@ class Settings(BaseSettings):
     # MUD_GUIDELINES_CHUNK_SIZE  -> target characters per text chunk
     guidelines_chunk_size: int = 800
 
+    # MUD_SPEC_SKELETON_MODEL: optional separate model for Stage 1 skeleton in
+    # the two-stage pipeline.  Empty = use the same model as Stage 3 (generator).
+    # Recommended: deepseek-r1:7b — better structured-JSON completeness on 7b GPUs.
+    mud_spec_skeleton_model: str = ""
+
+    # ── MUD Spec Generation Pipeline ─────────────────────────────────────────
+    # MUD_SPEC_PIPELINE controls the generation mode for /modules/mud-spec:
+    #   "single_pass"  (default) — one AI call produces the full 7-section Markdown.
+    #                              Fast (~1 min), good for quick iterations.
+    #   "two_stage"    — Stage 1 generates a JSON skeleton (all ports/runnables/IRVs/
+    #                    CalPrm/DEM events), then Stage 3 expands Section 7 pseudo-code
+    #                    per runnable using exact port names from the skeleton.
+    #                    Better quality, ~3× slower.  Falls back to single_pass on error.
+    mud_spec_pipeline: str = "single_pass"
+
     def get_skills_dir(self) -> Path:
         if self.skills_dir:
             return self.skills_dir

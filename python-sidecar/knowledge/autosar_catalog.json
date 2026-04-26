@@ -1,0 +1,153 @@
+{
+  "_comment": "AUTOSAR MUD fixed vocabulary catalog — injected into every generation prompt",
+  "memory_sections": {
+    ".CODE": "Executable code section (ROM/Flash)",
+    ".CONST": "Read-only calibration constants (Flash)",
+    ".CONST_CALIB": "Calibratable parameters (NvRAM or Flash-mapped)",
+    ".VAR_NOINIT": "RAM variables not initialised on reset (persists across resets)",
+    ".VAR_INIT": "RAM variables initialised to zero on startup",
+    ".VAR_POWER_ON_INIT": "Variables initialised once at power-on only"
+  },
+  "asil_levels": ["QM", "ASIL-A", "ASIL-B", "ASIL-C", "ASIL-D"],
+  "autosar_concepts": {
+    "ApplicationSWC": "Standard application software component",
+    "CompositionSWC": "Hierarchical container grouping multiple SWCs",
+    "SensorActuatorSWC": "SWC directly interfacing hardware I/O",
+    "ComplexDeviceDriverSWC": "SWC accessing hardware ECU abstraction directly",
+    "ServiceSWC": "BSW-facing SWC providing system services",
+    "SenderReceiverInterface": "Asynchronous data exchange between SWCs (ports: RP_/PP_)",
+    "ClientServerInterface": "Synchronous service call (ports: RP_CS_/PP_CS_)",
+    "CalibrationParameter": "Read-only parameter configurable at key-on; accessed via Rte_Prm_()",
+    "InterRunnableVariable": "Shared memory between runnables in same SWC; accessed via Rte_IrvRead/Write()",
+    "ExclusiveArea": "Critical section guard for IRVs shared across OS tasks",
+    "DEM": "Diagnostic Event Manager — reports and stores fault events",
+    "FiM": "Function Inhibition Manager — gates runnable execution on fault state",
+    "WdgM": "Watchdog Manager — alive/deadline supervision of runnables"
+  },
+  "port_naming": {
+    "PP_": "Provided Port (this SWC writes / provides data or service)",
+    "RP_": "Required Port (this SWC reads / consumes data or service)",
+    "PP_CS_": "Provided Client-Server port (server side)",
+    "RP_CS_": "Required Client-Server port (client side)",
+    "RP_CalPrm_": "Required Calibration Parameter port"
+  },
+  "interface_naming": {
+    "IF_SR_": "Sender-Receiver interface for cyclic data signals",
+    "IF_CS_": "Client-Server interface for service calls",
+    "IF_Prm_": "Parameter interface for calibration values"
+  },
+  "rte_api": {
+    "Rte_Read(port, &var)": "Read from Required SR port into local variable",
+    "Rte_Write(port, value)": "Write value to Provided SR port",
+    "Rte_IRead(port)": "Implicit read — returns value directly (no pointer)",
+    "Rte_IWrite(port, value)": "Implicit write — writes value directly",
+    "Rte_IrvRead(irv_name, &var)": "Read an Inter-Runnable Variable",
+    "Rte_IrvWrite(irv_name, value)": "Write an Inter-Runnable Variable",
+    "Rte_Prm(calprm_port)": "Read calibration parameter (returns value)",
+    "Rte_Call(cs_port, op, args)": "Client-Server call to server"
+  },
+  "dem_api": {
+    "Dem_ReportErrorStatus(EventId, DEM_EVENT_STATUS_FAILED)": "Report a fault as active",
+    "Dem_ReportErrorStatus(EventId, DEM_EVENT_STATUS_PASSED)": "Clear a fault (signal recovery)",
+    "Dem_GetEventStatus(EventId, &status)": "Query current fault status"
+  },
+  "fim_api": {
+    "FiM_GetFunctionPermission(FID, &permitted)": "Check if function is permitted (not inhibited)"
+  },
+  "wdgm_api": {
+    "WdgM_UpdateAliveCounter(SupervisedEntityId)": "Report runnable alive to watchdog manager"
+  },
+  "dem_event_id_format": "SWC_DEM_E_<FAULT_NAME> — e.g. SWC_DEM_E_SENSOR_FAIL, SWC_DEM_E_INIT_FAIL",
+  "dem_priorities": {
+    "safety_critical": "DEM_SEVERITY_WORKINGSAFETY_FAIL (ASIL-C/D, vehicle safety impact)",
+    "functionality": "DEM_SEVERITY_MAINTENANCE_ONLY (ASIL-A/B, reduced functionality)",
+    "diagnostic": "DEM_SEVERITY_NO_SEVERITY (QM, informational)"
+  },
+  "safe_state_reactions": {
+    "torque_actuator": "Force output torque to 0.0 Nm (de-energise)",
+    "motor_control": "Disable PWM output (all switches open)",
+    "generic_output": "Write fail-safe default value to PP_ port",
+    "init_fail": "Write INIT_FAIL status, set module state = ERROR"
+  },
+  "runnable_naming": {
+    "RE_Init": "Initialisation runnable — triggered once at startup",
+    "RE_Cyclic_Xms": "Periodic cyclic runnable — X = period in ms",
+    "RE_Control": "Main control/compute runnable",
+    "RE_Monitor": "Safety/diagnostic monitoring runnable",
+    "RE_HandleEvent": "Event-triggered runnable for mode/signal changes"
+  },
+  "few_shot_input_port": {
+    "_source": "Derived from EPS_MUD_Enhanced.csv IN-001/002/003",
+    "VehicleSpeed": {
+      "port_name": "RP_VehicleSpeed",
+      "interface": "IF_SR_VehicleSpeed",
+      "data_element": "DE_VehicleSpeed",
+      "data_type": "float32",
+      "range": "0.0 .. 250.0",
+      "unit": "km/h",
+      "period": "5ms cyclic",
+      "asil": "ASIL-D",
+      "rte_call": "Rte_IRead(RP_VehicleSpeed_DE_VehicleSpeed)",
+      "timeout_default": "0.0 km/h on 15ms timeout",
+      "dem_event": "SWC_DEM_E_VEH_SPEED_SIGNAL_LOSS"
+    },
+    "DriverTorque": {
+      "port_name": "RP_DriverTorque",
+      "interface": "IF_SR_DriverTorque",
+      "data_element": "DE_DriverTorque",
+      "data_type": "float32",
+      "range": "-10.0 .. 10.0",
+      "unit": "Nm",
+      "period": "5ms cyclic",
+      "asil": "ASIL-D",
+      "rte_call": "Rte_IRead(RP_DriverTorque_DE_DriverTorque)",
+      "error_handling": "Dual-channel plausibility; NaN check; gradient limit 50 Nm/s",
+      "dem_event": "SWC_DEM_E_DRIVER_TORQUE_SENSOR_FAULT"
+    }
+  },
+  "few_shot_output_port": {
+    "_source": "Derived from EPS_MUD_Enhanced.csv OUT-001/002",
+    "AssistTorque": {
+      "port_name": "PP_AssistTorque",
+      "interface": "IF_SR_AssistTorque",
+      "data_element": "DE_AssistTorque",
+      "data_type": "float32",
+      "range": "-10.0 .. 10.0",
+      "unit": "Nm",
+      "period": "5ms cyclic",
+      "asil": "ASIL-D",
+      "rte_call": "Rte_IWrite(PP_AssistTorque_DE_AssistTorque, value)",
+      "safe_state": "Force to 0.0 Nm if FaultFlag=1; ramp-down within 200ms",
+      "dem_event": "SWC_DEM_E_ASSIST_TORQUE_SATURATION"
+    }
+  },
+  "few_shot_runnable_pseudocode": {
+    "_source": "Derived from EPS_MUD_Enhanced.csv RUN-001",
+    "RE_ControlTorque_example": "// [1] Guard: mode check\nIF eps_state != ASSIST_ACTIVE:\n    Rte_IWrite(PP_AssistTorque, 0.0)\n    RETURN\n\n// [2] Read inputs via RTE\nspeed  = Rte_IRead(RP_VehicleSpeed_DE_VehicleSpeed)\ntorque = Rte_IRead(RP_DriverTorque_DE_DriverTorque)\nfault  = Rte_IrvRead(irv_FaultFlag)\n\n// [3] Fault gate\nIF fault == TRUE:\n    Rte_IWrite(PP_AssistTorque, 0.0)\n    RETURN\n\n// [4] Compute assist factor\nassist_factor = Interpolate(SpeedAssistCurve, speed)\nRte_IrvWrite(irv_AssistFactor, assist_factor)\n\n// [5] Compute and clamp output torque\nraw_torque = torque * assist_factor\nassist_cmd = clamp(raw_torque, -Rte_Prm(RP_CalPrm_MaxTorque), Rte_Prm(RP_CalPrm_MaxTorque))\nRte_IWrite(PP_AssistTorque, assist_cmd)\n\n// [6] Report alive to WdgM\nWdgM_UpdateAliveCounter(WDGM_SE_CONTROL_TORQUE)"
+  },
+  "few_shot_calib_param": {
+    "_source": "Derived from EPS_MUD_Enhanced.csv CAL-001/002",
+    "MAX_TORQUE": {
+      "port_name": "RP_CalPrm_MaxTorque",
+      "interface": "IF_Prm_Torque",
+      "data_type": "float32",
+      "default": "10.0",
+      "range": "5.0 .. 10.0",
+      "unit": "Nm",
+      "rte_call": "Rte_Prm(RP_CalPrm_MaxTorque)",
+      "memory_section": ".CONST_CALIB",
+      "notes": "OEM-configurable; loaded from NvRAM during RE_Init"
+    },
+    "SpeedAssistCurve": {
+      "port_name": "RP_CalPrm_SpeedAssistCurve",
+      "interface": "IF_Prm_SpeedCurve",
+      "data_type": "float32[10][2]",
+      "default": "[(0,3.0),(5,2.8),(20,2.0),(50,1.2),(80,0.8),(120,0.5),(150,0.3),(200,0.2),(220,0.15),(250,0.1)]",
+      "range": "Speed: 0..250 km/h; Factor: 0.0..3.0",
+      "unit": "-",
+      "rte_call": "Rte_Prm(RP_CalPrm_SpeedAssistCurve)",
+      "memory_section": ".CONST_CALIB",
+      "notes": "Linearly interpolated; factor must be monotonically decreasing with speed"
+    }
+  }
+}

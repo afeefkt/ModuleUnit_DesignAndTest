@@ -44,7 +44,9 @@
       "Bash(.venv/Scripts/python.exe -c ' *)",
       "Bash(xargs cat *)",
       "Bash(.venv\\\\Scripts\\\\python.exe -c \"import mudtool; print\\(mudtool.__file__\\)\")",
-      "Bash(cmd /c \"cd /d D:\\\\AI_Learnigns\\\\moduleunitdesign\\\\python-sidecar && .venv\\\\Scripts\\\\python.exe -c \\\\\"import mudtool; print\\(mudtool.__file__\\)\\\\\" 2>&1\")"
+      "Bash(cmd /c \"cd /d D:\\\\AI_Learnigns\\\\moduleunitdesign\\\\python-sidecar && .venv\\\\Scripts\\\\python.exe -c \\\\\"import mudtool; print\\(mudtool.__file__\\)\\\\\" 2>&1\")",
+      "Bash(python3 -c ' *)",
+      "Bash(.venv\\\\Scripts\\\\python.exe tools\\\\csv_to_reference_json.py --csv \"C:\\\\Users\\\\afeef\\\\Downloads\\\\EPS_MUD_Enhanced.csv\" --out \"knowledge\\\\eps_reference.json\")"
     ]
   }
 }

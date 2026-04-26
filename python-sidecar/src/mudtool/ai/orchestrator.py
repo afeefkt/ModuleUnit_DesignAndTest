@@ -145,6 +145,45 @@ class AIOrchestrator:
         )
         return reviewer
 
+    def _get_skeleton_backend(self) -> BaseAIBackend:
+        """Return a backend configured for MUD-spec Stage 1 skeleton generation.
+
+        Uses ``settings.mud_spec_skeleton_model`` (e.g. ``deepseek-r1:7b``) when
+        set so that Stage 1 of the two-stage pipeline runs through a stronger
+        reasoning model.  Falls back to ``_get_backend()`` when:
+          - ``mud_spec_skeleton_model`` is empty / not configured
+          - The active backend is local (no per-model override supported)
+          - The configured skeleton model equals the generator model
+        """
+        skeleton_model = (self.settings.mud_spec_skeleton_model or "").strip()
+        if not skeleton_model:
+            return self._get_backend()
+
+        gen_backend = self._get_backend()
+        if not isinstance(gen_backend, CloudBackend):
+            logger.info(
+                "Skeleton: local backend active — skeleton model override not supported"
+            )
+            return gen_backend
+
+        if skeleton_model == self.settings.openai_model:
+            return gen_backend
+
+        try:
+            skeleton_settings = self.settings.model_copy(
+                update={"openai_model": skeleton_model}
+            )
+        except AttributeError:
+            skeleton_settings = self.settings.copy(
+                update={"openai_model": skeleton_model}
+            )
+
+        skeleton = CloudBackend(skeleton_settings)
+        logger.info(
+            "Skeleton backend: %s (model=%s)", skeleton.backend_name, skeleton_model
+        )
+        return skeleton
+
     async def generate_diagram(
         self,
         diagram_type: DiagramType,

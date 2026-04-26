@@ -375,6 +375,7 @@ class MudSpecGenerator:
         requirements_text: str,
         temperature: float = 0.1,
         progress_callback=None,
+        pipeline_mode: Optional[str] = None,
     ) -> str:
         """Generate the MUD spec Markdown for the selected SWC.
 
@@ -398,6 +399,68 @@ class MudSpecGenerator:
                 "progress": 5,
             })
 
+        # ── Two-stage pipeline (optional) ────────────────────────────────────
+        # If pipeline_mode="two_stage" (passed from route or set in MUD_SPEC_PIPELINE),
+        # delegate to MudSpecPipeline:
+        #   Stage 1: JSON skeleton  Stage 3: per-runnable Section 7  Stage 4: validate
+        #   Stage 5: assemble Markdown
+        # Falls back to single-pass if pipeline returns empty string or raises.
+        if pipeline_mode is None:
+            try:
+                from mudtool.config.settings import get_settings as _get_settings
+                pipeline_mode = _get_settings().mud_spec_pipeline
+            except Exception:
+                pipeline_mode = "single_pass"
+        _pipeline_mode = pipeline_mode
+
+        if _pipeline_mode == "two_stage":
+            try:
+                from mudtool.ai.mud_pipeline_stages import MudSpecPipeline
+                _pipeline = MudSpecPipeline(
+                    backend=self._orchestrator._get_backend(),
+                    skeleton_backend=self._orchestrator._get_skeleton_backend(),
+                    progress_callback=progress_callback,
+                )
+                _pipeline_result = await _pipeline.generate(
+                    swc_name=swc_name,
+                    description=description,
+                    asil=asil,
+                    runnables=runnables,
+                    req_ids=req_ids,
+                    requirements_text=requirements_text,
+                    temperature=temperature,
+                )
+                if _pipeline_result and len(_pipeline_result) > 500:
+                    logger.info(
+                        "generate_spec: pipeline produced %d chars for %s",
+                        len(_pipeline_result), swc_name,
+                    )
+                    return _pipeline_result
+                else:
+                    logger.warning(
+                        "generate_spec: pipeline returned empty/short result (%d chars) "
+                        "for %s — falling back to single-pass",
+                        len(_pipeline_result or ""), swc_name,
+                    )
+                    if progress_callback:
+                        progress_callback({
+                            "stage": "mud_spec",
+                            "message": "Pipeline produced no output — falling back to single-pass generation…",
+                            "progress": 5,
+                        })
+            except Exception as _pipe_exc:
+                logger.warning(
+                    "generate_spec: pipeline failed for %s (%s) — falling back to single-pass",
+                    swc_name, _pipe_exc,
+                )
+                if progress_callback:
+                    progress_callback({
+                        "stage": "mud_spec",
+                        "message": f"Pipeline error ({_pipe_exc}) — falling back to single-pass…",
+                        "progress": 5,
+                    })
+
+        # ── Single-pass generation (default path) ────────────────────────────
         logger.info("generate_spec: building prompts for %s", swc_name)
         system_prompt = _GEN_SYSTEM_PROMPT.replace("{swc_name}", swc_name)
         user_prompt = _GEN_USER_PROMPT_TMPL.format(

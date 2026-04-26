@@ -1345,6 +1345,7 @@ async def get_config():
         "validation_strict_mode": settings.validation_strict_mode,
         "use_kroki": settings.use_kroki,
         "kroki_base_url": settings.kroki_base_url,
+        "mud_spec_pipeline": settings.mud_spec_pipeline,
     }
 
 
@@ -1558,6 +1559,14 @@ class MudSpecRequest(BaseModel):
         description="Full raw requirements text used as architectural context.",
     )
     temperature: float = Field(0.25, ge=0.0, le=1.0)
+    spec_pipeline: str = Field(
+        "single_pass",
+        description=(
+            "MUD spec generation pipeline mode: "
+            "'single_pass' (fast, one call) or "
+            "'two_stage' (skeleton + per-runnable Section 7 + validation)"
+        ),
+    )
 
 
 class ReviewSpecRequest(BaseModel):
@@ -1617,8 +1626,8 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
         ``error``       — generation failed
     """
     logger.info(
-        "mud-spec request received for %s (asil=%s, %d req_ids)",
-        request.swc_name, request.asil, len(request.req_ids),
+        "mud-spec request received for %s (asil=%s, %d req_ids, pipeline=%s)",
+        request.swc_name, request.asil, len(request.req_ids), request.spec_pipeline,
     )
     import asyncio as _asyncio
     from mudtool.api.dependencies import get_orchestrator
@@ -1626,6 +1635,10 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
 
     orchestrator = get_orchestrator()
     generator = MudSpecGenerator(orchestrator)
+
+    # Override MUD_SPEC_PIPELINE setting with per-request value (if provided)
+    # by temporarily patching settings — the generator reads it at call time.
+    _pipeline_override = request.spec_pipeline  # "single_pass" | "two_stage"
 
     queue: asyncio.Queue = asyncio.Queue()
 
@@ -1643,6 +1656,7 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
                 requirements_text=request.requirements_text,
                 temperature=request.temperature,
                 progress_callback=_progress,
+                pipeline_mode=_pipeline_override,
             )
             queue.put_nowait({
                 "_final": True,
