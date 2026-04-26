@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from mudtool.api import dependencies
 from mudtool.api import routes
+from mudtool.ai.base_backend import AIResponse
 from mudtool.importers.base import ImportResult
 from mudtool.main import create_app
 from mudtool.models.json_uml import (
@@ -271,6 +272,44 @@ class TestGenerateAndValidateRoutes:
         assert any(n.node_type == ActivityNodeType.DECISION for n in result.diagrams[0].nodes)
         assert any(edge.guard == "[false]" for edge in result.diagrams[0].edges)
         assert any("deterministic flow generated from MUD Section 7" in w for w in result.warnings)
+
+
+class TestModulePlanningRoutes:
+    def test_modules_plan_recovers_when_ai_returns_empty(self, monkeypatch):
+        class _PlannerBackend:
+            async def generate(self, **kwargs):
+                return AIResponse(content="", model="test-model")
+
+        class _PlannerOrchestrator(_DummyOrchestrator):
+            def _get_backend(self):
+                return _PlannerBackend()
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _PlannerOrchestrator())
+        monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
+        monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
+        monkeypatch.setattr(dependencies, "get_render_service", lambda: _DummyRenderService())
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/modules/plan",
+                json={
+                    "requirements_text": (
+                        "req_id,title,description,req_type,safety_level,priority,module_hint,notes\n"
+                        "REQ-EPS-001,EPS SWC Architecture,SWC_ElectricPowerSteering shall be implemented,"
+                        "FUNCTIONAL,ASIL-D,MUST,SWC_ElectricPowerSteering,Single SWC\n"
+                        "REQ-EPS-002,Control Torque Runnable,RE_ControlTorque shall execute cyclically,"
+                        "TIMING,ASIL-D,MUST,SWC_ElectricPowerSteering,5ms\n"
+                    ),
+                    "temperature": 0.1,
+                },
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["module_count"] == 1
+        assert payload["modules"][0]["swc_name"] == "SWC_ElectricPowerSteering"
+        assert "RE_ControlTorque" in payload["modules"][0]["runnables"]
 
 
 class TestExportRoutes:
