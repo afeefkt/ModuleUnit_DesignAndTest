@@ -2,6 +2,7 @@ from mudtool.ai.mud_activity_context import (
     build_mud_activity_context,
     synthesize_activity_diagrams_from_context,
 )
+from mudtool.models.json_uml import ActivityNodeType
 
 
 def test_build_mud_activity_context_extracts_runnables_and_flow():
@@ -87,3 +88,116 @@ def test_synthesize_activity_diagrams_from_context_uses_section7_steps():
     assert diagram.nodes[1].node_type.value == "call"
     assert diagram.nodes[2].node_type.value == "function_call"
     assert diagram.sub_diagrams
+
+
+def test_synthesize_activity_diagrams_from_context_builds_if_else_branching():
+    markdown = """
+# MUD Spec: SWC_BrakeAssist
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Control | Cyclic | 10 ms | ASIL-C | Branching flow |
+
+## 7. Functional Description
+### RE_Control
+1. If brakeRequest > threshold
+1.1. Rte_Write(PP_BrakeAssistCmd, TRUE)
+2. Else
+2.1. Dem_ReportErrorStatus(Event_BrakeAssist, DEM_EVENT_STATUS_FAILED)
+3. End If
+4. Rte_Write(PP_Status, status)
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_BrakeAssist")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-101"])[0]
+
+    decision_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.DECISION]
+    merge_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.MERGE]
+    exception_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.EXCEPTION]
+    guards = {edge.guard for edge in diagram.edges if edge.guard}
+
+    assert len(decision_nodes) == 1
+    assert merge_nodes
+    assert exception_nodes
+    assert "[true]" in guards
+    assert "[false]" in guards
+
+
+def test_synthesize_activity_diagrams_from_context_builds_nested_condition():
+    markdown = """
+# MUD Spec: SWC_Traction
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Traction | Cyclic | 10 ms | ASIL-C | Nested flow |
+
+## 7. Functional Description
+### RE_Traction
+1. If wheelSlipDetected
+1.1. If vehicleStable
+1.1.1. ApplyTractionControl()
+1.2. Else
+1.2.1. Dem_ReportErrorStatus(Event_Stability, DEM_EVENT_STATUS_FAILED)
+2. End If
+3. Rte_Write(PP_TractionStatus, tractionStatus)
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_Traction")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-102"])[0]
+
+    assert sum(1 for n in diagram.nodes if n.node_type == ActivityNodeType.DECISION) >= 2
+    assert sum(1 for n in diagram.nodes if n.node_type == ActivityNodeType.MERGE) >= 2
+
+
+def test_synthesize_activity_diagrams_from_context_builds_while_loop_back_edge():
+    markdown = """
+# MUD Spec: SWC_Watchdog
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Watchdog | Cyclic | 5 ms | ASIL-B | Loop flow |
+
+## 7. Functional Description
+### RE_Watchdog
+1. While retryCount < 3
+1.1. Rte_Read(RP_Status, &status)
+2. End While
+3. Rte_Write(PP_Result, status)
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_Watchdog")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-103"])[0]
+
+    decisions = [n for n in diagram.nodes if n.node_type == ActivityNodeType.DECISION]
+    assert decisions
+    loop_id = decisions[0].id
+    assert any(edge.target == loop_id and edge.source != "N_00" for edge in diagram.edges)
+    assert any(edge.source == loop_id and edge.guard == "[done]" for edge in diagram.edges)
+
+
+def test_synthesize_activity_diagrams_from_context_builds_for_each_loop_and_helper_subdiagram():
+    markdown = """
+# MUD Spec: SWC_Diagnostics
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Diag | Cyclic | 20 ms | ASIL-B | Helper in loop |
+
+## 7. Functional Description
+### RE_Diag
+1. For each DTC entry
+1.1. EvaluateDtc(entry)
+2. End For
+3. Rte_Write(PP_DiagStatus, diagStatus)
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_Diagnostics")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-104"])[0]
+
+    assert any(n.node_type == ActivityNodeType.DECISION for n in diagram.nodes)
+    assert diagram.sub_diagrams
+    assert diagram.sub_diagrams[0].function_name == "EvaluateDtc"

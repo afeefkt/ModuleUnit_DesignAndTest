@@ -18,7 +18,7 @@ from mudtool.models.json_uml import (
     ActivityNodeType,
     GenerationResult,
 )
-from mudtool.models.requirements import RequirementSet
+from mudtool.models.requirements import Priority, Requirement, RequirementSet, RequirementStatus, RequirementType
 from mudtool.models.validation import ValidationReport
 from mudtool.traceability.store import TraceLink
 
@@ -26,6 +26,9 @@ from mudtool.traceability.store import TraceLink
 class _DummyOrchestrator:
     async def health_check(self) -> dict:
         return {"backends": {"dummy": True}}
+
+    async def generate_diagram(self, *args, **kwargs):
+        return GenerationResult()
 
 
 class _DummyMapper:
@@ -202,6 +205,72 @@ class TestGenerateAndValidateRoutes:
         payload = response.json()
         assert payload["passed"] is True
         assert payload["diagrams_checked"] == len(sample_generation_result.diagrams)
+
+    @pytest.mark.asyncio
+    async def test_generate_activity_from_mud_replaces_placeholder_with_branched_fallback(self):
+        class _PlaceholderOrchestrator(_DummyOrchestrator):
+            async def generate_diagram(self, *args, **kwargs):
+                return GenerationResult(
+                    diagrams=[
+                        ActivityDiagram(
+                            name="RE_Control Code Flow",
+                            owner_swc="SWC_BrakeAssist",
+                            owner_runnable="RE_Control",
+                            nodes=[
+                                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                                ActivityNode(id="N_01", name="Action", node_type=ActivityNodeType.ACTION),
+                                ActivityNode(id="N_02", name="End", node_type=ActivityNodeType.FINAL),
+                            ],
+                            edges=[
+                                ActivityEdge(source="N_00", target="N_01"),
+                                ActivityEdge(source="N_01", target="N_02"),
+                            ],
+                        )
+                    ],
+                    analyzed_requirements=["REQ-201"],
+                )
+
+        requirement = Requirement(
+            req_id="REQ-201",
+            title="Brake assist branching",
+            description="Generate brake assist flow.",
+            req_type=RequirementType.FUNCTIONAL,
+            priority=Priority.MUST,
+            status=RequirementStatus.APPROVED,
+        )
+        request = routes.GenerateRequest(
+            requirements=RequirementSet(requirements=[requirement]),
+            diagram_types=["activity"],
+            module_context="SWC_BrakeAssist",
+            mud_spec_markdown="""
+# MUD Spec: SWC_BrakeAssist
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Control | Cyclic | 10 ms | ASIL-C | Branching flow |
+
+## 7. Functional Description
+### RE_Control
+1. If brakeRequest > threshold
+1.1. Rte_Write(PP_BrakeAssistCmd, TRUE)
+2. Else
+2.1. Dem_ReportErrorStatus(Event_BrakeAssist, DEM_EVENT_STATUS_FAILED)
+3. End If
+4. Rte_Write(PP_Status, status)
+""",
+            activity_source="mud_spec",
+        )
+
+        result = await routes._generate_activity_from_mud(
+            _PlaceholderOrchestrator(),
+            [requirement],
+            request,
+        )
+
+        assert any(n.node_type == ActivityNodeType.DECISION for n in result.diagrams[0].nodes)
+        assert any(edge.guard == "[false]" for edge in result.diagrams[0].edges)
+        assert any("deterministic flow generated from MUD Section 7" in w for w in result.warnings)
 
 
 class TestExportRoutes:

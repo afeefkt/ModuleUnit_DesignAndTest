@@ -350,6 +350,29 @@ class ActivityNode(BaseModel):
             else:
                 data.setdefault("name", data.get("description", "Node"))
 
+        # Coerce qualitative confidence strings ("high"/"medium"/"low" etc.)
+        # — small local models often emit these instead of a float in [0,1].
+        conf = data.get("confidence")
+        if isinstance(conf, str):
+            key = conf.strip().lower().rstrip("%")
+            _CONF_WORDS = {
+                "very high": 0.95, "high": 0.90, "good": 0.85,
+                "medium": 0.75, "med": 0.75, "moderate": 0.70,
+                "fair": 0.65, "low": 0.55, "very low": 0.40,
+                "unknown": 0.50, "n/a": 0.50, "": 0.70,
+            }
+            if key in _CONF_WORDS:
+                data["confidence"] = _CONF_WORDS[key]
+            else:
+                # Try to parse numeric string ("0.9", "90", "90%")
+                try:
+                    val = float(key)
+                    if val > 1.0:    # treat 90 / 90% as percentage
+                        val = val / 100.0
+                    data["confidence"] = max(0.0, min(1.0, val))
+                except ValueError:
+                    data["confidence"] = 0.70  # safe default
+
         return data
 
 

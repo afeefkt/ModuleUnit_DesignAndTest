@@ -556,7 +556,10 @@ async def _generate_activity_from_mud(
         activity_label_style=request.activity_label_style,
         autosar_compliant=request.autosar_compliant,
         activity_source="mud_spec",
-        mud_activity_context=mud_context.to_prompt_block(),
+        # Pass the parsed MudActivityContext object so the multi-stage
+        # ActivityPipeline can iterate runnables.  generate_diagram falls
+        # back to to_prompt_block() for the legacy single-call path.
+        mud_activity_context=mud_context,
     )
 
     def _looks_like_placeholder_activity(result_obj: "GenerationResult") -> bool:
@@ -570,7 +573,12 @@ async def _generate_activity_from_mud(
                 n for n in diagram.nodes
                 if n.node_type.value not in ("initial", "final")
             ]
+            meaningful_node_types = {"decision", "merge", "fork", "join", "function_call", "call", "exception"}
             if diagram.sub_diagrams:
+                return False
+            if any(n.node_type.value in meaningful_node_types for n in non_terminal):
+                return False
+            if any(edge.guard for edge in diagram.edges):
                 return False
             if len(non_terminal) >= 2:
                 return False

@@ -1,0 +1,840 @@
+"""Multi-stage activity-diagram generation pipeline.
+
+Mirrors the design of ``mud_pipeline_stages.MudSpecPipeline`` but emits
+``ActivityDiagram`` objects instead of MUD-spec Markdown.  Replaces the
+single AI call that asks the model to produce every runnable's diagram
+in one giant ``{"diagrams":[…]}`` response (which overwhelms 7B models
+on 8 GB GPUs and frequently returns ``nodes:[]``) with five focused
+stages:
+
+  Stage 1 — Skeleton (deepseek-r1:7b recommended)
+    One small JSON call: extract the runnable list + per-runnable key
+    steps + entry/exit hints.  Tiny output, fast on a reasoning model.
+
+  Stage 2 — Cross-reference map (Python, no AI)
+    Build a producer/consumer map for IRVs and DEM events from the
+    parsed MudActivityContext so Stage 4 can flag coherence problems.
+
+  Stage 3 — Per-runnable diagram (qwen2.5-coder:7b recommended)
+    Loop runnables.  For each: ONE focused prompt with that runnable's
+    Section 7 pseudo-code + the AUTOSAR/node-type rules from the legacy
+    activity_diagram.yaml.  Output: a single ActivityDiagram JSON
+    (no ``{"diagrams":[…]}`` wrapper).  Each call is ≤1.5 k tokens of
+    input → 7B handles reliably.
+
+  Stage 4 — Reviewer pass (deepseek-r1:7b recommended)
+    Send compact summaries of all N drafts back to a reasoning model
+    with the cross-ref map.  Reviewer flags missing initial/final,
+    missing exception edges around Rte_IWrite_*/Dem_*, decision
+    diamonds without both branches, IRV producer/consumer mismatches.
+    Returns simple patches applied deterministically in Python.
+
+  Stage 5 — Deterministic repair + provenance stamp
+    Reuses the orchestrator's _repair_activity_diagram path
+    (initial/final injection).  Stamps each diagram with backend +
+    prompt-hash provenance.
+
+Usage (from AIOrchestrator.generate_diagram):
+
+    pipeline = ActivityPipeline(
+        backend=generator_backend,
+        skeleton_backend=skeleton_backend,
+        reviewer_backend=reviewer_backend,
+        progress_callback=cb,
+    )
+    diagrams = await pipeline.run(
+        mud_activity_context=mac,
+        module_context="SWC_Foo",
+        requirements=requirements,
+        activity_label_style="pseudocode",
+    )
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import re
+import time
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
+
+
+# ── JSON extraction helper (mirrors mud_pipeline_stages._extract_json) ────────
+
+def _extract_json(raw: str) -> Any:
+    """Parse the AI's JSON reply, tolerating <think> blocks and ``` fences."""
+    if not raw:
+        return None
+    cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+    cleaned = re.sub(r"```(?:json)?", "", cleaned).strip().rstrip("`").strip()
+
+    # Try the outermost {…} first
+    start = cleaned.find("{")
+    end = cleaned.rfind("}") + 1
+    if start != -1 and end > start:
+        try:
+            return json.loads(cleaned[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback: try array
+    start = cleaned.find("[")
+    end = cleaned.rfind("]") + 1
+    if start != -1 and end > start:
+        try:
+            return json.loads(cleaned[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+# ── Edge cleanup helper ───────────────────────────────────────────────────────
+
+def _scrub_orphan_edges(diagram: dict, runnable_name: str = "") -> None:
+    """Remove edges whose source/target don't match any node id.
+
+    First tries to repair by mapping semantic-ID references back to N_xx by
+    matching on node.name (case-insensitive substring).  If no match found,
+    the edge is dropped (logged at INFO).  Mutates ``diagram`` in place.
+    """
+    nodes = diagram.get("nodes") or []
+    edges = diagram.get("edges") or []
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return
+
+    # Build lookup: id → node, plus a name-based fallback dict
+    valid_ids: set[str] = set()
+    name_to_id: dict[str, str] = {}
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = n.get("id")
+        if nid:
+            valid_ids.add(nid)
+            nm = (n.get("name") or "").strip().lower()
+            if nm:
+                name_to_id.setdefault(nm, nid)
+
+    def _resolve(ref: str) -> Optional[str]:
+        if not ref:
+            return None
+        if ref in valid_ids:
+            return ref
+        # Try semantic-ID → node-name match (e.g. "current_mode" → node named "current_mode")
+        key = ref.strip().lower().replace("-", "_")
+        if key in name_to_id:
+            return name_to_id[key]
+        # Try matching against node ids ignoring case
+        for vid in valid_ids:
+            if vid.lower() == key:
+                return vid
+        return None
+
+    cleaned: list[dict] = []
+    dropped = 0
+    repaired = 0
+    for e in edges:
+        if not isinstance(e, dict):
+            continue
+        src = _resolve(e.get("source", ""))
+        tgt = _resolve(e.get("target", ""))
+        if src and tgt:
+            if src != e.get("source") or tgt != e.get("target"):
+                repaired += 1
+                e["source"] = src
+                e["target"] = tgt
+            cleaned.append(e)
+        else:
+            dropped += 1
+    if dropped or repaired:
+        logger.info(
+            "[Activity Pipeline/cleanup] %s: repaired=%d, dropped=%d orphan edge(s)",
+            runnable_name or diagram.get("name", "?"),
+            repaired,
+            dropped,
+        )
+    diagram["edges"] = cleaned
+
+
+# ── Prompt templates ──────────────────────────────────────────────────────────
+
+_SKELETON_SYSTEM = """You are an AUTOSAR software architect.
+
+TASK: From the MUD specification block below, extract a JSON skeleton
+listing every runnable and its key control-flow steps.  The skeleton
+will be used downstream to generate one activity flowchart per runnable.
+
+Output STRICT JSON only — no prose, no markdown fences, no <think>.
+Begin with { and end with }.
+
+JSON SCHEMA:
+{
+  "runnables": [
+    {
+      "name": "RE_…",                         // exact name from MUD
+      "trigger": "10ms" or "Init" or "OnEvent",
+      "asil": "QM" | "A" | "B" | "C" | "D",
+      "entry_hint": "Start" or "Start (10ms)",
+      "exit_hint": "End",
+      "key_steps": [                          // 4–10 entries, each one short C-like phrase
+        "Read PP_Torque",
+        "Validate range",
+        "Compute assist",
+        "Write PP_Output",
+        "Dem_SetEventStatus on fault"
+      ],
+      "writes_irvs": ["irv_…"],               // [] if none
+      "reads_irvs":  ["irv_…"],
+      "raises_dem":  ["DTC_…"]                // DEM events the runnable may report
+    }
+  ]
+}
+
+RULES:
+  - Use ONLY runnable names that appear in the MUD spec.
+  - Do NOT invent runnables.
+  - key_steps must be ordered (entry → exit).
+  - If the MUD pseudo-code has guards / decisions, include them as steps
+    like "Decision: l_f32Speed > MAX".
+  - If unsure of a field, return [] or "" rather than guessing.
+"""
+
+
+_SKELETON_USER_TMPL = """SWC: {swc_name}
+
+{mud_block}
+
+Return the JSON skeleton.  Output ONLY JSON.
+"""
+
+
+_RUNNABLE_SYSTEM = """You are an AUTOSAR software engineer.  Generate ONE
+ActivityDiagram JSON for the single runnable supplied.  Style: C
+pseudocode — node labels are C expressions, not English sentences.
+
+Output STRICT JSON only — a single ActivityDiagram object (NOT a
+{{"diagrams":[…]}} wrapper).  No prose, no markdown fences, no <think>.
+
+NODE TYPES:
+  initial       — name "Start" or "Start (10ms)"; first node only.
+  final         — name "End"; last node.
+  call          — RTE call signature, e.g. "Rte_Read_RP_Speed(&l_f32V)".
+                  Set rte_call, port, element.
+  action        — C assignment, e.g. "l_f32Out = l_f32K * l_f32In".
+  decision      — C boolean expression, e.g. "l_f32V > LIMIT".
+                  MUST have ≥2 outgoing edges with guards "[…]".
+  merge         — name "merge", joins two decision branches.
+  function_call — helper call with return var.  Set callee.
+  exception     — DEM/fault report, e.g.
+                  "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)".
+
+ID FORMAT — STRICT:
+  - Node IDs MUST match the regex ^N_[0-9]+$  (e.g. N_01, N_02, N_15).
+  - Edge IDs MUST match ^E_[0-9]+[a-z]?$  (e.g. E_01, E_03a).
+  - DO NOT use semantic IDs like "current_mode", "inputs_valid", "start_node".
+  - Every edge.source and edge.target MUST equal the id of a node listed in
+    nodes[].  If you mention an entity that is not yet a node, FIRST add a
+    node for it, THEN reference its N_xx id in edges[].
+  - Before emitting JSON, mentally check: every edge.source is in nodes[].id
+    and every edge.target is in nodes[].id.
+
+Guards: "[l_f32V > LIMIT]".
+
+EVERY node must have: id, name, node_type, trace_reqs (≥1 entry),
+description (3–10 words), confidence (numeric 0.0–1.0; do NOT use words
+like "high"/"medium"/"low").
+
+STANDARD FLOW: INITIAL → CALL(reads) → DECISION(validate)
+            → ACTION/FUNCTION_CALL(compute) → CALL(writes) → FINAL
+Aim for 5–15 nodes.
+
+OUTPUT SCHEMA (single object — NO outer wrapper):
+{{
+  "diagram_type": "activity",
+  "name": "RE_Name Code Flow",
+  "owner_swc": "SWC_…",
+  "owner_runnable": "RE_…",
+  "source_requirements": ["REQ-…"],
+  "nodes": [ … ],
+  "edges": [ … ],
+  "sub_diagrams": []
+}}
+"""
+
+
+_RUNNABLE_USER_TMPL = """Generate the activity flowchart for ONE runnable.
+
+SWC: {swc_name}
+RUNNABLE: {runnable_name}
+TRIGGER: {trigger}
+ASIL: {asil}
+LABEL STYLE: {label_style}
+
+KEY STEPS (from skeleton):
+{key_steps_block}
+
+NUMBERED PSEUDO-CODE FROM MUD SECTION 7:
+{pseudo_code}
+
+ARCHITECTURAL REQUIREMENTS (use these IDs in trace_reqs):
+{requirements_block}
+
+Produce ONE ActivityDiagram JSON object for runnable {runnable_name}.
+Map each numbered pseudo-code step to ONE node:
+  - "Rte_Read…" / "Rte_Write…"  → call node
+  - "if X" / "Validate X"        → decision node (with both branches)
+  - "Dem_SetEventStatus…"        → exception node
+  - assignments / computations    → action node
+  - helper / sub-function call    → function_call node
+
+Add "Start" (initial) at the top and "End" (final) at the bottom.
+
+Output ONLY the JSON object.  No text before or after.
+"""
+
+
+_REVIEWER_SYSTEM = """You are an AUTOSAR design reviewer.  You receive
+N draft activity diagrams (one per runnable) plus a cross-reference map
+of which runnables read/write each IRV.
+
+Your job: identify concrete issues and emit a JSON patch list.
+Focus on these classes of problems:
+  1. Missing initial or final node.
+  2. A "Rte_IWrite_*" / "Rte_Write_*" / "Dem_*" node with no exception edge.
+  3. A decision node with fewer than 2 outgoing edges.
+  4. IRV mismatch: a runnable reads an IRV that no other runnable writes.
+  5. Duplicate node IDs within one diagram.
+
+Output STRICT JSON only:
+{
+  "issues": [
+    {"runnable": "RE_…", "severity": "warn|error", "message": "…"}
+  ],
+  "patches": [
+    {"runnable": "RE_…", "op": "add_initial"},
+    {"runnable": "RE_…", "op": "add_final"}
+  ]
+}
+
+Patch ops supported (use only these — anything else is ignored):
+  add_initial   — insert a Start node at the top
+  add_final     — insert an End node at the bottom
+
+Be conservative: if unsure, log it as an issue without a patch.
+Output ONLY JSON, no prose, no <think>.
+"""
+
+
+# ── ActivityPipeline class ────────────────────────────────────────────────────
+
+class ActivityPipeline:
+    """5-stage activity flowchart generator.
+
+    Mirrors :class:`mudtool.ai.mud_pipeline_stages.MudSpecPipeline` so the
+    user-visible progress events look identical:
+      ``[Activity Pipeline] Stage 1/5 — extracting activity skeleton…``
+      ``[Activity Pipeline] Stage 3/5 — diagram for RE_Init…``
+      ``[Activity Pipeline] Complete — N diagrams, M nodes total``
+
+    Returns a list of dicts shaped like the AI's per-diagram payload —
+    the orchestrator validates them with ``ActivityDiagram.model_validate``
+    and runs its existing ``_repair_activity_diagram`` repair so the
+    pipeline is a drop-in replacement for the legacy single AI call.
+    """
+
+    def __init__(
+        self,
+        backend,
+        skeleton_backend=None,
+        reviewer_backend=None,
+        progress_callback=None,
+    ):
+        self._backend = backend
+        self._skeleton_backend = skeleton_backend or backend
+        self._reviewer_backend = reviewer_backend or backend
+        self._progress = progress_callback
+
+    def _emit(self, message: str, progress: int = 0, **extra) -> None:
+        if self._progress:
+            try:
+                self._progress({
+                    "stage": "activity_pipeline",
+                    "message": message,
+                    "progress": progress,
+                    **extra,
+                })
+            except Exception:
+                pass
+        logger.info(message)
+
+    # ─── Public entry point ────────────────────────────────────────────────
+
+    async def run(
+        self,
+        mud_activity_context: Any,
+        module_context: Optional[str],
+        requirements,
+        activity_label_style: str = "pseudocode",
+        temperature: float = 0.1,
+    ) -> list[dict]:
+        """Run all 5 stages and return validated diagram dicts.
+
+        Returns an empty list if the skeleton stage fails so the caller
+        can fall back to the legacy single-call path.
+        """
+        if mud_activity_context is None or not getattr(
+            mud_activity_context, "runnables", None
+        ):
+            logger.info("[Activity Pipeline] no runnables in MUD context — skipping")
+            return []
+
+        swc_name = getattr(mud_activity_context, "swc_name", None) or (module_context or "")
+
+        # ── Stage 1: Skeleton ──────────────────────────────────────────────
+        self._emit(
+            f"[Activity Pipeline] Stage 1/5 — extracting activity skeleton for {swc_name}…",
+            10,
+        )
+        skeleton = await self._stage1_skeleton(mud_activity_context, swc_name, temperature)
+        if not skeleton or not skeleton.get("runnables"):
+            # Fall back to MUD context directly — every runnable becomes a
+            # skeleton entry built from the parsed RunnableContext.
+            logger.warning(
+                "[Activity Pipeline] Stage 1 skeleton empty — synthesising from MUD context"
+            )
+            skeleton = self._synthesise_skeleton(mud_activity_context)
+            if not skeleton["runnables"]:
+                self._emit("[Activity Pipeline] Stage 1 failed — no runnables", 0)
+                return []
+
+        runnables = skeleton["runnables"]
+        self._emit(
+            f"[Activity Pipeline] Stage 1 complete — {len(runnables)} runnables identified",
+            20,
+        )
+
+        # ── Stage 2: Cross-reference map ───────────────────────────────────
+        xref = self._stage2_xref(runnables)
+        logger.info(
+            "[Activity Pipeline] Stage 2 xref: %d IRV producers, %d DEM raisers",
+            len(xref["irv_writers"]),
+            len(xref["dem_raisers"]),
+        )
+
+        # ── Stage 3: Per-runnable diagrams ─────────────────────────────────
+        drafts: list[dict] = []
+        total = len(runnables)
+        for idx, sk_run in enumerate(runnables, 1):
+            rname = sk_run.get("name") or f"RE_{idx}"
+            self._emit(
+                f"[Activity Pipeline] Stage 3/5 — diagram for {rname}…",
+                20 + int(50 * idx / max(total, 1)),
+            )
+            draft = await self._stage3_runnable(
+                sk_run,
+                mud_activity_context,
+                swc_name,
+                requirements,
+                activity_label_style,
+                temperature,
+            )
+            if draft:
+                drafts.append(draft)
+            else:
+                logger.warning(
+                    "[Activity Pipeline] Stage 3 returned no diagram for %s", rname
+                )
+
+        if not drafts:
+            self._emit("[Activity Pipeline] Stage 3 produced 0 diagrams — falling back", 0)
+            return []
+
+        # ── Stage 4: Reviewer pass ─────────────────────────────────────────
+        self._emit(
+            f"[Activity Pipeline] Stage 4/5 — reviewer pass (cross-runnable, {len(drafts)} drafts)…",
+            78,
+        )
+        try:
+            patches, issues = await self._stage4_review(drafts, xref, temperature)
+            if issues:
+                logger.warning(
+                    "[Activity Pipeline] Reviewer flagged %d issue(s):\n  %s",
+                    len(issues),
+                    "\n  ".join(f"{i.get('runnable','?')}: {i.get('message','')}" for i in issues[:10]),
+                )
+        except Exception as exc:
+            logger.warning("[Activity Pipeline] Stage 4 reviewer failed: %s", exc)
+            patches = []
+
+        # ── Stage 5: Deterministic repair + provenance ─────────────────────
+        self._emit(
+            "[Activity Pipeline] Stage 5/5 — deterministic repair + provenance…",
+            90,
+        )
+        finalised = self._stage5_finalise(drafts, patches)
+
+        total_nodes = sum(len(d.get("nodes", [])) for d in finalised)
+        self._emit(
+            f"[Activity Pipeline] Complete — {len(finalised)} diagrams, {total_nodes} nodes total",
+            100,
+        )
+        return finalised
+
+    # ─── Stage 1 ──────────────────────────────────────────────────────────
+
+    async def _stage1_skeleton(
+        self,
+        mud_activity_context,
+        swc_name: str,
+        temperature: float,
+    ) -> Optional[dict]:
+        try:
+            mud_block = mud_activity_context.to_prompt_block()
+        except Exception as exc:
+            logger.warning("Could not render MUD block: %s", exc)
+            return None
+
+        # Cap the MUD block — Stage 1 only needs an overview
+        if len(mud_block) > 6000:
+            mud_block = mud_block[:6000] + "\n... [truncated for skeleton stage]"
+
+        user_prompt = _SKELETON_USER_TMPL.format(
+            swc_name=swc_name or "unknown",
+            mud_block=mud_block,
+        )
+
+        backend = self._skeleton_backend
+        backend_name = getattr(backend, "backend_name", "?")
+        logger.info(
+            "[Activity Pipeline/Stage1] using backend %s for %s", backend_name, swc_name
+        )
+
+        try:
+            response = await backend.generate(
+                system_prompt=_SKELETON_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=2048,
+                response_format="json",
+            )
+        except TypeError:
+            # Some backends don't accept response_format kwarg
+            response = await backend.generate(
+                system_prompt=_SKELETON_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=2048,
+            )
+        except Exception as exc:
+            logger.warning("[Activity Pipeline/Stage1] backend error: %s", exc)
+            return None
+
+        skeleton = _extract_json(response.content)
+        if not isinstance(skeleton, dict):
+            logger.warning(
+                "[Activity Pipeline/Stage1] Failed to extract JSON from response: %s…",
+                (response.content or "")[:300],
+            )
+            return None
+        skeleton.setdefault("runnables", [])
+        return skeleton
+
+    @staticmethod
+    def _synthesise_skeleton(mud_activity_context) -> dict:
+        """Fall-back: build skeleton entries from the parsed MUD context."""
+        runnables: list[dict] = []
+        for r in getattr(mud_activity_context, "runnables", []) or []:
+            steps: list[str] = []
+            if getattr(r, "functional_description", ""):
+                for ln in r.functional_description.splitlines():
+                    s = ln.strip()
+                    if s:
+                        # strip leading numbering like "1." / "1)" / "- "
+                        s = re.sub(r"^\s*(?:\d+[\.\)]|\-|\*)\s+", "", s)
+                        steps.append(s[:120])
+            runnables.append({
+                "name": r.name,
+                "trigger": getattr(r, "trigger", ""),
+                "asil": getattr(r, "asil", ""),
+                "entry_hint": "Start",
+                "exit_hint": "End",
+                "key_steps": steps[:12],
+                "writes_irvs": [],
+                "reads_irvs": [],
+                "raises_dem": [],
+            })
+        return {"runnables": runnables}
+
+    # ─── Stage 2 ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _stage2_xref(runnables: list[dict]) -> dict:
+        """Build IRV and DEM cross-reference dicts for the reviewer."""
+        irv_writers: dict[str, list[str]] = {}
+        irv_readers: dict[str, list[str]] = {}
+        dem_raisers: dict[str, list[str]] = {}
+        for r in runnables:
+            rname = r.get("name", "")
+            for irv in r.get("writes_irvs") or []:
+                irv_writers.setdefault(irv, []).append(rname)
+            for irv in r.get("reads_irvs") or []:
+                irv_readers.setdefault(irv, []).append(rname)
+            for dem in r.get("raises_dem") or []:
+                dem_raisers.setdefault(dem, []).append(rname)
+        return {
+            "irv_writers": irv_writers,
+            "irv_readers": irv_readers,
+            "dem_raisers": dem_raisers,
+        }
+
+    # ─── Stage 3 ──────────────────────────────────────────────────────────
+
+    async def _stage3_runnable(
+        self,
+        sk_run: dict,
+        mud_activity_context,
+        swc_name: str,
+        requirements,
+        activity_label_style: str,
+        temperature: float,
+    ) -> Optional[dict]:
+        rname = sk_run.get("name") or "RE_Unknown"
+
+        # Find the matching RunnableContext for full pseudo-code
+        pseudo_code = ""
+        for r in getattr(mud_activity_context, "runnables", []) or []:
+            if r.name == rname:
+                pseudo_code = (r.functional_description or "").strip() or (r.summary or "")
+                break
+        if not pseudo_code:
+            # fall back to the skeleton's key_steps
+            pseudo_code = "\n".join(
+                f"{i+1}. {s}" for i, s in enumerate(sk_run.get("key_steps") or [])
+            )
+
+        # Cap pseudo-code to keep prompt small
+        if len(pseudo_code) > 2500:
+            pseudo_code = pseudo_code[:2500] + "\n... [truncated]"
+
+        key_steps_block = "\n".join(
+            f"  {i+1}. {s}" for i, s in enumerate(sk_run.get("key_steps") or [])
+        ) or "  (none — derive from pseudo-code)"
+
+        # Compact requirements list with IDs only
+        req_lines: list[str] = []
+        for req in requirements or []:
+            rid = getattr(req, "req_id", None)
+            title = getattr(req, "title", "")
+            if rid:
+                if title:
+                    req_lines.append(f"  - {rid}: {title}")
+                else:
+                    req_lines.append(f"  - {rid}")
+        requirements_block = "\n".join(req_lines[:30]) or "  (none provided)"
+
+        user_prompt = _RUNNABLE_USER_TMPL.format(
+            swc_name=swc_name or "unknown",
+            runnable_name=rname,
+            trigger=sk_run.get("trigger", "") or "n/a",
+            asil=sk_run.get("asil", "") or "QM",
+            label_style=activity_label_style,
+            key_steps_block=key_steps_block,
+            pseudo_code=pseudo_code or "(no pseudo-code; produce a minimal Start/End diagram)",
+            requirements_block=requirements_block,
+        )
+
+        backend = self._backend
+        backend_name = getattr(backend, "backend_name", "?")
+
+        try:
+            response = await backend.generate(
+                system_prompt=_RUNNABLE_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=4096,
+                response_format="json",
+            )
+        except TypeError:
+            response = await backend.generate(
+                system_prompt=_RUNNABLE_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=4096,
+            )
+        except Exception as exc:
+            logger.warning("[Activity Pipeline/Stage3] backend error for %s: %s", rname, exc)
+            return None
+
+        diagram = _extract_json(response.content)
+        # Some models return {"diagrams":[…]} despite instructions — unwrap
+        if isinstance(diagram, dict) and "diagrams" in diagram:
+            diags = diagram.get("diagrams") or []
+            diagram = diags[0] if diags else None
+        if not isinstance(diagram, dict):
+            logger.warning(
+                "[Activity Pipeline/Stage3] no JSON diagram for %s: %s",
+                rname, (response.content or "")[:200],
+            )
+            return None
+
+        # Stamp identity fields the orchestrator expects
+        diagram["diagram_type"] = "activity"
+        diagram.setdefault("owner_swc", swc_name or "")
+        diagram.setdefault("owner_runnable", rname)
+        diagram.setdefault("name", f"{rname} Code Flow")
+        diagram.setdefault("nodes", [])
+        diagram.setdefault("edges", [])
+        diagram.setdefault("sub_diagrams", [])
+
+        # ── Deterministic cleanup: drop orphan edges + repair semantic IDs ──
+        # Local 7B models occasionally emit edges referencing semantic IDs
+        # (e.g. "current_mode") that don't match any node.  Rather than let
+        # those propagate as Mermaid lint warnings, scrub them here.
+        _scrub_orphan_edges(diagram, rname)
+        # Store backend hint so the orchestrator can record provenance
+        diagram.setdefault("_pipeline_backend", backend_name)
+        diagram.setdefault("_pipeline_model", getattr(response, "model", backend_name))
+        diagram.setdefault("_pipeline_latency_ms", getattr(response, "latency_ms", 0))
+        return diagram
+
+    # ─── Stage 4 ──────────────────────────────────────────────────────────
+
+    async def _stage4_review(
+        self,
+        drafts: list[dict],
+        xref: dict,
+        temperature: float,
+    ) -> tuple[list[dict], list[dict]]:
+        """Ask reviewer for issues + patches.  Returns (patches, issues)."""
+
+        # Compact the drafts so the reviewer prompt stays small
+        compact = []
+        for d in drafts:
+            compact.append({
+                "runnable": d.get("owner_runnable") or d.get("name"),
+                "node_count": len(d.get("nodes", [])),
+                "node_types": sorted({
+                    (n.get("node_type") or "").lower()
+                    for n in d.get("nodes", [])
+                    if isinstance(n, dict)
+                }),
+                "decision_branch_counts": [
+                    sum(1 for e in d.get("edges", []) if e.get("source") == n.get("id"))
+                    for n in d.get("nodes", [])
+                    if isinstance(n, dict) and (n.get("node_type") or "").lower() == "decision"
+                ],
+                "node_names": [n.get("name", "") for n in d.get("nodes", []) if isinstance(n, dict)],
+            })
+
+        user_prompt = (
+            "DRAFT DIAGRAMS (compact form):\n"
+            + json.dumps(compact, ensure_ascii=False, indent=2)
+            + "\n\nCROSS-REFERENCE MAP:\n"
+            + json.dumps(xref, ensure_ascii=False, indent=2)
+            + "\n\nReturn the JSON {issues, patches}."
+        )
+
+        backend = self._reviewer_backend
+        try:
+            response = await backend.generate(
+                system_prompt=_REVIEWER_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=2048,
+                response_format="json",
+            )
+        except TypeError:
+            response = await backend.generate(
+                system_prompt=_REVIEWER_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=2048,
+            )
+
+        review = _extract_json(response.content) or {}
+        if not isinstance(review, dict):
+            return ([], [])
+        issues = review.get("issues") if isinstance(review.get("issues"), list) else []
+        patches = review.get("patches") if isinstance(review.get("patches"), list) else []
+        return (patches, issues)
+
+    # ─── Stage 5 ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _stage5_finalise(drafts: list[dict], patches: list[dict]) -> list[dict]:
+        """Apply reviewer patches deterministically + stamp provenance."""
+        by_name: dict[str, dict] = {}
+        for d in drafts:
+            key = d.get("owner_runnable") or d.get("name") or ""
+            by_name[key] = d
+
+        for patch in patches or []:
+            if not isinstance(patch, dict):
+                continue
+            target = patch.get("runnable")
+            op = (patch.get("op") or "").lower()
+            if not target or target not in by_name:
+                continue
+            d = by_name[target]
+            nodes = d.setdefault("nodes", [])
+            edges = d.setdefault("edges", [])
+
+            if op == "add_initial":
+                if not any(
+                    isinstance(n, dict) and (n.get("node_type") or "").lower() == "initial"
+                    for n in nodes
+                ):
+                    new_id = "N_START"
+                    nodes.insert(0, {
+                        "id": new_id, "name": "Start",
+                        "node_type": "initial", "trace_reqs": [],
+                        "confidence": 0.5,
+                        "description": "Auto-inserted entry point",
+                    })
+                    if nodes[1:] and isinstance(nodes[1], dict) and nodes[1].get("id"):
+                        edges.insert(0, {
+                            "id": "E_START",
+                            "source": new_id,
+                            "target": nodes[1]["id"],
+                        })
+            elif op == "add_final":
+                if not any(
+                    isinstance(n, dict) and (n.get("node_type") or "").lower() == "final"
+                    for n in nodes
+                ):
+                    new_id = "N_END"
+                    nodes.append({
+                        "id": new_id, "name": "End",
+                        "node_type": "final", "trace_reqs": [],
+                        "confidence": 0.5,
+                        "description": "Auto-inserted exit point",
+                    })
+                    if nodes[:-1] and isinstance(nodes[-2], dict) and nodes[-2].get("id"):
+                        edges.append({
+                            "id": "E_END",
+                            "source": nodes[-2]["id"],
+                            "target": new_id,
+                        })
+
+        # Stamp provenance hash + version on every diagram
+        finalised: list[dict] = []
+        for d in drafts:
+            backend_name = d.pop("_pipeline_backend", "activity_pipeline")
+            model = d.pop("_pipeline_model", backend_name)
+            latency = d.pop("_pipeline_latency_ms", 0)
+            prov = d.setdefault("provenance", {})
+            prov.setdefault("ai_model", model)
+            prov.setdefault("backend", backend_name)
+            prov.setdefault("prompt_version", "activity_pipeline_v1")
+            prov.setdefault("confidence", 0.85)
+            prov.setdefault("generation_time_ms", latency)
+            prov_hash = hashlib.sha256(
+                f"{d.get('name')}|{len(d.get('nodes', []))}|{int(time.time())}".encode()
+            ).hexdigest()[:12]
+            prov.setdefault("prompt_hash", prov_hash)
+            finalised.append(d)
+        return finalised

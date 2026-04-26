@@ -17,6 +17,13 @@ class RunnableContext:
 
 
 @dataclass
+class NumberedStep:
+    text: str
+    depth: int = 1
+    kind: str = "action"
+
+
+@dataclass
 class MudActivityContext:
     swc_name: str
     runnables: list[RunnableContext]
@@ -34,7 +41,7 @@ class MudActivityContext:
 
     @property
     def has_structured_flow_source(self) -> bool:
-        return any(_parse_numbered_steps(r.functional_description) for r in self.runnables)
+        return any(_parse_numbered_step_entries(r.functional_description) for r in self.runnables)
 
     def to_prompt_block(self) -> str:
         runnable_lines = []
@@ -164,82 +171,40 @@ def synthesize_activity_diagrams_from_context(
     helper_names = set(context.helper_functions)
 
     for runnable in context.runnables:
-        steps = _parse_numbered_steps(runnable.functional_description)
+        steps = _parse_numbered_step_entries(runnable.functional_description)
         if not steps:
             continue
 
-        nodes: list[ActivityNode] = [
-            ActivityNode(
-                id="N_00",
-                name="Start",
-                node_type=ActivityNodeType.INITIAL,
-                trace_reqs=trace_reqs[:1] if trace_reqs else [],
-                description=f"Entry point for {runnable.name}",
-                confidence=0.9,
-            )
-        ]
-        edges: list[ActivityEdge] = []
-        sub_diagrams: list[ActivityDiagram] = []
-        prev_id = "N_00"
-        sub_ids: set[str] = set()
-
-        for idx, step in enumerate(steps, start=1):
-            node_id = f"N_{idx:02d}"
-            node_type = ActivityNodeType.ACTION
-            callee = None
-            description = _short_step_description(step)
-            rte_meta = _extract_rte_metadata(step)
-            if rte_meta:
-                node_type = ActivityNodeType.CALL
-            else:
-                helper_name = _extract_helper_call(step, helper_names)
-                if helper_name:
-                    node_type = ActivityNodeType.FUNCTION_CALL
-                    callee = helper_name
-                elif "dem_reporterrorstatus" in step.lower() or "dem_seteventstatus" in step.lower():
-                    node_type = ActivityNodeType.EXCEPTION
-
-            nodes.append(
-                ActivityNode(
-                    id=node_id,
-                    name=step,
-                    node_type=node_type,
-                    rte_call=rte_meta["rte_call"] if rte_meta else None,
-                    port=rte_meta["port"] if rte_meta else None,
-                    element=rte_meta["element"] if rte_meta else None,
-                    callee=callee,
-                    trace_reqs=trace_reqs,
-                    description=description,
-                    confidence=0.88,
-                )
-            )
-            edges.append(ActivityEdge(id=f"E_{idx:02d}", source=prev_id, target=node_id))
-            prev_id = node_id
-
-            if callee and callee not in sub_ids:
-                sub_ids.add(callee)
-                sub_diagrams.append(
-                    _make_helper_subdiagram(
-                        swc_name=context.swc_name,
-                        runnable_name=runnable.name,
-                        callee=callee,
-                        step_text=step,
-                        req_ids=trace_reqs,
-                    )
-                )
-
-        final_id = f"N_{len(steps) + 1:02d}"
-        nodes.append(
-            ActivityNode(
-                id=final_id,
-                name="End",
-                node_type=ActivityNodeType.FINAL,
-                trace_reqs=trace_reqs[:1] if trace_reqs else [],
-                description=f"Exit point for {runnable.name}",
-                confidence=0.9,
-            )
+        builder = _ActivityGraphBuilder(
+            swc_name=context.swc_name,
+            runnable_name=runnable.name,
+            req_ids=trace_reqs,
+            helper_names=helper_names,
         )
-        edges.append(ActivityEdge(id=f"E_{len(steps) + 1:02d}", source=prev_id, target=final_id))
+        start_id = builder.add_node(
+            name="Start",
+            node_type=ActivityNodeType.INITIAL,
+            trace_reqs=trace_reqs[:1] if trace_reqs else [],
+            description=f"Entry point for {runnable.name}",
+            confidence=0.9,
+            node_id="N_00",
+        )
+        _, exits = builder.emit_block(
+            steps,
+            0,
+            min_depth=min(step.depth for step in steps),
+            pending=[(start_id, None)],
+            stop_kinds=set(),
+        )
+
+        final_id = builder.add_node(
+            name="End",
+            node_type=ActivityNodeType.FINAL,
+            trace_reqs=trace_reqs[:1] if trace_reqs else [],
+            description=f"Exit point for {runnable.name}",
+            confidence=0.9,
+        )
+        builder.connect_pending(exits, final_id)
 
         diagrams.append(
             ActivityDiagram(
@@ -247,13 +212,367 @@ def synthesize_activity_diagrams_from_context(
                 owner_swc=context.swc_name or None,
                 owner_runnable=runnable.name,
                 source_requirements=trace_reqs,
-                nodes=nodes,
-                edges=edges,
-                sub_diagrams=sub_diagrams,
+                nodes=builder.nodes,
+                edges=builder.edges,
+                sub_diagrams=builder.sub_diagrams,
             )
         )
 
     return diagrams
+
+
+class _ActivityGraphBuilder:
+    def __init__(
+        self,
+        swc_name: str,
+        runnable_name: str,
+        req_ids: list[str],
+        helper_names: set[str],
+    ) -> None:
+        from mudtool.models.json_uml import ActivityEdge, ActivityNode, ActivityNodeType
+
+        self.ActivityNode = ActivityNode
+        self.ActivityEdge = ActivityEdge
+        self.ActivityNodeType = ActivityNodeType
+        self.swc_name = swc_name
+        self.runnable_name = runnable_name
+        self.req_ids = list(req_ids)
+        self.helper_names = set(helper_names)
+        self.nodes: list[ActivityNode] = []
+        self.edges: list[ActivityEdge] = []
+        self.sub_diagrams = []
+        self._sub_ids: set[str] = set()
+        self._node_counter = 1
+        self._edge_counter = 1
+
+    def add_node(
+        self,
+        name: str,
+        node_type,
+        *,
+        node_id: str | None = None,
+        trace_reqs: list[str] | None = None,
+        description: str | None = None,
+        confidence: float = 0.88,
+        rte_call: str | None = None,
+        port: str | None = None,
+        element: str | None = None,
+        callee: str | None = None,
+    ) -> str:
+        node_id = node_id or f"N_{self._node_counter:02d}"
+        if node_id != "N_00":
+            self._node_counter += 1
+        self.nodes.append(
+            self.ActivityNode(
+                id=node_id,
+                name=name,
+                node_type=node_type,
+                rte_call=rte_call,
+                port=port,
+                element=element,
+                callee=callee,
+                trace_reqs=list(trace_reqs if trace_reqs is not None else self.req_ids),
+                description=description,
+                confidence=confidence,
+            )
+        )
+        return node_id
+
+    def add_edge(
+        self,
+        source: str,
+        target: str,
+        *,
+        guard: str | None = None,
+        label: str | None = None,
+    ) -> None:
+        self.edges.append(
+            self.ActivityEdge(
+                id=f"E_{self._edge_counter:02d}",
+                source=source,
+                target=target,
+                guard=guard,
+                label=label,
+            )
+        )
+        self._edge_counter += 1
+
+    def connect_pending(self, pending: list[tuple[str, str | None]], target: str) -> None:
+        for source, guard in pending:
+            self.add_edge(source, target, guard=guard)
+
+    def emit_block(
+        self,
+        steps: list[NumberedStep],
+        index: int,
+        *,
+        min_depth: int,
+        pending: list[tuple[str, str | None]],
+        stop_kinds: set[str],
+    ) -> tuple[int, list[tuple[str, str | None]]]:
+        exits = list(pending)
+        while index < len(steps):
+            step = steps[index]
+            if step.depth < min_depth:
+                break
+            if step.depth > min_depth:
+                index, exits = self.emit_block(
+                    steps,
+                    index,
+                    min_depth=step.depth,
+                    pending=exits,
+                    stop_kinds=set(),
+                )
+                continue
+            if step.kind in stop_kinds:
+                break
+            index, exits = self.emit_statement(steps, index, exits, step.depth)
+        return index, exits
+
+    def emit_statement(
+        self,
+        steps: list[NumberedStep],
+        index: int,
+        pending: list[tuple[str, str | None]],
+        depth: int,
+    ) -> tuple[int, list[tuple[str, str | None]]]:
+        kind = steps[index].kind
+        if kind == "if":
+            return self.emit_if(steps, index, pending, depth)
+        if kind in {"while", "for", "until"}:
+            return self.emit_loop(steps, index, pending, depth)
+        if kind == "switch":
+            return self.emit_switch(steps, index, pending, depth)
+        node_pending = self.emit_action_step(steps[index].text, pending)
+        return index + 1, [node_pending]
+
+    def emit_action_step(
+        self,
+        step_text: str,
+        pending: list[tuple[str, str | None]],
+    ) -> tuple[str, str | None]:
+        node_type = self.ActivityNodeType.ACTION
+        callee = None
+        description = _short_step_description(step_text)
+        rte_meta = _extract_rte_metadata(step_text)
+        if rte_meta:
+            node_type = self.ActivityNodeType.CALL
+        else:
+            helper_name = _extract_helper_call(step_text, self.helper_names)
+            if helper_name:
+                node_type = self.ActivityNodeType.FUNCTION_CALL
+                callee = helper_name
+            elif "dem_reporterrorstatus" in step_text.lower() or "dem_seteventstatus" in step_text.lower():
+                node_type = self.ActivityNodeType.EXCEPTION
+        node_id = self.add_node(
+            name=step_text,
+            node_type=node_type,
+            rte_call=rte_meta["rte_call"] if rte_meta else None,
+            port=rte_meta["port"] if rte_meta else None,
+            element=rte_meta["element"] if rte_meta else None,
+            callee=callee,
+            description=description,
+            confidence=0.88,
+        )
+        self.connect_pending(pending, node_id)
+        if callee and callee not in self._sub_ids:
+            self._sub_ids.add(callee)
+            self.sub_diagrams.append(
+                _make_helper_subdiagram(
+                    swc_name=self.swc_name,
+                    runnable_name=self.runnable_name,
+                    callee=callee,
+                    step_text=step_text,
+                    req_ids=self.req_ids,
+                )
+            )
+        return (node_id, None)
+
+    def emit_if(
+        self,
+        steps: list[NumberedStep],
+        index: int,
+        pending: list[tuple[str, str | None]],
+        depth: int,
+    ) -> tuple[int, list[tuple[str, str | None]]]:
+        decision_id = self.add_node(
+            name=_strip_control_prefix(steps[index].text),
+            node_type=self.ActivityNodeType.DECISION,
+            description=_short_step_description(steps[index].text),
+            confidence=0.9,
+        )
+        self.connect_pending(pending, decision_id)
+        index += 1
+
+        index, true_exits, _ = self.emit_branch_body(
+            steps,
+            index,
+            depth,
+            pending=[(decision_id, "[true]")],
+            stop_kinds={"else_if", "else", "end_if"},
+        )
+        branch_exits = list(true_exits)
+        false_pending = [(decision_id, "[false]")]
+
+        while index < len(steps) and steps[index].depth == depth and steps[index].kind == "else_if":
+            else_if_decision = self.add_node(
+                name=_strip_control_prefix(steps[index].text),
+                node_type=self.ActivityNodeType.DECISION,
+                description=_short_step_description(steps[index].text),
+                confidence=0.9,
+            )
+            self.connect_pending(false_pending, else_if_decision)
+            index += 1
+            index, elseif_exits, _ = self.emit_branch_body(
+                steps,
+                index,
+                depth,
+                pending=[(else_if_decision, "[true]")],
+                stop_kinds={"else_if", "else", "end_if"},
+            )
+            branch_exits.extend(elseif_exits)
+            false_pending = [(else_if_decision, "[false]")]
+
+        if index < len(steps) and steps[index].depth == depth and steps[index].kind == "else":
+            index += 1
+            index, else_exits, _ = self.emit_branch_body(
+                steps,
+                index,
+                depth,
+                pending=false_pending,
+                stop_kinds={"end_if"},
+            )
+            branch_exits.extend(else_exits)
+        else:
+            branch_exits.extend(false_pending)
+
+        if index < len(steps) and steps[index].depth == depth and steps[index].kind == "end_if":
+            index += 1
+
+        merge_id = self.add_node(
+            name="Merge",
+            node_type=self.ActivityNodeType.MERGE,
+            description="Branch merge",
+            confidence=0.86,
+        )
+        self.connect_pending(branch_exits, merge_id)
+        return index, [(merge_id, None)]
+
+    def emit_loop(
+        self,
+        steps: list[NumberedStep],
+        index: int,
+        pending: list[tuple[str, str | None]],
+        depth: int,
+    ) -> tuple[int, list[tuple[str, str | None]]]:
+        loop_step = steps[index]
+        decision_id = self.add_node(
+            name=_strip_control_prefix(loop_step.text),
+            node_type=self.ActivityNodeType.DECISION,
+            description=_short_step_description(loop_step.text),
+            confidence=0.9,
+        )
+        self.connect_pending(pending, decision_id)
+        index += 1
+
+        stop_kinds = {"end_loop"}
+        if loop_step.kind == "until":
+            stop_kinds = {"end_loop", "until"}
+        index, body_exits, consumed = self.emit_branch_body(
+            steps,
+            index,
+            depth,
+            pending=[(decision_id, "[loop]")],
+            stop_kinds=stop_kinds,
+        )
+        if consumed:
+            for source, _guard in body_exits:
+                self.add_edge(source, decision_id)
+
+        if index < len(steps) and steps[index].depth == depth and steps[index].kind in stop_kinds:
+            index += 1
+
+        merge_id = self.add_node(
+            name="Loop exit",
+            node_type=self.ActivityNodeType.MERGE,
+            description="Loop exit",
+            confidence=0.86,
+        )
+        self.add_edge(decision_id, merge_id, guard="[done]")
+        return index, [(merge_id, None)]
+
+    def emit_switch(
+        self,
+        steps: list[NumberedStep],
+        index: int,
+        pending: list[tuple[str, str | None]],
+        depth: int,
+    ) -> tuple[int, list[tuple[str, str | None]]]:
+        decision_id = self.add_node(
+            name=_strip_control_prefix(steps[index].text),
+            node_type=self.ActivityNodeType.DECISION,
+            description=_short_step_description(steps[index].text),
+            confidence=0.9,
+        )
+        self.connect_pending(pending, decision_id)
+        index += 1
+        branch_exits: list[tuple[str, str | None]] = []
+
+        while index < len(steps) and steps[index].depth >= depth:
+            if steps[index].depth < depth:
+                break
+            if steps[index].depth == depth and steps[index].kind in {"case", "default"}:
+                guard = _switch_guard(steps[index].text)
+                index += 1
+                index, case_exits, _ = self.emit_branch_body(
+                    steps,
+                    index,
+                    depth,
+                    pending=[(decision_id, guard)],
+                    stop_kinds={"case", "default", "end_switch"},
+                )
+                branch_exits.extend(case_exits)
+                continue
+            break
+
+        if not branch_exits:
+            branch_exits.append((decision_id, "[default]"))
+
+        if index < len(steps) and steps[index].depth == depth and steps[index].kind == "end_switch":
+            index += 1
+
+        merge_id = self.add_node(
+            name="Merge",
+            node_type=self.ActivityNodeType.MERGE,
+            description="Switch merge",
+            confidence=0.86,
+        )
+        self.connect_pending(branch_exits, merge_id)
+        return index, [(merge_id, None)]
+
+    def emit_branch_body(
+        self,
+        steps: list[NumberedStep],
+        index: int,
+        depth: int,
+        pending: list[tuple[str, str | None]],
+        stop_kinds: set[str],
+    ) -> tuple[int, list[tuple[str, str | None]], bool]:
+        if index >= len(steps):
+            return index, pending, False
+        if steps[index].depth > depth:
+            next_index, exits = self.emit_block(
+                steps,
+                index,
+                min_depth=steps[index].depth,
+                pending=pending,
+                stop_kinds=stop_kinds,
+            )
+            return next_index, exits, next_index > index
+        if steps[index].depth == depth and steps[index].kind not in stop_kinds:
+            next_index, exits = self.emit_statement(steps, index, pending, depth)
+            return next_index, exits, True
+        return index, pending, False
 
 
 def _extract_swc_name(markdown: str) -> str:
@@ -345,22 +664,98 @@ def _normalize_heading_title(title: str) -> str:
 
 
 def _parse_numbered_steps(text: str) -> list[str]:
-    steps: list[str] = []
-    current: list[str] = []
+    return [step.text for step in _parse_numbered_step_entries(text)]
+
+
+def _parse_numbered_step_entries(text: str) -> list[NumberedStep]:
+    steps: list[NumberedStep] = []
+    current_chunks: list[str] = []
+    current_depth = 1
     for raw_line in (text or "").splitlines():
-        line = raw_line.strip()
-        if not line:
+        if not raw_line.strip():
             continue
-        numbered = re.match(r"^\d+\.\s*(.+)$", line)
+        numbered = re.match(r"^(\s*)(\d+(?:\.\d+)*)(?:[.)])\s*(.+)$", raw_line)
         if numbered:
-            if current:
-                steps.append(_normalize_ws(" ".join(current)))
-            current = [numbered.group(1).strip()]
-        elif current:
-            current.append(line)
-    if current:
-        steps.append(_normalize_ws(" ".join(current)))
+            if current_chunks:
+                normalized = _normalize_ws(" ".join(current_chunks))
+                steps.append(
+                    NumberedStep(
+                        text=normalized,
+                        depth=current_depth,
+                        kind=_classify_step_kind(normalized),
+                    )
+                )
+            current_depth = max(1, len(numbered.group(2).split(".")))
+            current_chunks = [numbered.group(3).strip()]
+        elif current_chunks:
+            current_chunks.append(raw_line.strip())
+    if current_chunks:
+        normalized = _normalize_ws(" ".join(current_chunks))
+        steps.append(
+            NumberedStep(
+                text=normalized,
+                depth=current_depth,
+                kind=_classify_step_kind(normalized),
+            )
+        )
     return steps
+
+
+def _classify_step_kind(step: str) -> str:
+    lowered = _normalize_ws(step).lower()
+    if re.match(r"^(else\s+if|elseif)\b", lowered):
+        return "else_if"
+    if re.match(r"^if\b", lowered):
+        return "if"
+    if re.match(r"^else\b", lowered):
+        return "else"
+    if re.match(r"^(end\s*if|endif)\b", lowered):
+        return "end_if"
+    if re.match(r"^while\b", lowered):
+        return "while"
+    if re.match(r"^until\b", lowered):
+        return "until"
+    if re.match(r"^(for\s+each|for\s+all|for\b)", lowered):
+        return "for"
+    if re.match(r"^(end\s*while|endwhile|end\s*for|endfor|end\s*loop|endloop)\b", lowered):
+        return "end_loop"
+    if re.match(r"^switch\b", lowered):
+        return "switch"
+    if re.match(r"^case\b", lowered):
+        return "case"
+    if re.match(r"^default\b", lowered):
+        return "default"
+    if re.match(r"^(end\s*switch|endswitch)\b", lowered):
+        return "end_switch"
+    return "action"
+
+
+def _strip_control_prefix(step: str) -> str:
+    text = _normalize_ws(step)
+    patterns = [
+        r"^(?:else\s+if|elseif)\s+",
+        r"^if\s+",
+        r"^while\s+",
+        r"^until\s+",
+        r"^(?:for\s+each|for\s+all|for)\s+",
+        r"^switch\s+",
+        r"^case\s+",
+        r"^default\s*:?\s*",
+        r"^(?:end\s*if|endif|end\s*while|endwhile|end\s*for|endfor|end\s*switch|endswitch)\s*",
+    ]
+    for pattern in patterns:
+        updated = re.sub(pattern, "", text, flags=re.IGNORECASE)
+        if updated != text:
+            text = updated
+            break
+    return text.strip(" :") or _normalize_ws(step)
+
+
+def _switch_guard(step: str) -> str:
+    lowered = _normalize_ws(step)
+    if _classify_step_kind(lowered) == "default":
+        return "[default]"
+    return f"[{_strip_control_prefix(step)}]"
 
 
 def _extract_rte_metadata(step: str) -> dict[str, str] | None:

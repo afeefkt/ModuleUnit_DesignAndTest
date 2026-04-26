@@ -162,6 +162,17 @@ class Settings(BaseSettings):
     #                    Better quality, ~3× slower.  Falls back to single_pass on error.
     mud_spec_pipeline: str = "single_pass"
 
+    # ── Activity Diagram Pipeline (multi-stage) ──────────────────────────────
+    # MUD_ACTIVITY_PIPELINE_ENABLED=true → use 5-stage pipeline:
+    #   Stage1 skeleton (deepseek-r1:7b) → Stage3 per-runnable diagram
+    #   (qwen2.5-coder:7b) → Stage4 reviewer pass → Stage5 deterministic repair.
+    # When false (default) the legacy single-call path runs unchanged.
+    activity_pipeline_enabled: bool = False
+    # Optional per-stage backend overrides — empty = use generator model.
+    # Recommended: deepseek-r1:7b for both skeleton and reviewer.
+    activity_pipeline_skeleton_model: str = ""
+    activity_pipeline_reviewer_model: str = ""
+
     def get_skills_dir(self) -> Path:
         if self.skills_dir:
             return self.skills_dir

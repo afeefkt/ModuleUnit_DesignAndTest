@@ -184,6 +184,113 @@ class AIOrchestrator:
         )
         return skeleton
 
+    def _make_backend_with_model(self, model_name: str) -> BaseAIBackend:
+        """Build a CloudBackend variant with ``openai_model`` overridden.
+
+        Falls back to the generator backend when the active backend is local
+        or when ``model_name`` matches the generator (no swap needed).
+        """
+        gen_backend = self._get_backend()
+        if not isinstance(gen_backend, CloudBackend):
+            return gen_backend
+        if not model_name or model_name == self.settings.openai_model:
+            return gen_backend
+        try:
+            new_settings = self.settings.model_copy(update={"openai_model": model_name})
+        except AttributeError:
+            new_settings = self.settings.copy(update={"openai_model": model_name})
+        return CloudBackend(new_settings)
+
+    def _get_activity_skeleton_backend(self) -> BaseAIBackend:
+        """Backend for ActivityPipeline Stage 1 (skeleton extraction).
+
+        Uses ``settings.activity_pipeline_skeleton_model`` (e.g.
+        ``deepseek-r1:7b``) when set; falls back to the generator backend.
+        """
+        model = (getattr(self.settings, "activity_pipeline_skeleton_model", "") or "").strip()
+        if not model:
+            return self._get_backend()
+        backend = self._make_backend_with_model(model)
+        logger.info("Activity skeleton backend: %s (model=%s)", backend.backend_name, model)
+        return backend
+
+    def _get_activity_reviewer_backend(self) -> BaseAIBackend:
+        """Backend for ActivityPipeline Stage 4 (cross-runnable review)."""
+        model = (getattr(self.settings, "activity_pipeline_reviewer_model", "") or "").strip()
+        if not model:
+            return self._get_backend()
+        backend = self._make_backend_with_model(model)
+        logger.info("Activity reviewer backend: %s (model=%s)", backend.backend_name, model)
+        return backend
+
+    async def _run_activity_pipeline(
+        self,
+        mud_ctx_obj,
+        module_context: Optional[str],
+        requirements: list[Requirement],
+        activity_label_style: str,
+        temperature: float,
+        progress_callback: Optional[callable] = None,
+    ) -> Optional["GenerationResult"]:
+        """Run the multi-stage ActivityPipeline and return a GenerationResult.
+
+        Returns None on hard failure (caller falls back to legacy single-call).
+        Returned dicts go through the same ``_parse_response`` path as the
+        legacy AI output so existing repair/validation/provenance logic fires.
+        """
+        try:
+            from mudtool.ai.activity_pipeline_stages import ActivityPipeline
+        except Exception as exc:
+            logger.warning("ActivityPipeline import failed: %s", exc)
+            return None
+
+        try:
+            pipeline = ActivityPipeline(
+                backend=self._get_backend(),
+                skeleton_backend=self._get_activity_skeleton_backend(),
+                reviewer_backend=self._get_activity_reviewer_backend(),
+                progress_callback=progress_callback,
+            )
+            diagram_dicts = await pipeline.run(
+                mud_activity_context=mud_ctx_obj,
+                module_context=module_context,
+                requirements=requirements,
+                activity_label_style=activity_label_style,
+                temperature=temperature,
+            )
+        except Exception as exc:
+            logger.warning("ActivityPipeline.run raised: %s", exc, exc_info=True)
+            return None
+
+        if not diagram_dicts:
+            return None
+
+        # Funnel through the existing _parse_response path so model_validate +
+        # _repair_activity_diagram + provenance stamping all run uniformly.
+        import json as _json
+
+        class _PipelineResponse:
+            def __init__(self, content: str, model: str, latency_ms: int = 0):
+                self.content = content
+                self.model = model
+                self.latency_ms = latency_ms
+
+        wrapped = _json.dumps({"diagrams": diagram_dicts})
+        response = _PipelineResponse(
+            content=wrapped,
+            model="activity_pipeline",
+            latency_ms=0,
+        )
+        prompt_hash = "activity_pipeline_v1"
+        backend_name = getattr(self._get_backend(), "backend_name", "activity_pipeline")
+        return self._parse_response(
+            response,
+            DiagramType.ACTIVITY,
+            prompt_hash,
+            backend_name,
+            req_ids=[r.req_id for r in requirements],
+        )
+
     async def generate_diagram(
         self,
         diagram_type: DiagramType,
@@ -197,7 +304,7 @@ class AIOrchestrator:
         autosar_compliant: bool = True,
         elaborated_data: Optional[dict] = None,
         activity_source: str = "requirements",
-        mud_activity_context: Optional[str] = None,
+        mud_activity_context: Any = None,  # str | MudActivityContext | None
     ) -> GenerationResult:
         """Generate a single diagram from requirements.
 
@@ -238,6 +345,21 @@ class AIOrchestrator:
             activity_label_style=activity_label_style,
         )
 
+        # mud_activity_context may be a MudActivityContext object (preferred —
+        # routes.py passes the object so the multi-stage ActivityPipeline can
+        # iterate runnables) or a legacy string (already-rendered prompt block).
+        mud_ctx_obj = None
+        mud_ctx_block: str = ""
+        if mud_activity_context is not None:
+            if hasattr(mud_activity_context, "to_prompt_block") and hasattr(mud_activity_context, "runnables"):
+                mud_ctx_obj = mud_activity_context
+                try:
+                    mud_ctx_block = mud_ctx_obj.to_prompt_block()
+                except Exception:
+                    mud_ctx_block = ""
+            elif isinstance(mud_activity_context, str):
+                mud_ctx_block = mud_activity_context
+
         if diagram_type == DiagramType.ACTIVITY and activity_source == "mud_spec":
             system_prompt += (
                 "\n\nMUD-FIRST ACTIVITY MODE:\n"
@@ -248,11 +370,34 @@ class AIOrchestrator:
                 "- Every diagram must contain a valid Start-to-End executable path."
             )
             user_prompt = self._build_activity_mud_user_prompt(
-                mud_activity_context or "",
+                mud_ctx_block,
                 requirements,
                 module_context,
                 activity_label_style=activity_label_style,
             )
+
+            # ── Multi-stage ActivityPipeline (skeleton → per-runnable → review) ─
+            # When enabled, bypass the single-call generation below and run the
+            # 5-stage pipeline.  Returns empty list to fall through to legacy
+            # path on any failure.
+            if (
+                mud_ctx_obj is not None
+                and getattr(self.settings, "activity_pipeline_enabled", False)
+                and mud_ctx_obj.runnables
+            ):
+                pipeline_result = await self._run_activity_pipeline(
+                    mud_ctx_obj=mud_ctx_obj,
+                    module_context=module_context,
+                    requirements=requirements,
+                    activity_label_style=activity_label_style,
+                    temperature=temperature,
+                    progress_callback=progress_callback,
+                )
+                if pipeline_result is not None and pipeline_result.diagrams:
+                    return pipeline_result
+                logger.info(
+                    "[Activity Pipeline] empty result — falling back to legacy single-call path"
+                )
 
         # Inject elaborated context if available (from pre-processing step)
         try:
@@ -673,7 +818,7 @@ class AIOrchestrator:
         autosar_compliant: bool = True,
         elaborated_data: Optional[dict] = None,
         activity_source: str = "requirements",
-        mud_activity_context: Optional[str] = None,
+        mud_activity_context: Any = None,
     ) -> GenerationResult:
         """Post-generation verification gate.
 
