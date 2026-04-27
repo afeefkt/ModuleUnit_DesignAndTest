@@ -126,6 +126,65 @@ def test_synthesize_activity_diagrams_from_context_builds_if_else_branching():
     assert "[else]" in guards
 
 
+def test_synthesize_activity_diagrams_from_context_skips_merge_when_only_one_branch_continues():
+    markdown = """
+# MUD Spec: SWC_Guard
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Guard | Cyclic | 10 ms | ASIL-B | Guard return |
+
+## 7. Functional Description
+### RE_Guard
+1. If inputInvalid
+1.1. Rte_Write(PP_Status, 0)
+1.2. return
+2. Else
+2.1. Rte_Write(PP_Status, 1)
+3. End If
+4. Rte_Write(PP_Result, result)
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_Guard")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-106"])[0]
+
+    merge_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.MERGE]
+    merge_names = {n.name for n in merge_nodes}
+
+    assert "Merge" not in merge_names
+    assert any((n.name or "").strip().lower() == "return" for n in diagram.nodes)
+
+
+def test_synthesize_activity_diagrams_from_context_skips_merge_when_all_branches_terminate():
+    markdown = """
+# MUD Spec: SWC_Terminal
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_Terminal | Cyclic | 10 ms | ASIL-B | Both branches terminate |
+
+## 7. Functional Description
+### RE_Terminal
+1. If faultActive
+1.1. Dem_ReportErrorStatus(Event_Fault, DEM_EVENT_STATUS_FAILED)
+1.2. return
+2. Else
+2.1. Rte_Write(PP_Status, 1)
+2.2. return
+3. End If
+"""
+
+    context = build_mud_activity_context(markdown, module_context="SWC_Terminal")
+    diagram = synthesize_activity_diagrams_from_context(context, ["REQ-107"])[0]
+
+    merge_nodes = [n for n in diagram.nodes if n.node_type == ActivityNodeType.MERGE]
+
+    assert not any(n.name == "Merge" for n in merge_nodes)
+    assert sum(1 for n in diagram.nodes if (n.name or "").strip().lower() == "return") == 2
+
+
 def test_synthesize_activity_diagrams_from_context_builds_nested_condition():
     markdown = """
 # MUD Spec: SWC_Traction

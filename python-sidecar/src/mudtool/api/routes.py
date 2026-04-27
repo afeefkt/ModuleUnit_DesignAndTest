@@ -1409,7 +1409,7 @@ async def export_mermaid_inline(request: MermaidInlineRequest):
     from mudtool.generator.mermaid_exporter import MermaidExporter
 
     exporter = MermaidExporter()
-    diagrams = exporter.export_result_inline(request.result)
+    diagrams = exporter.export_result_inline(request.result, preview=True)
     return {"diagrams": diagrams}
 
 

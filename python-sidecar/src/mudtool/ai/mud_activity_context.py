@@ -514,15 +514,19 @@ class _ActivityGraphBuilder:
 
         if index < len(steps) and steps[index].depth == depth and steps[index].kind == "end_if":
             index += 1
-
-        merge_id = self.add_node(
-            name="Merge",
-            node_type=self.ActivityNodeType.MERGE,
-            description="Branch merge",
-            confidence=0.86,
-        )
-        self.connect_pending(branch_exits, merge_id)
-        return index, [(merge_id, None)]
+        live_exits = list(branch_exits)
+        if len(live_exits) >= 2:
+            merge_id = self.add_node(
+                name="Merge",
+                node_type=self.ActivityNodeType.MERGE,
+                description="Branch merge",
+                confidence=0.86,
+            )
+            self.connect_pending(live_exits, merge_id)
+            return index, [(merge_id, None)]
+        if len(live_exits) == 1:
+            return index, live_exits
+        return index, []
 
     def emit_loop(
         self,

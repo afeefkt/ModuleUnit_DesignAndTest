@@ -326,6 +326,29 @@
       color: #374151;
     }
 
+    .preview-status {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .preview-status.suspicious {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .preview-status.fallback {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .preview-status.error {
+      background: #fecaca;
+      color: #991b1b;
+    }
+
     .mmd-render-error {
       color: #ef4444;
       font-size: 12px;
@@ -365,6 +388,83 @@
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+    }
+
+    .diagram-modal-box {
+      background: white;
+      border-radius: 14px;
+      width: min(1200px, 96vw);
+      max-width: 96vw;
+      height: min(88vh, 920px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .diagram-modal-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #fff;
+    }
+
+    .diagram-modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f172a;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .diagram-modal-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .diagram-tool-btn {
+      border: 1px solid #d1d5db;
+      background: white;
+      color: #334155;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .diagram-tool-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
+    .diagram-modal-body {
+      flex: 1;
+      overflow: auto;
+      background: #f8fafc;
+      padding: 16px;
+    }
+
+    .diagram-modal-canvas {
+      display: inline-block;
+      min-width: 100%;
+      transform-origin: top left;
+    }
+
+    .diagram-modal-canvas .mermaid {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      display: inline-block;
+      min-width: 100%;
     }
 
     .backend-card {
@@ -750,6 +850,24 @@
         </div>
 
       </div><!-- end modal body -->
+    </div>
+  </div>
+
+  <div id="diagramModal" class="modal-overlay hidden" onclick="closeDiagramModalIfBackdrop(event)">
+    <div class="diagram-modal-box">
+      <div class="diagram-modal-toolbar">
+        <div id="diagramModalTitle" class="diagram-modal-title">Diagram</div>
+        <div class="diagram-modal-controls">
+          <span id="diagramModalZoomLabel" class="text-xs text-slate-500">100%</span>
+          <button class="diagram-tool-btn" onclick="adjustDiagramZoom(-0.15)">-</button>
+          <button class="diagram-tool-btn" onclick="resetDiagramZoom()">Reset</button>
+          <button class="diagram-tool-btn" onclick="adjustDiagramZoom(0.15)">+</button>
+          <button class="diagram-tool-btn" onclick="closeDiagramModal()">Close</button>
+        </div>
+      </div>
+      <div id="diagramModalBody" class="diagram-modal-body">
+        <div id="diagramModalCanvas" class="diagram-modal-canvas"></div>
+      </div>
     </div>
   </div>
 
@@ -1300,6 +1418,9 @@
       infoActiveTab: 'requirements',
       aiStreamBuffer: '',      // accumulated raw tokens for AI Live Stream tab
       progressLogKeys: new Set(),
+      diagramRenderMeta: {},   // { key: { rendered, fallback, reason } }
+      diagramModalKey: null,
+      diagramModalZoom: 1,
     };
 
     // ── Helpers ─────────────────────────────────────────────
@@ -2173,10 +2294,14 @@
         <div class="diagram-card-header">
           <span class="type-badge ${typeBadgeClass(key)}">${diagTypeName(key)}</span>
           <span class="diagram-card-name" title="${diagDisplayName(key)}">${diagDisplayName(key)}${childBadge}</span>
+          <span class="preview-status hidden" id="status_${safeId}"></span>
+          <button class="card-src-btn"
+                  onclick="event.stopPropagation();openDiagramModal('${key}')">Open</button>
           <button class="card-src-btn"
                   onclick="event.stopPropagation();toggleCardSource('${key}')">⟨/⟩</button>
         </div>
-        <div class="diagram-card-body" style="min-height:${minH}px">
+        <div class="diagram-card-body" style="min-height:${minH}px"
+             onclick="event.stopPropagation();focusCard('${key}');openDiagramModal('${key}')">
           <div class="mermaid" id="${safeId}">${escapeHtml(mmdText)}</div>
         </div>
         <pre class="mmd-source" id="src_${safeId}"
@@ -2210,17 +2335,7 @@
         const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
         const el = document.getElementById(safeId);
         if (!el) return;
-        mermaid.run({ nodes: [el] })
-          .then(() => {
-            const svg = el.querySelector('svg');
-            const blankReason = detectBlankMermaidSvg(svg);
-            if (blankReason) {
-              showMermaidFallback(el, mmdText, `Blank-looking diagram: ${blankReason}`);
-            }
-          })
-          .catch(e => {
-            showMermaidFallback(el, mmdText, `Render error: ${e.message}`);
-          });
+        renderMermaidIntoElement(el, mmdText, { key });
       });
 
       if (entries.length) {
@@ -2232,8 +2347,79 @@
       attachNodeClickHandlers();
     }
 
-    function detectBlankMermaidSvg(svg) {
-      if (!svg) return 'no SVG was produced';
+    function setDiagramRenderMeta(key, meta) {
+      if (!key) return;
+      state.diagramRenderMeta[key] = meta;
+      const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+      const badge = document.getElementById(`status_${safeId}`);
+      if (!badge) return;
+      badge.className = 'preview-status hidden';
+      badge.textContent = '';
+      if (meta.status === 'ok') {
+        return;
+      }
+      badge.classList.remove('hidden');
+      if (meta.status === 'suspicious_but_rendered') {
+        badge.classList.add('suspicious');
+        badge.textContent = 'Preview odd';
+        badge.title = meta.reason || 'Rendered with unusual bounds';
+        return;
+      }
+      if (meta.status === 'render_error') {
+        badge.classList.add('error');
+        badge.textContent = 'Render error';
+        badge.title = meta.reason || 'Mermaid render error';
+        return;
+      }
+      badge.classList.add('fallback');
+      badge.textContent = 'Preview fallback';
+      badge.title = meta.reason || 'Fallback source view';
+    }
+
+    function renderMermaidIntoElement(el, mmdText, opts = {}) {
+      if (!el) return Promise.resolve({ status: 'render_error', rendered: false, fallback: true, reason: 'no target element' });
+      const attemptRender = (attempt = 0) => mermaid.run({ nodes: [el] })
+        .then(() => {
+          const svg = el.querySelector('svg');
+          const inspection = inspectMermaidSvg(svg);
+          if (inspection.status === 'fallback_source') {
+            if (opts.retryOnBlank && attempt === 0) {
+              el.textContent = mmdText;
+              return attemptRender(1);
+            }
+            showMermaidFallback(el, mmdText, `Blank-looking diagram: ${inspection.reason}`);
+            if (opts.key) {
+              setDiagramRenderMeta(opts.key, inspection);
+            }
+            return inspection;
+          }
+          if (inspection.status === 'suspicious_but_rendered' && opts.key) {
+            setDiagramRenderMeta(opts.key, inspection);
+          } else if (opts.key) {
+            setDiagramRenderMeta(opts.key, inspection);
+          }
+          return inspection;
+        })
+        .catch(e => {
+          const meta = {
+            status: 'render_error',
+            rendered: false,
+            fallback: true,
+            reason: `Render error: ${e.message}`,
+          };
+          showMermaidFallback(el, mmdText, meta.reason);
+          if (opts.key) {
+            setDiagramRenderMeta(opts.key, meta);
+          }
+          return meta;
+        });
+      return attemptRender(0);
+    }
+
+    function inspectMermaidSvg(svg) {
+      if (!svg) {
+        return { status: 'fallback_source', rendered: false, fallback: true, reason: 'no SVG was produced' };
+      }
 
       const viewBox = (svg.getAttribute('viewBox') || '').trim();
       if (viewBox) {
@@ -2242,36 +2428,47 @@
           const vbWidth = parts[2];
           const vbHeight = parts[3];
           if (!(vbWidth > 1) || !(vbHeight > 1)) {
-            return `invalid viewBox ${viewBox}`;
+            return { status: 'fallback_source', rendered: false, fallback: true, reason: `invalid viewBox ${viewBox}` };
           }
         }
       }
 
       const graphGroup = svg.querySelector('g.output, g.root, g.nodes, g[class*="output"]') || svg;
-      const renderedNodes = svg.querySelectorAll('.node, .cluster, .edgePath, .edgeLabel').length;
-      if (renderedNodes === 0) {
-        return 'SVG contains no rendered nodes or edges';
+      const renderedNodes = svg.querySelectorAll('.node, .cluster, .edgePath, .edgeLabel, .label').length;
+      const basicShapes = graphGroup.querySelectorAll('path, rect, polygon, ellipse, circle, line, text, tspan').length;
+      if (renderedNodes === 0 && basicShapes <= 2) {
+        return { status: 'fallback_source', rendered: false, fallback: true, reason: 'SVG contains no rendered nodes or edges' };
       }
 
       try {
         const box = typeof graphGroup.getBBox === 'function' ? graphGroup.getBBox() : null;
         if (!box) {
-          return null;
+          return { status: 'ok', rendered: true, fallback: false, reason: null };
         }
         if (!(box.width > 4) || !(box.height > 4)) {
-          return `content bounds too small (${Math.round(box.width)}x${Math.round(box.height)})`;
+          return {
+            status: 'fallback_source',
+            rendered: false,
+            fallback: true,
+            reason: `content bounds too small (${Math.round(box.width)}x${Math.round(box.height)})`,
+          };
         }
         if (!Number.isFinite(box.x) || !Number.isFinite(box.y)) {
-          return 'content bounds are non-finite';
+          return { status: 'fallback_source', rendered: false, fallback: true, reason: 'content bounds are non-finite' };
         }
-        if (Math.abs(box.x) > 50000 || Math.abs(box.y) > 50000) {
-          return `content is far off-canvas (${Math.round(box.x)}, ${Math.round(box.y)})`;
+        if (Math.abs(box.x) > 5000 || Math.abs(box.y) > 5000) {
+          return {
+            status: 'suspicious_but_rendered',
+            rendered: true,
+            fallback: false,
+            reason: `Rendered with unusual bounds (${Math.round(box.x)}, ${Math.round(box.y)})`,
+          };
         }
       } catch (e) {
-        return `unable to inspect SVG bounds: ${e.message}`;
+        return { status: 'fallback_source', rendered: false, fallback: true, reason: `unable to inspect SVG bounds: ${e.message}` };
       }
 
-      return null;
+      return { status: 'ok', rendered: true, fallback: false, reason: null };
     }
 
     function showMermaidFallback(el, mmdText, reason) {
@@ -2300,11 +2497,55 @@
       src.style.display = src.style.display === 'none' ? 'block' : 'none';
     }
 
+    function updateDiagramModalZoomUi() {
+      const label = document.getElementById('diagramModalZoomLabel');
+      const canvas = document.getElementById('diagramModalCanvas');
+      if (label) label.textContent = `${Math.round(state.diagramModalZoom * 100)}%`;
+      if (canvas) canvas.style.transform = `scale(${state.diagramModalZoom})`;
+    }
+
+    function adjustDiagramZoom(delta) {
+      state.diagramModalZoom = Math.max(0.4, Math.min(2.5, state.diagramModalZoom + delta));
+      updateDiagramModalZoomUi();
+    }
+
+    function resetDiagramZoom() {
+      state.diagramModalZoom = 1;
+      updateDiagramModalZoomUi();
+    }
+
+    function closeDiagramModal() {
+      document.getElementById('diagramModal').classList.add('hidden');
+      document.getElementById('diagramModalCanvas').innerHTML = '';
+      state.diagramModalKey = null;
+      resetDiagramZoom();
+    }
+
+    function closeDiagramModalIfBackdrop(e) {
+      if (e.target === document.getElementById('diagramModal')) closeDiagramModal();
+    }
+
+    function openDiagramModal(key) {
+      const mmdText = state.diagrams[key];
+      if (!mmdText) return;
+      state.diagramModalKey = key;
+      state.diagramModalZoom = 1;
+      document.getElementById('diagramModalTitle').textContent = diagDisplayName(key);
+      const modal = document.getElementById('diagramModal');
+      const canvas = document.getElementById('diagramModalCanvas');
+      const safeId = 'modal_r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+      canvas.innerHTML = `<div class="mermaid" id="${safeId}">${escapeHtml(mmdText)}</div>`;
+      updateDiagramModalZoomUi();
+      modal.classList.remove('hidden');
+      const el = document.getElementById(safeId);
+      renderMermaidIntoElement(el, mmdText, { retryOnBlank: true }).then(() => attachNodeClickHandlers());
+    }
+
     // ── Interactive Node Details ─────────────────────────────
     function attachNodeClickHandlers() {
       // After Mermaid renders, add click handlers to SVG nodes
       setTimeout(() => {
-        document.querySelectorAll('.diagram-card-body .mermaid svg .node').forEach(svgNode => {
+        document.querySelectorAll('.diagram-card-body .mermaid svg .node, #diagramModalCanvas .mermaid svg .node').forEach(svgNode => {
           svgNode.style.cursor = 'pointer';
           svgNode.addEventListener('click', (e) => {
             e.stopPropagation();
