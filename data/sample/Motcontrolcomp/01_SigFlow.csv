@@ -1,20 +1,20 @@
-﻿Signal / Port Pair,From Component,From Port,Interface,Direction,To Component,To Port,Rate,Data Type,Physical Range,Description
-SpdRef → SpdCtrl,AppMgr,SpdCmdOut,SpdN1,→,SpdCtrl,SpdRef,10 ms,uint16,0–12000 rpm,Operator speed command
-SpdFbk → SpdCtrl,SpeedObs,SpdOut,SpdN1,→,SpdCtrl,SpdFbk,1 ms,uint16,0–15000 rpm,Actual speed feedback
-SpdFbk → MtrMon,SpeedObs,SpdOut,SpdN1,→,MtrMon,SpdMon,1 ms,uint16,0–15000 rpm,Speed for overspeed check
-IqMaxOut → SpdCtrl,MtrMon,IqMaxOut,MtrIqMax1,→,SpdCtrl,IqMaxIn,10 ms,float32,0–160 A,Protection-derived Iq limit
-IqRef → CurrCtrl,SpdCtrl,IqRef,MtrIq1,→,CurrCtrl,IqRef,1 ms,float32,−160–+160 A,Speed PI output → current ref
-IdRef → CurrCtrl,MTPA/Const,IdRefOut,MtrId1,→,CurrCtrl,IdRef,1 ms,sint16,−50–+50 A,d-axis ref (0 for SPMSM)
-IdFbk → CurrCtrl,CurrentSens,IdOut,MtrId1,→,CurrCtrl,IdFbk,100 µs,sint16,−160–+160 A,d-axis current feedback
-IqFbk → CurrCtrl,CurrentSens,IqOut,MtrIq1,→,CurrCtrl,IqFbk,100 µs,sint16,−160–+160 A,q-axis current feedback
-VdcBus → CurrCtrl,VdcMeas,VdcOut,VdcBus1,→,CurrCtrl,VdcBus,1 ms,uint16,0–800 V,DC bus for voltage limiting
-VdCmd → PWM,CurrCtrl,VdCmd,MtrVd1,→,SVM/PWM,VdIn,100 µs,sint16,−400–+400 V,d-axis voltage to modulator
-VqCmd → PWM,CurrCtrl,VqCmd,MtrVq1,→,SVM/PWM,VqIn,100 µs,sint16,−400–+400 V,q-axis voltage to modulator
-IdMon → MtrMon,CurrentSens,IdOut,MtrId1,→,MtrMon,IdMon,100 µs,sint16,−160–+160 A,d-axis current monitoring
-IqMon → MtrMon,CurrentSens,IqOut,MtrIq1,→,MtrMon,IqMon,100 µs,sint16,−160–+160 A,q-axis current monitoring
-MtrT → MtrMon,TempSens,MtrTOut,MtrT1,→,MtrMon,MtrT,10 ms,sint16,−40–+200 °C,Motor temperature
-VdcMon → MtrMon,VdcMeas,VdcOut,VdcBus1,→,MtrMon,VdcMon,1 ms,uint16,0–800 V,Vdc monitoring
-MtrProtSt → SysMgr,MtrMon,MtrProtSt,MtrProtSt1,→,SysMgr,MtrProtIn,1 ms,uint8,0–7,Aggregated protection status
-OcSt → SafetyMon,MtrMon,OcSt,MtrOcSt1,→,SafetyMon,OcIn,1 ms,boolean,F/T,Overcurrent active flag
-OtSt → SafetyMon,MtrMon,OtSt,MtrOtSt1,→,SafetyMon,OtIn,10 ms,boolean,F/T,Overtemperature active flag
-OpMod → SpdCtrl,SysMgr,ModOut,OpMod1,→,SpdCtrl,OpMod,Event,uint8,0–4 (enum),Mode switch — resets PI integrator
+Req_ID,Title,Description,Type,ASIL,Priority,Module_Hint,Status,Notes
+SIGFLOW-001,Signal flow: SpdRef → SpdCtrl,Operator speed command,interface,ASIL-B,must,SpdCtrl,approved,From=AppMgr.SpdCmdOut; To=SpdCtrl.SpdRef; Interface=SpdN1; Rate=10 ms; DataType=uint16; Range=0–12000 rpm
+SIGFLOW-002,Signal flow: SpdFbk → SpdCtrl,Actual speed feedback,interface,ASIL-B,must,SpdCtrl,approved,From=SpeedObs.SpdOut; To=SpdCtrl.SpdFbk; Interface=SpdN1; Rate=1 ms; DataType=uint16; Range=0–15000 rpm
+SIGFLOW-003,Signal flow: SpdFbk → MtrMon,Speed for overspeed check,interface,ASIL-B,must,MtrMon,approved,From=SpeedObs.SpdOut; To=MtrMon.SpdMon; Interface=SpdN1; Rate=1 ms; DataType=uint16; Range=0–15000 rpm
+SIGFLOW-004,Signal flow: IqMaxOut → SpdCtrl,Protection-derived Iq limit,interface,ASIL-B,must,SpdCtrl,approved,From=MtrMon.IqMaxOut; To=SpdCtrl.IqMaxIn; Interface=MtrIqMax1; Rate=10 ms; DataType=float32; Range=0–160 A
+SIGFLOW-005,Signal flow: IqRef → CurrCtrl,Speed PI output → current ref,interface,ASIL-B,must,CurrCtrl,approved,From=SpdCtrl.IqRef; To=CurrCtrl.IqRef; Interface=MtrIq1; Rate=1 ms; DataType=float32; Range=−160–+160 A
+SIGFLOW-006,Signal flow: IdRef → CurrCtrl,d-axis ref (0 for SPMSM),interface,ASIL-B,must,CurrCtrl,approved,From=MTPA/Const.IdRefOut; To=CurrCtrl.IdRef; Interface=MtrId1; Rate=1 ms; DataType=sint16; Range=−50–+50 A
+SIGFLOW-007,Signal flow: IdFbk → CurrCtrl,d-axis current feedback,interface,ASIL-B,must,CurrCtrl,approved,From=CurrentSens.IdOut; To=CurrCtrl.IdFbk; Interface=MtrId1; Rate=100 µs; DataType=sint16; Range=−160–+160 A
+SIGFLOW-008,Signal flow: IqFbk → CurrCtrl,q-axis current feedback,interface,ASIL-B,must,CurrCtrl,approved,From=CurrentSens.IqOut; To=CurrCtrl.IqFbk; Interface=MtrIq1; Rate=100 µs; DataType=sint16; Range=−160–+160 A
+SIGFLOW-009,Signal flow: VdcBus → CurrCtrl,DC bus for voltage limiting,interface,ASIL-B,must,CurrCtrl,approved,From=VdcMeas.VdcOut; To=CurrCtrl.VdcBus; Interface=VdcBus1; Rate=1 ms; DataType=uint16; Range=0–800 V
+SIGFLOW-010,Signal flow: VdCmd → PWM,d-axis voltage to modulator,interface,ASIL-B,must,SVM/PWM,approved,From=CurrCtrl.VdCmd; To=SVM/PWM.VdIn; Interface=MtrVd1; Rate=100 µs; DataType=sint16; Range=−400–+400 V
+SIGFLOW-011,Signal flow: VqCmd → PWM,q-axis voltage to modulator,interface,ASIL-B,must,SVM/PWM,approved,From=CurrCtrl.VqCmd; To=SVM/PWM.VqIn; Interface=MtrVq1; Rate=100 µs; DataType=sint16; Range=−400–+400 V
+SIGFLOW-012,Signal flow: IdMon → MtrMon,d-axis current monitoring,interface,ASIL-B,must,MtrMon,approved,From=CurrentSens.IdOut; To=MtrMon.IdMon; Interface=MtrId1; Rate=100 µs; DataType=sint16; Range=−160–+160 A
+SIGFLOW-013,Signal flow: IqMon → MtrMon,q-axis current monitoring,interface,ASIL-B,must,MtrMon,approved,From=CurrentSens.IqOut; To=MtrMon.IqMon; Interface=MtrIq1; Rate=100 µs; DataType=sint16; Range=−160–+160 A
+SIGFLOW-014,Signal flow: MtrT → MtrMon,Motor temperature,interface,ASIL-B,must,MtrMon,approved,From=TempSens.MtrTOut; To=MtrMon.MtrT; Interface=MtrT1; Rate=10 ms; DataType=sint16; Range=−40–+200 °C
+SIGFLOW-015,Signal flow: VdcMon → MtrMon,Vdc monitoring,interface,ASIL-B,must,MtrMon,approved,From=VdcMeas.VdcOut; To=MtrMon.VdcMon; Interface=VdcBus1; Rate=1 ms; DataType=uint16; Range=0–800 V
+SIGFLOW-016,Signal flow: MtrProtSt → SysMgr,Aggregated protection status,interface,ASIL-B,must,SysMgr,approved,From=MtrMon.MtrProtSt; To=SysMgr.MtrProtIn; Interface=MtrProtSt1; Rate=1 ms; DataType=uint8; Range=0–7
+SIGFLOW-017,Signal flow: OcSt → SafetyMon,Overcurrent active flag,interface,ASIL-B,must,SafetyMon,approved,From=MtrMon.OcSt; To=SafetyMon.OcIn; Interface=MtrOcSt1; Rate=1 ms; DataType=boolean; Range=F/T
+SIGFLOW-018,Signal flow: OtSt → SafetyMon,Overtemperature active flag,interface,ASIL-B,must,SafetyMon,approved,From=MtrMon.OtSt; To=SafetyMon.OtIn; Interface=MtrOtSt1; Rate=10 ms; DataType=boolean; Range=F/T
+SIGFLOW-019,Signal flow: OpMod → SpdCtrl,Mode switch — resets PI integrator,interface,ASIL-B,must,SpdCtrl,approved,From=SysMgr.ModOut; To=SpdCtrl.OpMod; Interface=OpMod1; Rate=Event; DataType=uint8; Range=0–4 (enum)

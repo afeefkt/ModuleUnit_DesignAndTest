@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from mudtool.config.settings import Settings, get_settings
@@ -42,6 +42,83 @@ def _sanitize_for_json(value):
 
 def _sse_json(payload: dict) -> str:
     return json_mod.dumps(_sanitize_for_json(payload), default=str, allow_nan=False)
+
+
+def _estimate_planned_diagrams(request: "GenerateRequest", diagram_types: list[DiagramType]) -> tuple[int, list[str]]:
+    planned_items: list[str] = []
+    non_activity = [dt for dt in diagram_types if dt != DiagramType.ACTIVITY]
+    planned_items.extend(dt.value for dt in non_activity)
+
+    if DiagramType.ACTIVITY in diagram_types:
+        try:
+            from mudtool.ai.mud_activity_context import build_mud_activity_context
+            from mudtool.ai.section7_normalizer import normalize_section7_markdown
+
+            markdown = request.mud_spec_markdown or ""
+            try:
+                markdown = normalize_section7_markdown(markdown).normalized_markdown
+            except Exception:
+                pass
+            ctx = build_mud_activity_context(markdown, module_context=request.module_context)
+            runnable_names = [getattr(r, "name", "") for r in getattr(ctx, "runnables", []) or []]
+            planned_items.extend(name or "activity" for name in runnable_names)
+        except Exception:
+            planned_items.append("activity")
+
+    return len(planned_items), planned_items
+
+
+def _count_report_findings(report: ValidationReport, attr_name: str) -> int:
+    value = getattr(report, attr_name, 0)
+    if callable(value):
+        value = value()
+    return int(value or 0)
+
+
+def _build_generation_summary(
+    *,
+    planned_count: int,
+    planned_items: list[str],
+    result: GenerationResult,
+    rendered_count: int,
+    validation_report: Optional[ValidationReport],
+    lint_results: dict,
+) -> dict:
+    generated_count = len(result.diagrams or [])
+    attempted_count = planned_count
+    base_count = max(planned_count, attempted_count)
+    failed_count = max(0, base_count - generated_count)
+    failed_items = planned_items[generated_count:] if failed_count else []
+    if result.errors:
+        failed_items.extend(str(error) for error in result.errors)
+
+    validation_errors = _count_report_findings(validation_report, "error_count") if validation_report else 0
+    validation_warnings = _count_report_findings(validation_report, "warning_count") if validation_report else 0
+    lint_errors = sum(len(getattr(item, "errors", []) or []) for item in lint_results.values())
+    lint_warnings = sum(len(getattr(item, "warnings", []) or []) for item in lint_results.values())
+    render_failures = max(0, generated_count - rendered_count)
+
+    blocking_count = len(result.errors or []) + validation_errors + lint_errors + render_failures
+    warning_count = len(result.warnings or []) + validation_warnings + lint_warnings
+
+    if generated_count == 0 or failed_count > 0 or render_failures > 0:
+        quality_status = "failed"
+    elif blocking_count > 0 or warning_count > 0:
+        quality_status = "needs_fix"
+    else:
+        quality_status = "pass"
+
+    return {
+        "planned_count": planned_count,
+        "attempted_count": attempted_count,
+        "generated_count": generated_count,
+        "rendered_count": rendered_count,
+        "failed_count": failed_count,
+        "quality_status": quality_status,
+        "blocking_count": blocking_count,
+        "warning_count": warning_count,
+        "failed_items": failed_items,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -139,6 +216,20 @@ class ExportRequest(BaseModel):
 
 class MermaidInlineRequest(BaseModel):
     result: GenerationResult
+
+
+class DrawIOInlineRequest(BaseModel):
+    result: GenerationResult
+    diagram_keys: Optional[list[str]] = None
+
+
+class MermaidRenderRequest(BaseModel):
+    mermaid_text: Optional[str] = None
+    diagram_source: Optional[str] = None
+
+
+class DrawIORenderRequest(BaseModel):
+    diagram_source: str
 
 
 class RenderRequest(BaseModel):
@@ -994,6 +1085,7 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 dt for dt in diagram_types
                 if not precheck_results.get(dt.value, {}).get("blocked", False)
             ]
+            planned_count, planned_items = _estimate_planned_diagrams(request, active_diagram_types)
             if not active_diagram_types:
                 queue.put_nowait({
                     "_error": True,
@@ -1148,6 +1240,21 @@ async def generate_diagrams_stream(request: GenerateRequest):
             mermaid_inline = mermaid_exporter.export_result_inline(result)
             lint_results = linter.lint_all(mermaid_inline)
 
+            # Suppress cosmetic/heuristic lint warnings that fire for valid compact diagrams.
+            # These are not actionable by the user and clutter the UI with false positives.
+            # Structural errors (missing INITIAL/FINAL, disconnected subgraphs) are kept.
+            _SUPPRESSED_LINT_PATTERNS = (
+                "branching paths may be missing",  # fires whenever edge_count <= node_count
+                "may be unreachable",              # fires for exception / sink nodes
+                "no outgoing edges",               # fires for FINAL nodes by design
+            )
+            for _lint in lint_results.values():
+                if _lint.warnings:
+                    _lint.warnings = [
+                        w for w in _lint.warnings
+                        if not any(p in w for p in _SUPPRESSED_LINT_PATTERNS)
+                    ]
+
             for key, lint in lint_results.items():
                 if lint.errors or lint.warnings:
                     progress_callback({
@@ -1188,6 +1295,15 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 result.warnings.append(f"Traceability persistence failed: {exc}")
 
             # ── Stage 7: Visual QA + Correction Loop ─────────────────────────
+            generation_summary = _build_generation_summary(
+                planned_count=planned_count,
+                planned_items=planned_items,
+                result=result,
+                rendered_count=len(mermaid_inline),
+                validation_report=validation_report,
+                lint_results=lint_results,
+            )
+
             if settings.visual_qa_enabled and pipeline_config is not None:
                 from mudtool.ai.visual_qa import VisualCorrectionLoop, VisualQAAgent
 
@@ -1241,6 +1357,14 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 visual_qa_summary = [r.to_summary() for r in qa_results.values()]
 
             # ── Final event ───────────────────────────────────────────────────
+            generation_summary = _build_generation_summary(
+                planned_count=planned_count,
+                planned_items=planned_items,
+                result=result,
+                rendered_count=len(mermaid_inline),
+                validation_report=validation_report,
+                lint_results=lint_results,
+            )
             queue.put_nowait({
                 "_final": True,
                 "result": result.model_dump(mode="json"),
@@ -1254,6 +1378,7 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 "precheck_summary": precheck_results,
                 "visual_qa_summary": visual_qa_summary or [],
                 "lint_summary": {k: v.to_summary() for k, v in lint_results.items()},
+                "generation_summary": generation_summary,
             })
         except Exception as exc:
             logger.error(f"SSE generation failed: {exc}", exc_info=True)
@@ -1411,6 +1536,65 @@ async def export_mermaid_inline(request: MermaidInlineRequest):
     exporter = MermaidExporter()
     diagrams = exporter.export_result_inline(request.result, preview=True)
     return {"diagrams": diagrams}
+
+
+@router.post("/export/drawio/inline")
+async def export_drawio_inline(request: DrawIOInlineRequest):
+    """Return draw.io XML inline (no file I/O)."""
+    from mudtool.generator.drawio_exporter import DrawIOExporter
+
+    exporter = DrawIOExporter()
+    requested = set(request.diagram_keys or [])
+    diagrams: dict[str, str] = {}
+    for i, diagram in enumerate(request.result.diagrams):
+        try:
+            name = getattr(diagram, "name", "") or f"diagram_{i}"
+            suffix = diagram.diagram_type.value
+            key = f"{suffix}_{name}"
+            if not requested or key in requested:
+                diagrams[key] = exporter.export_diagram(diagram)
+            for sub in getattr(diagram, "sub_diagrams", []) or []:
+                sub_name = getattr(sub, "function_name", None) or getattr(sub, "name", None) or "sub"
+                sub_key = f"{suffix}_{name}__fn__{sub_name}"
+                if not requested or sub_key in requested:
+                    diagrams[sub_key] = exporter.export_diagram(sub)
+        except Exception as exc:
+            logger.error("Failed to export diagram %s inline to draw.io: %s", i, exc)
+    return {"diagrams": diagrams}
+
+
+@router.post("/render/mermaid")
+async def render_mermaid_svg(request: MermaidRenderRequest):
+    """Render Mermaid text to SVG bytes for preview fallback."""
+    from mudtool.api.dependencies import get_render_service
+
+    mermaid_text = (request.diagram_source or request.mermaid_text or "").strip()
+    if not mermaid_text:
+        raise HTTPException(400, "mermaid_text must not be empty")
+
+    try:
+        svg_bytes = await get_render_service().render_mermaid_to_svg(mermaid_text)
+    except Exception as exc:
+        raise HTTPException(502, f"Failed to render Mermaid preview: {exc}") from exc
+
+    return Response(content=svg_bytes, media_type="image/svg+xml")
+
+
+@router.post("/render/drawio")
+async def render_drawio_svg(request: DrawIORenderRequest):
+    """Render draw.io XML to SVG bytes for preview."""
+    from mudtool.api.dependencies import get_render_service
+
+    drawio_xml = (request.diagram_source or "").strip()
+    if not drawio_xml:
+        raise HTTPException(400, "diagram_source must not be empty")
+
+    try:
+        svg_bytes = await get_render_service().render_drawio_to_svg(drawio_xml)
+    except Exception as exc:
+        raise HTTPException(502, f"Failed to render draw.io preview: {exc}") from exc
+
+    return Response(content=svg_bytes, media_type="image/svg+xml")
 
 
 class CSkeletonRequest(BaseModel):
@@ -1731,7 +1915,7 @@ class MudSpecRequest(BaseModel):
     )
     temperature: float = Field(0.25, ge=0.0, le=1.0)
     spec_pipeline: str = Field(
-        "single_pass",
+        "two_stage",
         description=(
             "MUD spec generation pipeline mode: "
             "'single_pass' (fast, one call) or "

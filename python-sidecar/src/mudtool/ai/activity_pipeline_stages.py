@@ -465,6 +465,16 @@ Focus on these classes of problems:
   3. A decision node with fewer than 2 outgoing edges.
   4. IRV mismatch: a runnable reads an IRV that no other runnable writes.
   5. Duplicate node IDs within one diagram.
+  6. A node typed "function_call" whose callee is a BSW/OS service (starts with WdgM_,
+     Dem_, Det_, SchM_, Com_, NvM_, Os_, CanSM_, BswM_, Dcm_, Rte_). These are external
+     service calls that never have sub-diagrams — they must be retyped to "action".
+     Emit severity "error" with message: 'Node <id> "<name>": BSW callee "<callee>"
+     must be node_type "action", not "function_call" (no sub-diagram exists for BSW
+     services).'
+  7. A non-initial node with zero incoming edges (unreachable / orphaned). This means
+     the CFG has a broken bypass edge that skips over valid steps. Emit severity "warn"
+     with message: 'Node <id> "<name>" is unreachable (no incoming edges) — a decision
+     edge likely bypasses this node and must be rewired to it.'
 
 Output STRICT JSON only:
 {
@@ -587,8 +597,15 @@ class ActivityPipeline:
         total = len(runnables)
         for idx, sk_run in enumerate(runnables, 1):
             rname = sk_run.get("name") or f"RE_{idx}"
+            backend_name = getattr(self._backend, "backend_name", "")
+            enrichment_hint = ""
+            if any(
+                key in (backend_name or "").lower()
+                for key in ("claude", "gpt-4", "gpt4", "gemini-1.5", "gemini-2", "o1", "o3", "o4")
+            ):
+                enrichment_hint = " [enrichment-only]"
             self._emit(
-                f"[Activity Pipeline] Stage 3/5 — diagram for {rname}…",
+                f"[Activity Pipeline] Stage 3/5{enrichment_hint} — diagram for {rname}…",
                 20 + int(50 * idx / max(total, 1)),
             )
             draft = await self._stage3_runnable(
@@ -846,6 +863,22 @@ class ActivityPipeline:
                     req_lines.append(f"  - {rid}")
         requirements_block = "\n".join(req_lines[:30]) or "  (none provided)"
 
+        backend = self._backend
+        backend_name = getattr(backend, "backend_name", "?")
+        is_high_end = any(
+            key in (backend_name or "").lower()
+            for key in ("claude", "gpt-4", "gpt4", "gemini-1.5", "gemini-2", "o1", "o3", "o4")
+        )
+        system_prompt = _RUNNABLE_SYSTEM
+        if is_high_end and cfg_scaffold_obj:
+            system_prompt = """You are enriching an AUTOSAR activity diagram.
+The scaffold below is the canonical topology. Do not add, remove, or retype any node or edge.
+For each node, improve only name, description, confidence, rte_call, port, element, and callee.
+For each decision edge, improve only guard/label as a valid C boolean expression in brackets,
+for example [l_f32Val > LIMIT] or [else].
+Return the exact same ActivityDiagram JSON structure with the same topology and ids. Output JSON only."""
+            logger.info("[Activity Pipeline/Stage3] %s using enrichment-only prompt for backend %s", rname, backend_name)
+
         user_prompt = _RUNNABLE_USER_TMPL.format(
             swc_name=swc_name or "unknown",
             runnable_name=rname,
@@ -858,12 +891,9 @@ class ActivityPipeline:
             requirements_block=requirements_block,
         )
 
-        backend = self._backend
-        backend_name = getattr(backend, "backend_name", "?")
-
         try:
             response = await backend.generate(
-                system_prompt=_RUNNABLE_SYSTEM,
+                system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 max_tokens=4096,
@@ -871,7 +901,7 @@ class ActivityPipeline:
             )
         except TypeError:
             response = await backend.generate(
-                system_prompt=_RUNNABLE_SYSTEM,
+                system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 max_tokens=4096,
@@ -913,8 +943,11 @@ class ActivityPipeline:
         # (e.g. "current_mode") that don't match any node.  Rather than let
         # those propagate as Mermaid lint warnings, scrub them here.
         _scrub_orphan_edges(diagram, rname)
+        self._normalize_activity_semantics(diagram)
         if cfg_scaffold_obj:
             diagram = self._overlay_ai_on_cfg(cfg_scaffold_obj, diagram)
+            self._normalize_activity_semantics(diagram)
+            self._repair_orphaned_nodes(diagram, rname)
             if self._diagram_has_cfg_breakage(diagram, rname):
                 logger.warning(
                     "[Activity Pipeline/Stage3] %s failed CFG/mermaid checks; using deterministic scaffold",
@@ -935,6 +968,151 @@ class ActivityPipeline:
         if cfg_scaffold_obj:
             diagram["_pipeline_canonical"] = copy.deepcopy(cfg_scaffold_obj)
         return diagram
+
+    @staticmethod
+    def _normalize_activity_semantics(diagram: dict) -> None:
+        """Normalize call-node semantics before AUTOSAR validation."""
+        valid_rte_calls = {
+            "Rte_Read", "Rte_Write", "Rte_Call", "Rte_Result",
+            "Rte_IRead", "Rte_IWrite", "Rte_Send", "Rte_Receive", "Rte_Switch",
+        }
+        # BSW / OS service prefixes — these are external calls, never sub-diagrams.
+        # Nodes typed as function_call with these callees are retyped to action so
+        # the validator (STR-024) doesn't demand a matching sub-diagram for them.
+        _BSW_PREFIXES = (
+            "WdgM_", "Dem_", "Det_", "SchM_", "Com_", "NvM_", "Os_",
+            "Rte_", "CanSM_", "LinSM_", "EthSM_", "BswM_", "Dcm_",
+        )
+        port_re = re.compile(r"^(?:RP|PP)_[A-Za-z][A-Za-z0-9_]*$")
+        for node in diagram.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            ntype = (node.get("node_type") or "").lower()
+
+            # ── Pass 1: fix wrongly-typed CALL nodes ──────────────────────
+            if ntype == "call":
+                rte_call = (node.get("rte_call") or "").strip()
+                name = (node.get("name") or "").strip()
+                if rte_call and rte_call not in valid_rte_calls:
+                    node["node_type"] = "function_call"
+                    node["callee"] = node.get("callee") or rte_call or name.split("(", 1)[0]
+                    node.pop("rte_call", None)
+                    node.pop("port", None)
+                    node.pop("element", None)
+                    continue
+                port = (node.get("port") or "").strip()
+                if port and not port_re.match(port):
+                    if name.startswith("Rte_"):
+                        node["node_type"] = "action"
+                    node.pop("rte_call", None)
+                    node.pop("port", None)
+
+            # ── Pass 2: retype BSW/OS function_call nodes to action ───────
+            # function_call requires a matching sub-diagram (STR-024).
+            # External BSW service calls (WdgM_*, Dem_*, Det_*, etc.) are
+            # leaf calls — they never have sub-diagrams within this component.
+            elif ntype == "function_call":
+                callee = (node.get("callee") or node.get("name") or "").strip()
+                fn_name = callee.split("(", 1)[0].strip()
+                if any(fn_name.startswith(prefix) for prefix in _BSW_PREFIXES):
+                    node["node_type"] = "action"
+                    node.pop("callee", None)
+                    logger.debug(
+                        "[Normalize] Retyped BSW function_call '%s' → action", fn_name
+                    )
+
+    @staticmethod
+    def _repair_orphaned_nodes(diagram: dict, runnable_name: str) -> None:
+        """Stitch orphaned nodes (no incoming edges) into the nearest decision.
+
+        When the AI generates a bypass edge from a decision directly to a late node
+        (e.g. N_03→N_17 instead of N_03→N_07), valid intermediate nodes become
+        unreachable. This repair:
+          1. Identifies all non-INITIAL nodes with no incoming edges.
+          2. For each such "orphaned chain head", finds the decision edge that bypasses
+             it (i.e. a decision outgoing edge whose target is NOT in the orphaned set
+             but SHOULD be, based on edge ordering).
+          3. Rewires that edge to point to the orphaned chain head, and wires the
+             chain tail to the original bypass target.
+
+        Only applies when the orphaned count is ≤ 6 nodes (targeted repair, not bulk).
+        """
+        nodes: list[dict] = diagram.get("nodes") or []
+        edges: list[dict] = diagram.get("edges") or []
+        if not nodes or not edges:
+            return
+
+        node_ids = {n["id"] for n in nodes if isinstance(n, dict) and n.get("id")}
+        node_by_id = {n["id"]: n for n in nodes if isinstance(n, dict) and n.get("id")}
+
+        # Nodes with at least one incoming edge
+        has_incoming = {e["target"] for e in edges if isinstance(e, dict) and e.get("target")}
+        initial_ids = {
+            n["id"] for n in nodes
+            if isinstance(n, dict) and (n.get("node_type") or "").lower() == "initial"
+        }
+
+        orphaned_ids = (node_ids - has_incoming) - initial_ids
+        if not orphaned_ids or len(orphaned_ids) > 6:
+            return  # too many orphans → don't guess
+
+        # Find the first node in the orphaned chain (has outgoing edges to known nodes)
+        orphaned_sources = {
+            e["source"] for e in edges
+            if isinstance(e, dict) and e.get("source") in orphaned_ids
+        }
+        # Chain head = orphaned node that appears earliest among those with outgoing edges
+        chain_heads = [
+            n["id"] for n in nodes
+            if isinstance(n, dict)
+            and n.get("id") in orphaned_ids
+            and n.get("id") in orphaned_sources
+        ]
+        if not chain_heads:
+            return
+
+        chain_head = chain_heads[0]
+
+        # Chain tail = orphaned node with an outgoing edge to a non-orphaned node
+        chain_tail = None
+        bypass_target = None
+        for e in edges:
+            if not isinstance(e, dict):
+                continue
+            src = e.get("source")
+            tgt = e.get("target")
+            if src in orphaned_ids and tgt and tgt not in orphaned_ids:
+                chain_tail = src
+                bypass_target = tgt
+                break
+
+        if not chain_tail:
+            return
+
+        # Find the decision edge that bypasses the orphaned chain
+        # (a decision → bypass_target edge where that same bypass_target equals
+        # what the orphaned chain eventually connects to)
+        for e in edges:
+            if not isinstance(e, dict):
+                continue
+            src = e.get("source")
+            tgt = e.get("target")
+            src_node = node_by_id.get(src)
+            if (
+                src_node
+                and (src_node.get("node_type") or "").lower() == "decision"
+                and tgt == bypass_target
+                and src not in orphaned_ids
+            ):
+                # Rewire: decision → chain_head (instead of bypass_target)
+                logger.info(
+                    "[RepairOrphan] %s: rewired decision edge %s→%s to %s→%s "
+                    "(chain: %s→%s)",
+                    runnable_name, src, tgt, src, chain_head, chain_head, bypass_target,
+                )
+                e["target"] = chain_head
+                # The chain tail already points to bypass_target (from the edges above)
+                return  # one repair per call
 
     # ─── Stage 4 ──────────────────────────────────────────────────────────
 
@@ -965,6 +1143,23 @@ class ActivityPipeline:
                 "node_names": [n.get("name", "") for n in d.get("nodes", []) if isinstance(n, dict)],
             })
 
+        backend = self._reviewer_backend
+        reviewer_system = _REVIEWER_SYSTEM
+        reviewer_name = getattr(backend, "backend_name", "")
+        is_high_end_reviewer = any(
+            key in (reviewer_name or "").lower()
+            for key in ("claude", "gpt-4", "gpt4", "gemini-1.5", "gemini-2", "o1", "o3", "o4")
+        )
+        if is_high_end_reviewer:
+            reviewer_system += """
+
+Also flag:
+- Guard labels that are English prose instead of C boolean expressions.
+- Variable names not following l_f32/l_u8/l_b/l_u16 prefix convention.
+- Missing Dem_SetEventStatus call after fault condition for ASIL-C/D runnables.
+- RTE write calls missing a corresponding guard/validation step before them.
+"""
+
         user_prompt = (
             "DRAFT DIAGRAMS (compact form):\n"
             + json.dumps(compact, ensure_ascii=False, indent=2)
@@ -972,11 +1167,9 @@ class ActivityPipeline:
             + json.dumps(xref, ensure_ascii=False, indent=2)
             + "\n\nReturn the JSON {issues, patches}."
         )
-
-        backend = self._reviewer_backend
         try:
             response = await backend.generate(
-                system_prompt=_REVIEWER_SYSTEM,
+                system_prompt=reviewer_system,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 max_tokens=2048,
@@ -984,7 +1177,7 @@ class ActivityPipeline:
             )
         except TypeError:
             response = await backend.generate(
-                system_prompt=_REVIEWER_SYSTEM,
+                system_prompt=reviewer_system,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 max_tokens=2048,
@@ -1083,6 +1276,7 @@ class ActivityPipeline:
                 provenance_mode = "ai_enriched"
 
             d = candidate
+            ActivityPipeline._normalize_activity_semantics(d)
             backend_name = d.pop("_pipeline_backend", "activity_pipeline")
             model = d.pop("_pipeline_model", backend_name)
             latency = d.pop("_pipeline_latency_ms", 0)
@@ -1336,8 +1530,6 @@ class ActivityPipeline:
         except Exception:
             return True
         node_dicts = [node for node in diagram.get("nodes", []) if isinstance(node, dict)]
-        decision_count = sum(1 for node in node_dicts if (node.get("node_type") or "").lower() == "decision")
-        merge_count = sum(1 for node in node_dicts if (node.get("node_type") or "").lower() == "merge")
         # ── Check 1: decision nodes missing outgoing branches ────────────────
         # Count decisions that have < 2 outgoing edges — genuinely broken
         # (missing an [else] or second branch).  Note: sequential independent
@@ -1360,13 +1552,19 @@ class ActivityPipeline:
         )
         if decisions_missing_branch > 0:
             return True
-        if decision_count > 1 and merge_count == 0:
-            logger.info(
-                "[Activity Pipeline/breakage] %s: %d decisions with no merge nodes",
-                runnable_name,
-                decision_count,
-            )
+        real_decision_ids = {
+            n.get("id") for n in node_dicts
+            if (n.get("node_type") or "").lower() == "decision"
+        }
+        has_merge = any(
+            (n.get("node_type") or "").lower() == "merge"
+            for n in node_dicts
+        )
+        if len(real_decision_ids) > 1 and not has_merge:
             return True
+        # Multiple independent decisions can be valid without an explicit merge.
+        # The real topology breakage is a decision with too few outgoing edges,
+        # which is checked above per node.
 
         # ── Check 2: unreachable nodes ────────────────────────────────────────
         # Any non-initial node that has zero incoming edges is unreachable —
@@ -1403,5 +1601,8 @@ class ActivityPipeline:
         decision_warnings = [
             warning for warning in lint.warnings
             if "Decision node" in warning
+            and "has only" in warning
+            and "outgoing edge" in warning
+            and any(f"'{did}'" in warning for did in real_decision_ids)
         ]
         return bool(decision_warnings)

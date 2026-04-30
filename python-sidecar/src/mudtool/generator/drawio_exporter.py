@@ -64,11 +64,11 @@ _STYLE_MESSAGE = "edgeStyle=orthogonalEdgeStyle;rounded=0;"
 _STYLE_ACT_INITIAL    = "ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;"
 _STYLE_ACT_FINAL      = "ellipse;aspect=fixed;fillColor=#000000;strokeColor=#000000;fontColor=#ffffff;double=1;"
 _STYLE_ACT_ACTION     = "rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#f5f5f5;strokeColor=#666666;"
-_STYLE_ACT_CALL       = "rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+_STYLE_ACT_CALL       = "shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;"
 _STYLE_ACT_DECISION   = "rhombus;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;"
 _STYLE_ACT_FORK_JOIN  = "shape=mxgraph.flowchart.annotation_2;fillColor=#000000;strokeColor=#000000;"
-_STYLE_ACT_MERGE      = "rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=50;"
-_STYLE_ACT_EXCEPTION  = "shape=parallelogram;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;"
+_STYLE_ACT_MERGE      = "rhombus;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=9;"
+_STYLE_ACT_EXCEPTION  = "shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;"
 _STYLE_ACT_FUNC_CALL  = "rounded=1;whiteSpace=wrap;arcSize=15;fillColor=#d5e8d4;strokeColor=#82b366;double=1;"
 _STYLE_ACT_EDGE       = "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;"
 
@@ -790,6 +790,8 @@ class DrawIOExporter:
             return 30, 30
         if node.node_type in (ActivityNodeType.FORK, ActivityNodeType.JOIN):
             return 180, 12
+        if node.node_type == ActivityNodeType.MERGE:
+            return 40, 40
 
         if node.node_type == ActivityNodeType.DECISION:
             width = max(160, min(280, 110 + longest * 7))
@@ -803,8 +805,6 @@ class DrawIOExporter:
             base_width = 230
         elif node.node_type == ActivityNodeType.EXCEPTION:
             base_width = 240
-        elif node.node_type == ActivityNodeType.MERGE:
-            base_width = 170
 
         width = max(base_width, min(420, base_width + max(0, longest - 20) * 6))
         height = max(64, min(220, 28 + line_count * 20))

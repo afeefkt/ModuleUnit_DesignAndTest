@@ -444,6 +444,26 @@ class _ActivityGraphBuilder:
         pending: list[tuple[str, str | None]],
         depth: int,
     ) -> tuple[int, list[tuple[str, str | None]]]:
+        def _merge_branch_exits(
+            exits: list[tuple[str, str | None]],
+            *,
+            merge_name: str = "Merge",
+            merge_description: str = "Branch merge",
+        ) -> list[tuple[str, str | None]]:
+            live_exits = list(exits)
+            if len(live_exits) >= 2:
+                merge_id = self.add_node(
+                    name=merge_name,
+                    node_type=self.ActivityNodeType.MERGE,
+                    description=merge_description,
+                    confidence=0.86,
+                )
+                self.connect_pending(live_exits, merge_id)
+                return [(merge_id, None)]
+            if len(live_exits) == 1:
+                return live_exits
+            return []
+
         rte_meta = _extract_rte_metadata(steps[index].text)
         decision_id = self.add_node(
             name=_strip_control_prefix(steps[index].text),
@@ -461,6 +481,7 @@ class _ActivityGraphBuilder:
         # rendered diagram shows e.g. "[l_f32Torque > LIMIT]" rather than the
         # generic "[true]" / "[false]" labels.
         condition_text = _strip_control_prefix(steps[index - 1].text)
+        condition_text = re.sub(r"^\s*if\s*\(?\s*", "", condition_text, flags=re.IGNORECASE).strip().rstrip(")")
         true_guard  = f"[{condition_text}]" if condition_text else "[true]"
         false_guard = "[else]"
 
@@ -477,6 +498,12 @@ class _ActivityGraphBuilder:
         while index < len(steps) and steps[index].depth == depth and steps[index].kind == "else_if":
             rte_meta = _extract_rte_metadata(steps[index].text)
             else_if_condition = _strip_control_prefix(steps[index].text)
+            else_if_condition = re.sub(
+                r"^\s*(?:else\s+if|elseif|if)\s*\(?\s*",
+                "",
+                else_if_condition,
+                flags=re.IGNORECASE,
+            ).strip().rstrip(")")
             else_if_decision = self.add_node(
                 name=else_if_condition or _strip_control_prefix(steps[index].text),
                 node_type=self.ActivityNodeType.DECISION,
@@ -496,8 +523,19 @@ class _ActivityGraphBuilder:
                 pending=[(else_if_decision, elseif_true_guard)],
                 stop_kinds={"else_if", "else", "end_if"},
             )
-            branch_exits.extend(elseif_exits)
-            false_pending = [(else_if_decision, "[else]")]
+            elseif_false_pending = [(else_if_decision, "[else]")]
+            remaining_chain = index < len(steps) and steps[index].depth == depth and steps[index].kind in {"else_if", "else"}
+            if remaining_chain:
+                merged_exits = _merge_branch_exits(
+                    elseif_exits + elseif_false_pending,
+                    merge_name="Else-if merge",
+                    merge_description="Else-if branch merge",
+                )
+                branch_exits.extend(merged_exits)
+                false_pending = merged_exits
+            else:
+                branch_exits.extend(elseif_exits)
+                false_pending = elseif_false_pending
 
         if index < len(steps) and steps[index].depth == depth and steps[index].kind == "else":
             index += 1
@@ -514,19 +552,7 @@ class _ActivityGraphBuilder:
 
         if index < len(steps) and steps[index].depth == depth and steps[index].kind == "end_if":
             index += 1
-        live_exits = list(branch_exits)
-        if len(live_exits) >= 2:
-            merge_id = self.add_node(
-                name="Merge",
-                node_type=self.ActivityNodeType.MERGE,
-                description="Branch merge",
-                confidence=0.86,
-            )
-            self.connect_pending(live_exits, merge_id)
-            return index, [(merge_id, None)]
-        if len(live_exits) == 1:
-            return index, live_exits
-        return index, []
+        return index, _merge_branch_exits(branch_exits)
 
     def emit_loop(
         self,

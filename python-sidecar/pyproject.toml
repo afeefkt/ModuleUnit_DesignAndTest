@@ -59,6 +59,28 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: fast deterministic tests with no live service or network dependency",
+    "integration: multi-module tests that may touch files, FastAPI, or subprocess-style boundaries",
+    "live: tests that require a running sidecar or local AI backend",
+]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["mudtool"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 0
 
 [tool.mypy]
 python_version = "3.11"

@@ -1,0 +1,24 @@
+flowchart TD
+
+    N_01(["Start"])
+    N_02[/"Rte_IWrite(PP_EPSStatus, EPS_STATUS_INIT)"/]
+    N_03[["Report initialization complete"]]
+    click N_03 navigateToSubDiagram "WdgM_UpdateAliveCounter"
+    N_04(["End"])
+
+    N_01 --> N_02
+    N_02 --> N_03
+    N_03 --> N_04
+
+    %% Node type styling
+    classDef rteCall fill:#d4e6f1,stroke:#2980b9,color:#000
+    classDef decision fill:#fdebd0,stroke:#e67e22,color:#000
+    classDef exception fill:#f5b7b1,stroke:#e74c3c,color:#000
+    classDef funcCall fill:#d5f5e3,stroke:#27ae60,color:#000
+    classDef initial fill:#d5dbdb,stroke:#566573,color:#000
+    classDef final fill:#566573,stroke:#2c3e50,color:#fff
+    classDef action fill:#ebf5fb,stroke:#3498db,color:#000
+    class N_01 initial
+    class N_02 rteCall
+    class N_03 funcCall
+    class N_04 final

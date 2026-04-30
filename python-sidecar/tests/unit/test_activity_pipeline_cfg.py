@@ -7,6 +7,8 @@ import pytest
 from mudtool.ai.activity_pipeline_stages import ActivityPipeline
 from mudtool.ai.base_backend import AIResponse
 from mudtool.ai.mud_activity_context import MudActivityContext, RunnableContext
+from mudtool.generator.mermaid_exporter import MermaidExporter
+from mudtool.models.json_uml import ActivityDiagram, ActivityEdge, ActivityNode, ActivityNodeType
 from mudtool.models.requirements import Priority, Requirement, RequirementStatus, RequirementType
 
 
@@ -30,6 +32,109 @@ def _make_requirement(req_id: str) -> Requirement:
         priority=Priority.MUST,
         status=RequirementStatus.APPROVED,
     )
+
+
+def test_normalize_activity_semantics_reclassifies_non_rte_service_call():
+    diagram = {
+        "nodes": [
+            {
+                "id": "N_01",
+                "name": "WdgM_UpdateAliveCounter(WDG_ENTITY_RE_Init)",
+                "node_type": "call",
+                "rte_call": "WdgM_UpdateAliveCounter",
+                "port": "WDG_ENTITY_RE_Init",
+            }
+        ],
+        "edges": [],
+    }
+
+    ActivityPipeline._normalize_activity_semantics(diagram)
+
+    node = diagram["nodes"][0]
+    assert node["node_type"] == "function_call"
+    assert node["callee"] == "WdgM_UpdateAliveCounter"
+    assert "rte_call" not in node
+    assert "port" not in node
+
+
+def test_normalize_activity_semantics_drops_local_variable_port_metadata():
+    diagram = {
+        "nodes": [
+            {
+                "id": "N_01",
+                "name": "Rte_Read_irvTorqueSetpoint(&irvTorqueSetpoint)",
+                "node_type": "call",
+                "rte_call": "Rte_Read",
+                "port": "irvTorqueSetpoint",
+            }
+        ],
+        "edges": [],
+    }
+
+    ActivityPipeline._normalize_activity_semantics(diagram)
+
+    node = diagram["nodes"][0]
+    assert node["node_type"] == "action"
+    assert "rte_call" not in node
+    assert "port" not in node
+
+
+def test_mermaid_activity_decision_edges_use_yes_no_labels():
+    diagram = ActivityDiagram(
+        name="RE_Decision Code Flow",
+        nodes=[
+            ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+            ActivityNode(id="N_01", name="vehicleSpeed > 10", node_type=ActivityNodeType.DECISION),
+            ActivityNode(id="N_02", name="High assist", node_type=ActivityNodeType.ACTION),
+            ActivityNode(id="N_03", name="Low assist", node_type=ActivityNodeType.ACTION),
+            ActivityNode(id="N_04", name="End", node_type=ActivityNodeType.FINAL),
+        ],
+        edges=[
+            ActivityEdge(source="N_00", target="N_01"),
+            ActivityEdge(source="N_01", target="N_02", guard="[vehicleSpeed > 10]"),
+            ActivityEdge(source="N_01", target="N_03", guard="[false]"),
+            ActivityEdge(source="N_02", target="N_04"),
+            ActivityEdge(source="N_03", target="N_04"),
+        ],
+    )
+
+    mermaid = MermaidExporter().export_diagram(diagram)
+
+    assert mermaid.count("vehicleSpeed > 10") == 1
+    assert "N_01 -->|Yes| N_02" in mermaid
+    assert "N_01 -->|No| N_03" in mermaid
+    assert "-->|vehicleSpeed" not in mermaid
+
+
+def test_mermaid_activity_three_way_decision_edges_use_yes_case_no_labels():
+    diagram = ActivityDiagram(
+        name="RE_SwitchLikeDecision Code Flow",
+        nodes=[
+            ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+            ActivityNode(id="N_01", name="torqueState", node_type=ActivityNodeType.DECISION),
+            ActivityNode(id="N_02", name="Nominal path", node_type=ActivityNodeType.ACTION),
+            ActivityNode(id="N_03", name="Limited path", node_type=ActivityNodeType.ACTION),
+            ActivityNode(id="N_04", name="Fallback path", node_type=ActivityNodeType.ACTION),
+            ActivityNode(id="N_05", name="End", node_type=ActivityNodeType.FINAL),
+        ],
+        edges=[
+            ActivityEdge(source="N_00", target="N_01"),
+            ActivityEdge(source="N_01", target="N_02", guard="[l_f32Torque < NOMINAL_LIMIT]"),
+            ActivityEdge(source="N_01", target="N_03", guard="[l_f32Torque < MAX_LIMIT]"),
+            ActivityEdge(source="N_01", target="N_04", guard="[default]"),
+            ActivityEdge(source="N_02", target="N_05"),
+            ActivityEdge(source="N_03", target="N_05"),
+            ActivityEdge(source="N_04", target="N_05"),
+        ],
+    )
+
+    mermaid = MermaidExporter().export_diagram(diagram)
+
+    assert "N_01 -->|Yes| N_02" in mermaid
+    assert "N_01 -->|Case 2| N_03" in mermaid
+    assert "N_01 -->|No| N_04" in mermaid
+    assert "-->|l_f32Torque" not in mermaid
+    assert "-->|default|" not in mermaid
 
 
 @pytest.mark.asyncio

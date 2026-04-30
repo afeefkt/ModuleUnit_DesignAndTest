@@ -453,6 +453,44 @@ class MermaidExporter:
             g = g.replace('"', "'")
             return g.strip()
 
+        def _norm_label(text: str) -> str:
+            text = (text or "").strip()
+            if text.startswith("[") and text.endswith("]"):
+                text = text[1:-1]
+            text = text.lower()
+            text = re.sub(r"[^a-z0-9]+", "", text)
+            return text
+
+        def _decision_guard(raw_guard: str, decision_label: str, branch_index: int, branch_count: int) -> str:
+            """Map a raw guard string to a clean Yes/No/Case N label for Mermaid edge display.
+
+            ISO 5807 flowchart convention: decision arrows show Yes/No, not C expressions.
+            The full C expression is preserved in ActivityEdge.guard for traceability and
+            in the draw.io export — this normalization is Mermaid-preview only.
+            """
+            guard = (raw_guard or "").strip()
+            normalized = _norm_label(guard)
+
+            # Explicit semantic mappings — handle "[else]", "else", "[default]", "default" etc.
+            if normalized in {"true", "yes", "y", "conditiontrue", "conditionmet", "then"}:
+                return "Yes"
+            if normalized in {"false", "no", "n", "conditionfalse", "conditionnotmet", "else", "default"}:
+                return "No"
+
+            # 2-branch decisions: unconditionally Yes/No regardless of guard content (ISO 5807)
+            if branch_count == 2:
+                return "Yes" if branch_index == 0 else "No"
+
+            # Switch-style (3+ branches): last branch → "No" (default/else), first → "Yes", others → "Case N"
+            if branch_count > 2:
+                if branch_index == branch_count - 1:
+                    return "No"       # default / else branch is always last
+                if branch_index == 0:
+                    return "Yes"      # primary matching branch
+                return f"Case {branch_index + 1}"
+
+            return _guard(guard)   # unreachable for well-formed diagrams
+
         # Emit nodes — traces go on a %% comment line BEFORE the node (never inline)
         for node in diagram.nodes:
             nid = _safe(node.id)
@@ -489,7 +527,7 @@ class MermaidExporter:
                         call_label = f"RTE: {parts[0]}"
                     else:
                         call_label = f"RTE: {node.name}"
-                lines.append(f"    {nid}[{_q(_preview_label(call_label))}]")
+                lines.append(f"    {nid}[/{_q(_preview_label(call_label))}/]")
 
             elif node.node_type == ActivityNodeType.FUNCTION_CALL:
                 # Private function call: subroutine box [[label]]
@@ -506,13 +544,14 @@ class MermaidExporter:
 
             elif node.node_type == ActivityNodeType.EXCEPTION:
                 # Keep short: just the node name (description may contain parens that confuse parser)
-                lines.append(f"    {nid}[/{_q(_preview_label('FAULT: ' + node.name))}/]")
+                exc_label = _q(_preview_label(node.name))
+                lines.append(f"    {nid}{{{{{exc_label}}}}}")
 
             elif node.node_type in (ActivityNodeType.FORK, ActivityNodeType.JOIN):
                 lines.append(f"    {nid}({_q(_preview_label(node.name))})")
 
             elif node.node_type == ActivityNodeType.MERGE:
-                lines.append(f"    {nid}({_q(node.name)})")
+                lines.append(f"    {nid}{{◆}}")
 
             else:  # ACTION
                 label = _preview_label(node.name)
@@ -520,14 +559,24 @@ class MermaidExporter:
 
         lines.append("")
 
+        node_by_id = {node.id: node for node in diagram.nodes}
+        outgoing_by_source: dict[str, list] = {}
+        for edge in diagram.edges:
+            outgoing_by_source.setdefault(edge.source, []).append(edge)
+
         # Emit edges
         for edge in diagram.edges:
             src = _safe(edge.source)
             tgt = _safe(edge.target)
             raw_guard = edge.guard or edge.label
             if raw_guard:
-                # Sanitize guard: strip [], replace C pipe-operators with words
-                g = _guard(raw_guard)
+                source_node = node_by_id.get(edge.source)
+                if source_node and source_node.node_type == ActivityNodeType.DECISION:
+                    siblings = outgoing_by_source.get(edge.source, [])
+                    g = _decision_guard(raw_guard, source_node.name, siblings.index(edge), len(siblings))
+                else:
+                    # Sanitize guard: strip [], replace C pipe-operators with words
+                    g = _guard(raw_guard)
                 lines.append(f"    {src} -->|{g}| {tgt}")
             else:
                 lines.append(f"    {src} --> {tgt}")

@@ -1,11 +1,13 @@
 @echo off
 REM ============================================================
-REM  MUD Tool - Run Tests (Windows)
+REM  MUD Tool - Test Runner
+REM  Run from repository root: run_tests.bat [quality|unit|all|coverage|live]
 REM ============================================================
 
 setlocal
 
 cd /d "%~dp0python-sidecar"
+set "PYTHONDONTWRITEBYTECODE=1"
 
 if exist ".venv\Scripts\python.exe" (
     set "PYTHON_EXE=.venv\Scripts\python.exe"
@@ -20,19 +22,30 @@ echo Running MUD Tool Tests...
 echo ========================
 echo.
 
-set "PYTEST_ARGS=tests -v --tb=short --maxfail=10 --durations=10"
+set "MODE=%~1"
+if "%MODE%"=="" set "MODE=quality"
+if not "%~1"=="" shift
 
-if /I "%~1"=="live" (
-    shift
-    echo Mode: full suite including live/server-backed tests
-    echo Expectation: start the sidecar first if you want live HTTP tests to run.
-    echo.
-    "%PYTHON_EXE%" -m pytest %PYTEST_ARGS% %*
+set "QUALITY_TESTS=tests/unit/test_activity_pipeline_cfg.py tests/unit/test_api_routes.py tests/unit/test_web_generation_quality_ui.py"
+
+echo Mode: %MODE%
+echo.
+
+if /I "%MODE%"=="quality" (
+    "%PYTHON_EXE%" -m pytest %QUALITY_TESTS% -q %*
+) else if /I "%MODE%"=="unit" (
+    "%PYTHON_EXE%" -m pytest tests/unit -q %*
+) else if /I "%MODE%"=="all" (
+    "%PYTHON_EXE%" -m pytest tests -q -k "not live" %*
+) else if /I "%MODE%"=="coverage" (
+    echo Mode: stable local suite with coverage report
+    "%PYTHON_EXE%" -m pytest tests -q -k "not live" --cov=mudtool --cov-report=term-missing %*
+) else if /I "%MODE%"=="live" (
+    "%PYTHON_EXE%" -m pytest tests -q %*
 ) else (
-    echo Mode: stable local suite only
-    echo Live integration tests are excluded by default. Use `run_tests.bat live` to include them.
-    echo.
-    "%PYTHON_EXE%" -m pytest %PYTEST_ARGS% -k "not live" %*
+    echo Unknown mode: %MODE%
+    echo Usage: run_tests.bat [quality^|unit^|all^|coverage^|live]
+    exit /b 2
 )
 set "TEST_EXIT=%ERRORLEVEL%"
 

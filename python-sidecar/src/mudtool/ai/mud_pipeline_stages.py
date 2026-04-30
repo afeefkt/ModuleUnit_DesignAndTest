@@ -486,14 +486,13 @@ def _assemble_markdown(skeleton: dict, section7_map: dict[str, dict],
             for step in s7["steps"]:
                 snum = step.get("step_num", "?")
                 label = step.get("label", "")
-                code = step.get("code", "").strip()
-                if label:
-                    lines.append(f"{snum}. {label}:")
-                else:
-                    lines.append(f"{snum}.")
-                # Indent code block
-                for code_line in code.splitlines():
-                    lines.append(f"   {code_line}")
+                code = (step.get("code", "") or "").strip()
+                lines.append(f"**{snum}. {label}**" if label else f"**{snum}.**")
+                if code:
+                    lines.append("```c")
+                    lines.extend(code.splitlines())
+                    lines.append("```")
+                lines.append("")
         else:
             # Fallback: minimal stub when Section 7 generation failed
             lines.append(f"1. // TODO: Section 7 generation failed for {rname}")

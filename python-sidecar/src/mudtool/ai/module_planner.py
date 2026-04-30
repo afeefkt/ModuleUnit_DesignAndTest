@@ -174,13 +174,24 @@ class ModulePlanner:
             evidence_summary=_build_evidence_summary(evidence_modules),
         )
 
-        response = await backend.generate(
-            system_prompt=_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            temperature=temperature,
-            max_tokens=4096,
-            response_format="json",   # ← module plan is always structured JSON
-        )
+        try:
+            response = await backend.generate(
+                system_prompt=_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=4096,
+                response_format="json",   # module plan is always structured JSON
+            )
+        except Exception as exc:
+            logger.warning(
+                "ModulePlanner: AI planning call failed (%s); using deterministic requirement evidence",
+                exc,
+            )
+            return PlanResult(
+                modules=_sort_modules(list(evidence_modules.values())),
+                architecture_summary=_default_architecture_summary(evidence_modules),
+                raw_response=str(exc),
+            )
 
         plan = self._parse_response(response.content, evidence_modules)
         if plan.modules:
@@ -195,13 +206,26 @@ class ModulePlanner:
             "Use these exact SWC names, include matching RE_* runnables and req_ids, "
             "and return only valid JSON with top-level key 'modules'."
         )
-        retry = await backend.generate(
-            system_prompt=_SYSTEM_PROMPT,
-            user_prompt=retry_prompt,
-            temperature=min(temperature, 0.1),
-            max_tokens=2048,
-            response_format="json",
-        )
+        try:
+            retry = await backend.generate(
+                system_prompt=_SYSTEM_PROMPT,
+                user_prompt=retry_prompt,
+                temperature=min(temperature, 0.1),
+                max_tokens=2048,
+                response_format="json",
+            )
+        except Exception as exc:
+            logger.warning(
+                "ModulePlanner: AI planning retry failed (%s); using deterministic requirement evidence",
+                exc,
+            )
+            return PlanResult(
+                modules=_sort_modules(list(evidence_modules.values())),
+                architecture_summary=(
+                    plan.architecture_summary or _default_architecture_summary(evidence_modules)
+                ),
+                raw_response=response.content or str(exc),
+            )
         repaired = self._parse_response(retry.content, evidence_modules)
         if repaired.modules:
             return repaired

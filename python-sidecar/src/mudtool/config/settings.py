@@ -154,13 +154,13 @@ class Settings(BaseSettings):
 
     # ── MUD Spec Generation Pipeline ─────────────────────────────────────────
     # MUD_SPEC_PIPELINE controls the generation mode for /modules/mud-spec:
-    #   "single_pass"  (default) — one AI call produces the full 7-section Markdown.
+    #   "single_pass"  — one AI call produces the full 7-section Markdown.
     #                              Fast (~1 min), good for quick iterations.
     #   "two_stage"    — Stage 1 generates a JSON skeleton (all ports/runnables/IRVs/
     #                    CalPrm/DEM events), then Stage 3 expands Section 7 pseudo-code
     #                    per runnable using exact port names from the skeleton.
     #                    Better quality, ~3× slower.  Falls back to single_pass on error.
-    mud_spec_pipeline: str = "single_pass"
+    mud_spec_pipeline: str = "two_stage"
 
     # ── Activity Diagram Pipeline (multi-stage) ──────────────────────────────
     # MUD_ACTIVITY_PIPELINE_ENABLED=true → use 5-stage pipeline:

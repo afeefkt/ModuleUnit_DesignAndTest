@@ -23,6 +23,16 @@ class _FakeOrchestrator:
         return self._backend
 
 
+class _FailingBackend:
+    async def generate(self, **kwargs):
+        raise ConnectionError("All connection attempts failed")
+
+
+class _FailingOrchestrator:
+    def _get_backend(self):
+        return _FailingBackend()
+
+
 EPS_CSV = """req_id,title,description,req_type,safety_level,priority,module_hint,notes
 REQ-EPS-001,EPS SWC Architecture,SWC_ElectricPowerSteering shall be implemented as an AUTOSAR ApplicationSWC,FUNCTIONAL,ASIL-D,MUST,SWC_ElectricPowerSteering,Single SWC owns all EPS application logic
 REQ-EPS-002,Control Torque Runnable,RE_ControlTorque shall execute cyclically every 5 ms,TIMING,ASIL-D,MUST,SWC_ElectricPowerSteering,5ms control loop
@@ -44,6 +54,20 @@ async def test_module_planner_recovers_from_empty_ai_output_using_requirement_ev
     assert "RE_ControlTorque" in module.runnables
     assert "REQ-EPS-001" in module.req_ids
     assert module.port_count >= 3
+
+
+@pytest.mark.asyncio
+async def test_module_planner_falls_back_when_backend_connection_fails():
+    planner = ModulePlanner(_FailingOrchestrator())
+
+    result = await planner.plan_modules(EPS_CSV, temperature=0.1)
+
+    assert len(result.modules) == 1
+    module = result.modules[0]
+    assert module.swc_name == "SWC_ElectricPowerSteering"
+    assert module.asil == "ASIL-D"
+    assert "RE_ControlTorque" in module.runnables
+    assert "All connection attempts failed" in result.raw_response
 
 
 @pytest.mark.asyncio

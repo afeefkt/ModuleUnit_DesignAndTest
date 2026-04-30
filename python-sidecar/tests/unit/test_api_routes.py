@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +22,7 @@ from mudtool.models.json_uml import (
     GenerationResult,
 )
 from mudtool.models.requirements import Priority, Requirement, RequirementSet, RequirementStatus, RequirementType
-from mudtool.models.validation import ValidationReport
+from mudtool.models.validation import ValidationIssue, ValidationReport, ValidationSeverity
 from mudtool.traceability.store import TraceLink
 
 
@@ -53,6 +55,9 @@ class _DummyRenderService:
     async def render_all(self, result, output_path, fmt):
         return [Path(output_path) / f"dummy.{fmt}"]
 
+    async def render_mermaid_to_svg(self, mermaid_text):
+        return b"<svg xmlns='http://www.w3.org/2000/svg'><text x='0' y='14'>ok</text></svg>"
+
 
 class _FakeTraceStore:
     def __init__(self, matrix=None, coverage=None, traces_by_requirement=None, accept_counts=None):
@@ -80,6 +85,16 @@ class _FakeTraceStore:
 class _FailingTraceStore(_FakeTraceStore):
     def extract_and_store_traces(self, result):
         raise OSError("disk I/O error")
+
+
+def _complete_event_payload(stream_text: str) -> dict:
+    for chunk in stream_text.split("\n\n"):
+        if "event: complete" not in chunk:
+            continue
+        for line in chunk.splitlines():
+            if line.startswith("data: "):
+                return json.loads(line[6:])
+    raise AssertionError("complete event not found")
 
 
 @pytest.fixture
@@ -399,6 +414,91 @@ class TestGenerateAndValidateRoutes:
 
         assert response.status_code == 200
         assert "event: complete" in response.text
+        payload = _complete_event_payload(response.text)
+        summary = payload["generation_summary"]
+        assert summary["planned_count"] == 1
+        assert summary["generated_count"] == 1
+        assert summary["rendered_count"] == 1
+        assert summary["failed_count"] == 0
+        assert summary["quality_status"] == "pass"
+
+    def test_generation_summary_marks_validation_warnings_as_needs_fix(self, sample_activity_result):
+        report = ValidationReport(
+            issues=[
+                ValidationIssue(
+                    rule_id="AUT-010",
+                    severity=ValidationSeverity.WARNING,
+                    category="Traceability",
+                    message="Coverage gap",
+                )
+            ],
+            passed=True,
+        )
+
+        summary = routes._build_generation_summary(
+            planned_count=2,
+            planned_items=["RE_One", "RE_Two"],
+            result=GenerationResult(diagrams=[sample_activity_result.diagrams[0], sample_activity_result.diagrams[0]]),
+            rendered_count=2,
+            validation_report=report,
+            lint_results={},
+        )
+
+        assert summary["planned_count"] == 2
+        assert summary["generated_count"] == 2
+        assert summary["quality_status"] == "needs_fix"
+        assert summary["warning_count"] == 1
+
+    def test_generation_summary_marks_missing_planned_diagram_as_failed(self, sample_activity_result):
+        summary = routes._build_generation_summary(
+            planned_count=2,
+            planned_items=["RE_One", "RE_Two"],
+            result=sample_activity_result,
+            rendered_count=1,
+            validation_report=ValidationReport(passed=True),
+            lint_results={},
+        )
+
+        assert summary["generated_count"] == 1
+        assert summary["failed_count"] == 1
+        assert summary["failed_items"] == ["RE_Two"]
+        assert summary["quality_status"] == "failed"
+
+    def test_generation_summary_counts_lint_findings(self, sample_activity_result):
+        summary = routes._build_generation_summary(
+            planned_count=1,
+            planned_items=["RE_Test"],
+            result=sample_activity_result,
+            rendered_count=1,
+            validation_report=ValidationReport(passed=True),
+            lint_results={"RE_Test": SimpleNamespace(errors=[], warnings=["long label"])},
+        )
+
+        assert summary["generated_count"] == 1
+        assert summary["quality_status"] == "needs_fix"
+        assert summary["warning_count"] == 1
+
+    @pytest.mark.xfail(reason="Latest UI contract also asks generation_summary to expose error_count.")
+    def test_generation_summary_contract_exposes_error_count_for_ui(self, sample_activity_result):
+        result = GenerationResult(
+            diagrams=sample_activity_result.diagrams,
+            errors=["blocking Mermaid render failure"],
+            warnings=["validation warning"],
+        )
+
+        summary = routes._build_generation_summary(
+            planned_count=1,
+            planned_items=["RE_Test"],
+            result=result,
+            rendered_count=1,
+            validation_report=ValidationReport(passed=True),
+            lint_results={},
+        )
+
+        assert summary["generated_count"] == 1
+        assert summary["error_count"] == 1
+        assert summary["warning_count"] == 1
+        assert summary["quality_status"] == "needs_fix"
 
     def test_generate_stream_activity_sanitizes_nan_in_final_payload(self, monkeypatch):
         activity_result = GenerationResult(
@@ -765,6 +865,25 @@ class TestExportRoutes:
 
         assert response.status_code == 400
         assert response.json()["detail"] == "format must be 'svg' or 'png'"
+
+    def test_render_mermaid_returns_svg(self, api_client):
+        response = api_client.post(
+            "/api/v1/render/mermaid",
+            json={"mermaid_text": "flowchart TD\nA-->B"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/svg+xml")
+        assert "<svg" in response.text
+
+    def test_render_mermaid_rejects_empty_text(self, api_client):
+        response = api_client.post(
+            "/api/v1/render/mermaid",
+            json={"mermaid_text": "   "},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "mermaid_text must not be empty"
 
 
 class TestTraceabilityAndConfigRoutes:

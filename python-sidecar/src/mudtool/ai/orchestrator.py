@@ -275,7 +275,7 @@ class AIOrchestrator:
                 self.model = model
                 self.latency_ms = latency_ms
 
-        wrapped = _json.dumps({"diagrams": diagram_dicts})
+        wrapped = _json.dumps({"diagrams": diagram_dicts}, default=str)
         response = _PipelineResponse(
             content=wrapped,
             model="activity_pipeline",

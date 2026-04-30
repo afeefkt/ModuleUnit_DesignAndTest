@@ -588,8 +588,32 @@
     #mudSpecContent th { background: #f1f5f9; color: #475569; font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid #e2e8f0; }
     #mudSpecContent td { padding: 5px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
     #mudSpecContent tr:nth-child(even) td { background: #f8fafc; }
-    #mudSpecContent code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
-    #mudSpecContent pre { background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 11px; }
+    #mudSpecContent code {
+      background: #eef2f7;
+      color: #0f172a;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    #mudSpecContent pre {
+      background: #f8fafc;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      padding: 14px 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: normal;
+    }
+    #mudSpecContent pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
 
     /* Review result badges */
     .review-error   { border-left: 3px solid #ef4444; background: #fef2f2; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
@@ -947,8 +971,8 @@
           <div class="flex items-center gap-2 mb-2">
             <label class="text-xs text-slate-500 whitespace-nowrap" for="specPipelineMode">Quality:</label>
             <select id="specPipelineMode" class="flex-1 text-xs" title="single_pass: fast 1-call generation&#10;two_stage: skeleton+Section7+validation (~3x slower, better pseudo-code)">
-              <option value="single_pass" selected>1-pass · fast</option>
-              <option value="two_stage">2-stage · best quality</option>
+              <option value="single_pass">1-pass · fast</option>
+              <option value="two_stage" selected>2-stage · best quality</option>
             </select>
           </div>
           <button class="primary w-full text-xs mb-1" id="btnGenerateMudSpec" disabled>
@@ -1104,6 +1128,20 @@
             <button class="secondary text-sm" onclick="showDiagramPanel()">← Back to Diagrams</button>
           </div>
         </div>
+      </div>
+
+      <!-- ── SPEC / FLOWCHART TAB BAR ── -->
+      <div id="mainContentTabs" class="hidden border-b border-slate-200 bg-white px-4 flex items-center gap-0 shrink-0" style="min-height:40px">
+        <button id="tabBtnSpec"
+                onclick="showMudSpecPanel()"
+                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors -mb-px">
+          📋 MUD Spec
+        </button>
+        <button id="tabBtnFlowcharts"
+                onclick="showDiagramPanel()"
+                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors -mb-px">
+          📊 Flowcharts
+        </button>
       </div>
 
       <!-- ── MUD SPEC PANEL ── -->
@@ -1544,7 +1582,67 @@
         });
       });
 
+      ((data.validation_report || {}).issues || []).forEach(issue => {
+        items.push({
+          severity: issue.severity || 'info',
+          section: issue.category || issue.section || 'Validation',
+          message: `[${issue.rule_id || 'Validation'}] ${issue.message || ''}`,
+        });
+      });
+
       return items;
+    }
+
+    function generationSummaryText(summary) {
+      if (!summary) return '';
+      const planned = summary.planned_count ?? 0;
+      const generated = summary.generated_count ?? 0;
+      const rendered = summary.rendered_count ?? generated;
+      const status = summary.quality_status || 'needs_fix';
+      const label = status === 'pass'
+        ? 'quality passed'
+        : status === 'failed'
+          ? 'generation failed'
+          : 'quality needs fix';
+      return `Generated ${generated}/${planned} diagrams · rendered ${rendered} · ${label}`;
+    }
+
+    function renderGenerationDiagnostics(data, diagIssues) {
+      const canvas = document.getElementById('diagramCanvas');
+      if (!canvas) return;
+      const old = document.getElementById('generationDiagnostics');
+      if (old) old.remove();
+      const summary = data.generation_summary || {};
+      const grouped = {
+        'Generation failures': [],
+        'Render/lint blockers': [],
+        'Validation errors': [],
+        'Validation warnings': [],
+        'Traceability coverage gaps': [],
+      };
+      (summary.failed_items || []).forEach(item => grouped['Generation failures'].push(String(item)));
+      (diagIssues || []).forEach(issue => {
+        const msg = issue.message || '';
+        const severity = (issue.severity || '').toLowerCase();
+        if (msg.includes('[Lint:')) grouped['Render/lint blockers'].push(msg);
+        else if (msg.includes('AUT-010') || msg.toLowerCase().includes('requirement')) grouped['Traceability coverage gaps'].push(msg);
+        else if (severity === 'error') grouped['Validation errors'].push(msg);
+        else if (severity === 'warning') grouped['Validation warnings'].push(msg);
+      });
+      const rows = Object.entries(grouped)
+        .filter(([, items]) => items.length)
+        .map(([title, items]) => `
+          <div class="mb-2">
+            <div class="font-semibold text-slate-600">${escapeHtml(title)} (${items.length})</div>
+            ${items.map(item => `<div class="font-mono text-[11px] text-slate-500">${escapeHtml(item)}</div>`).join('')}
+          </div>`)
+        .join('');
+      if (!rows && summary.quality_status === 'pass') return;
+      canvas.insertAdjacentHTML('afterbegin', `
+        <details id="generationDiagnostics" class="mx-4 mt-4 mb-2 rounded border border-slate-200 bg-white text-xs">
+          <summary class="cursor-pointer px-3 py-2 text-slate-600">${escapeHtml(generationSummaryText(summary) || 'Quality diagnostics')}</summary>
+          <div class="px-3 pb-3">${rows || '<div class="text-slate-500">No diagnostics.</div>'}</div>
+        </details>`);
     }
 
     document.getElementById('generationScopeArchitecture').addEventListener('change', syncGenerationSectionState);
@@ -1820,8 +1918,6 @@
                     : event.gap_count > 0 ? 'text-yellow-600'
                     : 'text-green-600';
         logPipelineEvent(event.message || `[PreCheck:${dt}]`, color);
-        (event.gaps || []).forEach(g => logPipelineEvent(`  hint: ${g}`, 'text-yellow-600'));
-        (event.warnings || []).forEach(w => logPipelineEvent(`  warn: ${w}`, 'text-slate-500'));
         setStatus(event.message || 'Pre-check...');
         return;
       }
@@ -1855,8 +1951,6 @@
                     : event.warning_count > 0 ? 'text-yellow-600'
                     : 'text-green-600';
         logPipelineEvent(event.message || `[Lint:${event.diagram_key}]`, color);
-        (event.errors || []).forEach(e => logPipelineEvent(`  error: ${e}`, 'text-red-500'));
-        (event.warnings || []).forEach(w => logPipelineEvent(`  warn: ${w}`, 'text-yellow-600'));
         setStatus(event.message || 'Linting...');
         return;
       }
@@ -2023,10 +2117,8 @@
       if (genErrContainer) genErrContainer.remove();
 
       const genErrors = (d.result.errors || []);
-      const genWarnings = (d.result.warnings || []);
       const diagIssues = summarizeGenerationDiagnostics(d);
       const diagErrors = diagIssues.filter(i => i.severity === 'error').map(i => i.message);
-      const diagWarnings = diagIssues.filter(i => i.severity === 'warning').map(i => i.message);
 
       if (state.mudReview && diagIssues.length) {
         state.mudReview = mergeGenerationIssuesIntoReview(state.mudReview, diagIssues);
@@ -2037,36 +2129,24 @@
         renderReviewHistory();
       }
 
-      if (genErrors.length > 0 || genWarnings.length > 0 || diagErrors.length > 0 || diagWarnings.length > 0) {
-        let bannerHtml = '';
-        [...genErrors, ...diagErrors].forEach(e => {
-          bannerHtml += `<div class="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-xs mb-2">
-            <span class="font-semibold">&#x26D4; Error:</span> ${escapeHtml(e)}
-          </div>`;
-        });
-        [...genWarnings, ...diagWarnings].forEach(w => {
-          bannerHtml += `<div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-yellow-700 text-xs mb-2">
-            <span class="font-semibold">&#x26A0; Warning:</span> ${escapeHtml(w)}
-          </div>`;
-        });
-        const canvas = document.getElementById('diagramCanvas');
-        canvas.insertAdjacentHTML('afterbegin',
-          `<div id="genErrors" class="px-4 pt-4">${bannerHtml}</div>`);
-      }
-
       if (Object.keys(state.diagrams).length === 0 && genErrors.length === 0 && diagErrors.length === 0) {
         toast('AI generated 0 diagrams - check model status and server logs', true);
         setStatus('0 diagrams - try 1-pass mode or check Ollama is running');
       }
 
       renderAllDiagrams();
+      renderGenerationDiagnostics(d, diagIssues);
       renderValidation(d.validation_report);
       loadCoverage();
       enableExportButtons();
       document.getElementById('btnClear').disabled = false;
+      // Reveal tab bar if MUD spec was already generated (allows switching back)
+      _setActiveTab('flowcharts');
 
       const pipelineMode = document.getElementById('pipelineMode').value;
       const nDiags = d.result.diagrams?.length || 0;
+      const generationSummary = d.generation_summary || null;
+      const compactSummary = generationSummaryText(generationSummary);
       const elabInfo = d.elaboration_info || null;
       const activitySourceNote = state.lastActivitySourceUsed === 'mud_spec'
         ? ' | Activity: MUD spec | Architecture: requirements'
@@ -2082,14 +2162,15 @@
           .filter(s => s.was_refined).length;
         const modeLabel = modeLabels[d.pipeline_summary.mode] || d.pipeline_summary.mode;
         const refinedNote = refined > 0 ? ` | ${refined} refined` : '';
-        const blockingIssueCount = diagErrors.length;
-        const warningIssueCount = diagWarnings.length;
-        const issueNote = (blockingIssueCount || warningIssueCount)
-          ? ` | ${blockingIssueCount} blocker(s), ${warningIssueCount} warning(s)`
+        const issueNote = generationSummary && generationSummary.quality_status !== 'pass'
+          ? ` | ${generationSummary.blocking_count || 0} blocker(s), ${generationSummary.warning_count || 0} quality item(s)`
           : '';
-        setStatus(`Generated ${nDiags} diagram(s) via ${modeLabel} | ${generationMode}${refinedNote}${issueNote}${activitySourceNote}${elabSuffix}`);
-        toast(`Generated ${nDiags} diagrams (${modeLabel}, ${generationMode})${refinedNote}${issueNote}${activitySourceNote}`);
-        addActivityLog(`Generation complete: ${nDiags} diagram(s) via ${modeLabel}${issueNote}`, diagErrors.length ? 'warn' : 'ok');
+        setStatus(`${compactSummary || `Generated ${nDiags} diagram(s)`} via ${modeLabel} | ${generationMode}${refinedNote}${activitySourceNote}${elabSuffix}`);
+        toast(`${compactSummary || `Generated ${nDiags} diagrams`} (${modeLabel}, ${generationMode})${activitySourceNote}`);
+        addActivityLog(
+          `Generation complete: ${compactSummary || `${nDiags} diagram(s)`}${issueNote}`,
+          generationSummary?.quality_status === 'failed' ? 'err' : generationSummary?.quality_status === 'needs_fix' ? 'warn' : 'ok'
+        );
         // Show stage badges
         const ppEl = document.getElementById('pipelineProgress');
         if (ppEl) {
@@ -2103,9 +2184,12 @@
           });
         }
       } else {
-        setStatus(`Generated ${nDiags} diagram(s) | ${generationMode}${activitySourceNote}${elabSuffix}`);
-        toast(`Generated ${nDiags} diagrams successfully (${generationMode})${activitySourceNote}`);
-        addActivityLog(`Generation complete: ${nDiags} diagram(s)`, diagErrors.length ? 'warn' : 'ok');
+        setStatus(`${compactSummary || `Generated ${nDiags} diagram(s)`} | ${generationMode}${activitySourceNote}${elabSuffix}`);
+        toast(`${compactSummary || `Generated ${nDiags} diagrams`} (${generationMode})${activitySourceNote}`);
+        addActivityLog(
+          `Generation complete: ${compactSummary || `${nDiags} diagram(s)`}`,
+          generationSummary?.quality_status === 'failed' ? 'err' : generationSummary?.quality_status === 'needs_fix' ? 'warn' : 'ok'
+        );
       }
     }
 
@@ -2298,6 +2382,9 @@
           <button class="card-src-btn"
                   onclick="event.stopPropagation();openDiagramModal('${key}')">Open</button>
           <button class="card-src-btn"
+                  title="View draw.io image"
+                  onclick="event.stopPropagation();showDrawioImageModal('${key}')">Image</button>
+          <button class="card-src-btn"
                   onclick="event.stopPropagation();toggleCardSource('${key}')">⟨/⟩</button>
         </div>
         <div class="diagram-card-body" style="min-height:${minH}px"
@@ -2378,6 +2465,26 @@
 
     function renderMermaidIntoElement(el, mmdText, opts = {}) {
       if (!el) return Promise.resolve({ status: 'render_error', rendered: false, fallback: true, reason: 'no target element' });
+      const useServerFallback = reason => fetchServerRenderedMermaidSvg(mmdText)
+        .then(svgText => {
+          renderServerSvgIntoElement(el, svgText, { reason });
+          return {
+            status: 'fallback_server_svg',
+            rendered: true,
+            fallback: true,
+            reason,
+          };
+        })
+        .catch(serverError => {
+          const fallbackReason = `${reason}; server fallback failed: ${serverError.message}`;
+          showMermaidFallback(el, mmdText, fallbackReason);
+          return {
+            status: 'render_error',
+            rendered: false,
+            fallback: true,
+            reason: fallbackReason,
+          };
+        });
       const attemptRender = (attempt = 0) => mermaid.run({ nodes: [el] })
         .then(() => {
           const svg = el.querySelector('svg');
@@ -2387,33 +2494,57 @@
               el.textContent = mmdText;
               return attemptRender(1);
             }
-            showMermaidFallback(el, mmdText, `Blank-looking diagram: ${inspection.reason}`);
-            if (opts.key) {
-              setDiagramRenderMeta(opts.key, inspection);
-            }
-            return inspection;
+            const reason = `Blank-looking diagram: ${inspection.reason}`;
+            return useServerFallback(reason).then(meta => {
+              if (opts.key) {
+                setDiagramRenderMeta(opts.key, meta);
+              }
+              return meta;
+            });
           }
           if (inspection.status === 'suspicious_but_rendered' && opts.key) {
             setDiagramRenderMeta(opts.key, inspection);
           } else if (opts.key) {
             setDiagramRenderMeta(opts.key, inspection);
           }
+          addZoomPanToElement(el);
           return inspection;
         })
         .catch(e => {
-          const meta = {
-            status: 'render_error',
-            rendered: false,
-            fallback: true,
-            reason: `Render error: ${e.message}`,
-          };
-          showMermaidFallback(el, mmdText, meta.reason);
-          if (opts.key) {
-            setDiagramRenderMeta(opts.key, meta);
-          }
-          return meta;
+          const reason = `Render error: ${e.message}`;
+          return useServerFallback(reason).then(meta => {
+            if (opts.key) {
+              setDiagramRenderMeta(opts.key, meta);
+            }
+            return meta;
+          });
         });
       return attemptRender(0);
+    }
+
+    async function fetchServerRenderedMermaidSvg(mmdText) {
+      const response = await fetch(`${API}/render/mermaid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ diagram_source: mmdText }),
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || `HTTP ${response.status}`);
+      }
+      return response.text();
+    }
+
+    function renderServerSvgIntoElement(el, svgText, opts = {}) {
+      const reason = opts.reason ? escapeHtml(opts.reason) : 'Client-side preview unavailable';
+      el.innerHTML =
+        `<div class="mmd-render-error" title="${reason}">Preview unavailable in browser. Showing server-rendered diagram.</div>
+         <div style="margin-top:8px;overflow:hidden;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+           ${svgText}
+         </div>`;
+      const svg = el.querySelector('svg');
+      if (svg) svg.setAttribute('width', '100%');
+      addZoomPanToElement(el);
     }
 
     function inspectMermaidSvg(svg) {
@@ -2473,11 +2604,89 @@
 
     function showMermaidFallback(el, mmdText, reason) {
       el.innerHTML =
-        `<div class="mmd-render-error">⚠ ${escapeHtml(reason)}<br>
-           <span style="color:#64748b">Showing Mermaid source instead</span></div>
-         <pre style="margin-top:8px;font-size:11px;background:#0f172a;color:#86efac;
-                     padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap"
-              >${escapeHtml(mmdText)}</pre>`;
+        `<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;border-radius:8px;background:#f8fafc;"
+              title="${escapeHtml(reason)}">
+           <div style="font-size:28px;margin-bottom:8px">Diagram</div>
+           <div style="font-weight:500;margin-bottom:4px">Diagram preview unavailable</div>
+           <a href="#" onclick="copyMermaidSource('${optsKeyForElement(el)}');return false"
+              style="color:#3b82f6;font-size:11px">Copy Mermaid source</a>
+         </div>`;
+    }
+
+    function optsKeyForElement(el) {
+      const card = el?.closest?.('.diagram-card');
+      return card?.getAttribute('data-key') || state.diagramModalKey || state.activeTab || '';
+    }
+
+    function copyMermaidSource(key) {
+      const source = state.diagrams[key] || state.diagrams[state.activeTab] || '';
+      if (!source) return;
+      navigator.clipboard?.writeText(source).then(() => toast('Mermaid source copied'));
+    }
+
+    function addZoomPanToElement(container) {
+      const svg = container?.querySelector?.('svg');
+      if (!svg || svg.dataset.zoomPanAttached === '1') return;
+      svg.dataset.zoomPanAttached = '1';
+      svg.style.transformOrigin = '0 0';
+      svg.style.cursor = 'grab';
+      svg.style.transition = 'transform 0.05s';
+      let scale = Number(svg.dataset.zoomScale || 1);
+      let tx = Number(svg.dataset.zoomTx || 0);
+      let ty = Number(svg.dataset.zoomTy || 0);
+      let dragging = false;
+      let ox = 0;
+      let oy = 0;
+      const applyTransform = () => {
+        svg.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+        svg.dataset.zoomScale = String(scale);
+        svg.dataset.zoomTx = String(tx);
+        svg.dataset.zoomTy = String(ty);
+        const label = document.getElementById('diagramModalZoomLabel');
+        if (container.closest?.('#diagramModal') && label) label.textContent = `${Math.round(scale * 100)}%`;
+      };
+      container.addEventListener('wheel', e => {
+        e.preventDefault();
+        scale = Math.max(0.2, Math.min(8, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+        applyTransform();
+      }, { passive: false });
+      svg.addEventListener('mousedown', e => {
+        dragging = true;
+        ox = e.clientX - tx;
+        oy = e.clientY - ty;
+        svg.style.cursor = 'grabbing';
+      });
+      window.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        tx = e.clientX - ox;
+        ty = e.clientY - oy;
+        applyTransform();
+      });
+      window.addEventListener('mouseup', () => {
+        dragging = false;
+        svg.style.cursor = 'grab';
+      });
+      let lastDist = 0;
+      container.addEventListener('touchstart', e => {
+        if (e.touches.length === 2) {
+          lastDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY,
+          );
+        }
+      });
+      container.addEventListener('touchmove', e => {
+        if (e.touches.length !== 2 || !lastDist) return;
+        e.preventDefault();
+        const d = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY,
+        );
+        scale = Math.max(0.2, Math.min(8, scale * (d / lastDist)));
+        lastDist = d;
+        applyTransform();
+      }, { passive: false });
+      applyTransform();
     }
 
     // Click a card → highlight it + update source panel
@@ -2497,19 +2706,81 @@
       src.style.display = src.style.display === 'none' ? 'block' : 'none';
     }
 
+    async function showDrawioImageModal(key) {
+      if (!state.generationResult) {
+        toast('No generation result available', true);
+        return;
+      }
+      try {
+        const r1 = await fetch(`${API}/export/drawio/inline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result: state.generationResult, diagram_keys: [key] }),
+        });
+        if (!r1.ok) throw new Error(await r1.text());
+        const { diagrams } = await r1.json();
+        const xml = diagrams?.[key];
+        if (!xml) throw new Error('Export unavailable');
+
+        const r2 = await fetch(`${API}/render/drawio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ diagram_source: xml }),
+        });
+        if (!r2.ok) throw new Error(await r2.text());
+        openSvgZoomModal(await r2.text(), `${diagDisplayName(key)} (draw.io image)`);
+      } catch (e) {
+        toast(`Draw.io preview failed: ${e.message}`, true);
+      }
+    }
+
+    function openSvgZoomModal(svgText, title) {
+      state.diagramModalKey = null;
+      state.diagramModalZoom = 1;
+      const modal = document.getElementById('diagramModal');
+      const canvas = document.getElementById('diagramModalCanvas');
+      document.getElementById('diagramModalTitle').textContent = title;
+      canvas.innerHTML = `<div style="overflow:hidden;width:100%;height:70vh;background:#f8fafc;border-radius:6px;position:relative">${svgText}</div>`;
+      canvas.style.transform = '';
+      const svg = canvas.querySelector('svg');
+      if (svg) svg.setAttribute('width', '100%');
+      modal.classList.remove('hidden');
+      addZoomPanToElement(canvas.firstElementChild);
+      updateDiagramModalZoomUi();
+    }
+
     function updateDiagramModalZoomUi() {
       const label = document.getElementById('diagramModalZoomLabel');
       const canvas = document.getElementById('diagramModalCanvas');
       if (label) label.textContent = `${Math.round(state.diagramModalZoom * 100)}%`;
-      if (canvas) canvas.style.transform = `scale(${state.diagramModalZoom})`;
+      if (canvas && !canvas.querySelector('svg')) canvas.style.transform = `scale(${state.diagramModalZoom})`;
     }
 
     function adjustDiagramZoom(delta) {
+      const svg = document.querySelector('#diagramModalCanvas svg');
+      if (svg) {
+        const current = Number(svg.dataset.zoomScale || 1);
+        const next = Math.max(0.2, Math.min(8, current + delta));
+        const tx = Number(svg.dataset.zoomTx || 0);
+        const ty = Number(svg.dataset.zoomTy || 0);
+        svg.dataset.zoomScale = String(next);
+        svg.style.transform = `translate(${tx}px,${ty}px) scale(${next})`;
+        const label = document.getElementById('diagramModalZoomLabel');
+        if (label) label.textContent = `${Math.round(next * 100)}%`;
+        return;
+      }
       state.diagramModalZoom = Math.max(0.4, Math.min(2.5, state.diagramModalZoom + delta));
       updateDiagramModalZoomUi();
     }
 
     function resetDiagramZoom() {
+      const svg = document.querySelector('#diagramModalCanvas svg');
+      if (svg) {
+        svg.dataset.zoomScale = '1';
+        svg.dataset.zoomTx = '0';
+        svg.dataset.zoomTy = '0';
+        svg.style.transform = 'translate(0px,0px) scale(1)';
+      }
       state.diagramModalZoom = 1;
       updateDiagramModalZoomUi();
     }
@@ -2535,6 +2806,7 @@
       const canvas = document.getElementById('diagramModalCanvas');
       const safeId = 'modal_r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
       canvas.innerHTML = `<div class="mermaid" id="${safeId}">${escapeHtml(mmdText)}</div>`;
+      canvas.style.transform = '';
       updateDiagramModalZoomUi();
       modal.classList.remove('hidden');
       const el = document.getElementById(safeId);
@@ -2999,23 +3271,42 @@
     // ════════════════════════════════════════════════════════
 
     // Panel switcher helpers
+    const _TAB_ACTIVE   = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-500 text-blue-600 -mb-px';
+    const _TAB_INACTIVE = 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors -mb-px';
+
+    function _setActiveTab(name) {
+      const tabsBar = document.getElementById('mainContentTabs');
+      if (!tabsBar) return;
+      // Only show tab bar if both spec AND diagrams have content
+      const hasDiagrams = Object.keys(state.diagrams || {}).length > 0;
+      const hasSpec = !!(state.mudSpec);
+      if (hasDiagrams && hasSpec) tabsBar.classList.remove('hidden');
+      const btnSpec       = document.getElementById('tabBtnSpec');
+      const btnFlowcharts = document.getElementById('tabBtnFlowcharts');
+      if (btnSpec)       btnSpec.className       = name === 'spec'       ? _TAB_ACTIVE : _TAB_INACTIVE;
+      if (btnFlowcharts) btnFlowcharts.className  = name === 'flowcharts' ? _TAB_ACTIVE : _TAB_INACTIVE;
+    }
+
     function showDiagramPanel() {
       document.getElementById('modulePickerPanel').classList.add('hidden');
       document.getElementById('mudSpecPanel').classList.add('hidden');
       document.getElementById('diagramCanvas').classList.remove('hidden');
       document.getElementById('diagramTabs').classList.remove('hidden');
+      _setActiveTab('flowcharts');
     }
     function showModulePickerPanel() {
       document.getElementById('diagramCanvas').classList.add('hidden');
       document.getElementById('mudSpecPanel').classList.add('hidden');
       document.getElementById('modulePickerPanel').classList.remove('hidden');
       document.getElementById('diagramTabs').classList.add('hidden');
+      document.getElementById('mainContentTabs').classList.add('hidden');
     }
     function showMudSpecPanel() {
       document.getElementById('diagramCanvas').classList.add('hidden');
       document.getElementById('modulePickerPanel').classList.add('hidden');
       document.getElementById('mudSpecPanel').classList.remove('hidden');
       document.getElementById('diagramTabs').classList.add('hidden');
+      _setActiveTab('spec');
     }
 
     function getRequirementsText() {
@@ -3332,35 +3623,77 @@
     }
 
     function renderMudSpec(markdown, swcName) {
-      // Simple Markdown → HTML renderer (no external lib needed)
+      // Markdown → HTML renderer. Order matters — fenced blocks first.
       let html = escapeHtml(markdown);
 
-      // Tables
-      html = html.replace(/^\|(.+)\|$/gm, '<tr><td>' + '$1'.replace(/\|/g, '</td><td>') + '</td></tr>');
-      html = html.replace(/(<tr>.*<\/tr>\n?)+/g, (m) => {
-        const rows = m.trim().split('\n');
-        // First row is header, second is separator
-        const header = rows[0].replace(/<td>/g, '<th>').replace(/<\/td>/g, '</th>');
-        const body = rows.slice(2).join('\n');
-        return `<table>${header}${body}</table>`;
+      // ── 1. Fenced code blocks ```lang\n...\n``` ───────────────────────────
+      // Must run BEFORE inline-code pass so inner backticks are untouched.
+      html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const badge = lang
+          ? `<span style="position:absolute;top:8px;right:12px;font-size:10px;` +
+            `color:#475569;font-family:sans-serif;font-weight:700;letter-spacing:.5px">${lang.toUpperCase()}</span>`
+          : '';
+        return `<div style="position:relative;margin:10px 0">` +
+          `<pre style="background:#f8fafc;color:#0f172a;border:1px solid #cbd5e1;padding:16px 18px;` +
+          `border-radius:8px;overflow-x:auto;font-family:'Consolas','Monaco','Courier New',monospace;` +
+          `font-size:12.5px;line-height:1.75;white-space:pre-wrap;word-break:normal;tab-size:4;-moz-tab-size:4">` +
+          `${badge}<code>${code}</code></pre></div>`;
       });
 
-      // Headers
-      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+      // ── 2. Tables ──────────────────────────────────────────────────────────
+      html = html.replace(/^\|(.+)\|$/gm, (_, inner) => {
+        const cells = inner.split('|').map(c => `<td style="border:1px solid #e2e8f0;padding:5px 10px">${c.trim()}</td>`).join('');
+        return `<tr>${cells}</tr>`;
+      });
+      html = html.replace(/(<tr>[\s\S]*?<\/tr>\n?)+/g, m => {
+        const rows = m.trim().split('\n').filter(r => !r.match(/^<tr>\s*(<td>\s*[-:]+\s*<\/td>)+\s*<\/tr>$/));
+        if (!rows.length) return m;
+        const header = rows[0].replace(/<td/g, '<th style="background:#f8fafc;font-weight:600;border:1px solid #e2e8f0;padding:6px 10px"').replace(/<\/td>/g, '</th>');
+        const body = rows.slice(1).join('\n');
+        return `<table style="border-collapse:collapse;width:100%;margin:10px 0;font-size:13px">${header}${body}</table>`;
+      });
 
-      // Bold / italic
+      // ── 3. Headers ────────────────────────────────────────────────────────
+      html = html.replace(/^#### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;color:#334155;margin:14px 0 4px">$1</h4>');
+      html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:16px 0 6px;border-bottom:1px solid #f1f5f9;padding-bottom:3px">$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:16px;font-weight:700;color:#0f172a;margin:20px 0 8px">$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 12px">$1</h1>');
+
+      // ── 4. Unordered lists (- item lines grouped into <ul>) ───────────────
+      html = html.replace(/((?:^- .+(?:\n|$))+)/gm, block => {
+        const items = block.trim().split('\n')
+          .map(l => `<li style="margin:3px 0">${l.replace(/^- /, '').trim()}</li>`)
+          .join('');
+        return `<ul style="list-style:disc;padding-left:22px;margin:8px 0">${items}</ul>\n`;
+      });
+
+      // ── 5. Horizontal rules ───────────────────────────────────────────────
+      html = html.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">');
+
+      // ── 6. Bold / italic ──────────────────────────────────────────────────
       html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
 
-      // Inline code
-      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      // ── 7. Inline code (after fenced blocks) ─────────────────────────────
+      html = html.replace(/`([^`\n]+)`/g,
+        '<code style="background:#f1f5f9;color:#0f172a;padding:1px 5px;border-radius:4px;' +
+        'font-family:monospace;font-size:12px">$1</code>');
 
-      // Paragraphs (blank line separated)
-      html = html.replace(/\n\n([^<])/g, '<br><br>$1');
+      // ── 8. Blank lines → paragraph breaks; single \n → <br> ──────────────
+      // Split on blank lines to create paragraphs, preserve single newlines inside.
+      const blocks = html.split(/\n{2,}/);
+      html = blocks.map(b => {
+        b = b.trim();
+        if (!b) return '';
+        // Don't wrap block-level elements in <p>
+        if (/^<(h[1-6]|ul|ol|li|table|pre|div|hr)/.test(b)) return b;
+        // Turn single newlines into <br> within text paragraphs
+        return `<p style="margin:6px 0;line-height:1.7">${b.replace(/\n/g, '<br>')}</p>`;
+      }).join('\n');
 
       document.getElementById('mudSpecContent').innerHTML = html;
+      // Update tab bar so user can switch back to flowcharts
+      _setActiveTab('spec');
     }
 
     // ════════════════════════════════════════════════════════
@@ -4065,3 +4398,5 @@
 </body>
 
 </html>
+
+
