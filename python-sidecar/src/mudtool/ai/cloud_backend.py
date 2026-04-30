@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
 import re
 import time
@@ -129,6 +130,7 @@ class CloudBackend(BaseAIBackend):
         max_tokens: int = 8192,
         temperature: float = 0.2,
         stop_sequences: Optional[list[str]] = None,
+        response_format: str = "text",
     ) -> AIResponse:
         start_time = time.monotonic()
 
@@ -141,6 +143,7 @@ class CloudBackend(BaseAIBackend):
             return await self._generate_openai(
                 system_prompt, user_prompt, max_tokens, temperature,
                 stop_sequences, start_time,
+                response_format=response_format,
             )
 
     async def _generate_anthropic(
@@ -188,6 +191,7 @@ class CloudBackend(BaseAIBackend):
         temperature: float,
         stop_sequences: Optional[list[str]],
         start_time: float,
+        response_format: str = "text",
     ) -> AIResponse:
         """Generate using OpenAI-compatible API."""
         client = self._get_openai_client()
@@ -208,10 +212,23 @@ class CloudBackend(BaseAIBackend):
         is_reasoning_model = any(kw in model_lower for kw in _REASONING_KEYWORDS)
         if self.settings.openai_enable_thinking or is_reasoning_model:
             payload["think"] = True    # Ollama extension: enables chain-of-thought reasoning
+
+        # Inject format:json when caller explicitly requests JSON output (review, analysis, etc.).
+        # We ignore the global openai_json_mode guard here because the caller has already
+        # opted-in by passing response_format="json". This ensures the reviewer model
+        # (which may differ from the generator) returns parseable JSON regardless of
+        # the global setting. NEVER apply to prose/Markdown generation calls (those
+        # pass response_format="text").
+        if response_format == "json" and self._is_local_ollama():
+            payload["format"] = "json"
+
         if stop_sequences:
             payload["stop"] = stop_sequences
 
-        logger.info(f"OpenAI-compatible API call: model={self.settings.openai_model}")
+        logger.info(
+            f"OpenAI-compatible API call: model={self.settings.openai_model} "
+            f"response_format={response_format}"
+        )
 
         response = await client.post("/chat/completions", json=payload)
 
@@ -252,18 +269,22 @@ class CloudBackend(BaseAIBackend):
         max_tokens: int = 8192,
         temperature: float = 0.2,
     ) -> AsyncIterator[str]:
-        """Stream generation using Anthropic Claude API with SSE."""
+        """Stream generation token-by-token.
+
+        Uses native SSE streaming for both Anthropic and OpenAI-compatible
+        backends so tokens arrive incrementally rather than all-at-once.
+        This gives the user real-time feedback during long generations.
+        """
         if self.settings.cloud_provider == CloudProvider.ANTHROPIC:
             async for chunk in self._stream_anthropic(
                 system_prompt, user_prompt, max_tokens, temperature
             ):
                 yield chunk
         else:
-            # Fallback: non-streaming for OpenAI-compatible
-            response = await self.generate(
+            async for chunk in self._stream_openai(
                 system_prompt, user_prompt, max_tokens, temperature
-            )
-            yield response.content
+            ):
+                yield chunk
 
     async def _stream_anthropic(
         self,
@@ -284,6 +305,111 @@ class CloudBackend(BaseAIBackend):
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+
+    async def _stream_openai(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> AsyncIterator[str]:
+        """Stream token-by-token from an OpenAI-compatible endpoint (Ollama, vLLM, etc.).
+
+        Sends ``stream: true`` and parses the ``text/event-stream`` SSE response.
+        Filters out ``<think>...</think>`` blocks from reasoning models so only the
+        final answer text is yielded.
+
+        Falls back to a single non-streaming call if the endpoint does not support
+        streaming (e.g. older Ollama versions).
+        """
+        client = self._get_openai_client()
+
+        payload = {
+            "model": self.settings.openai_model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+
+        # Enable reasoning for deepseek-r1 / qwq style models
+        _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking")
+        if self.settings.openai_enable_thinking or any(
+            kw in payload["model"].lower() for kw in _REASONING_KEYWORDS
+        ):
+            payload["think"] = True
+
+        # Never inject format:json for streaming — it prevents proper SSE streaming
+        # and would corrupt Markdown output.
+
+        logger.info(
+            f"OpenAI-compatible STREAM: model={self.settings.openai_model}"
+        )
+
+        try:
+            in_think_block = False
+            async with client.stream("POST", "/chat/completions", json=payload) as resp:
+                if resp.status_code == 404 and self._is_local_ollama():
+                    # Model not found — try pulling, then fall back to non-streaming
+                    pulled = await self._pull_ollama_model(payload["model"])
+                    if pulled:
+                        async for chunk in self._stream_openai(
+                            system_prompt, user_prompt, max_tokens, temperature
+                        ):
+                            yield chunk
+                        return
+                    else:
+                        raise RuntimeError(
+                            f"Model '{payload['model']}' not found and pull failed"
+                        )
+
+                resp.raise_for_status()
+
+                async for raw_line in resp.aiter_lines():
+                    raw_line = raw_line.strip()
+                    if not raw_line:
+                        continue
+                    if not raw_line.startswith("data: "):
+                        continue
+                    chunk_str = raw_line[6:]
+                    if chunk_str == "[DONE]":
+                        break
+                    try:
+                        chunk = _json.loads(chunk_str)
+                    except _json.JSONDecodeError:
+                        continue
+
+                    delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+                    text = delta.get("content") or ""
+                    if not text:
+                        continue
+
+                    # Filter <think>...</think> from reasoning models
+                    if "<think>" in text:
+                        in_think_block = True
+                    if in_think_block:
+                        if "</think>" in text:
+                            in_think_block = False
+                            text = text[text.index("</think>") + len("</think>"):]
+                        else:
+                            continue
+
+                    if text:
+                        yield text
+
+        except Exception as exc:
+            logger.warning(
+                "OpenAI streaming failed (%s), falling back to non-streaming", exc
+            )
+            # Graceful fallback: collect the full response in one shot
+            response = await self.generate(
+                system_prompt, user_prompt, max_tokens, temperature,
+                response_format="text",
+            )
+            yield response.content
 
     async def health_check(self) -> dict:
         base = await super().health_check()

@@ -77,6 +77,37 @@ class RenderService:
             "or MUD_PLANTUML_JAR_PATH=/path/to/plantuml.jar"
         )
 
+    async def render_mermaid_to_svg(self, mermaid_text: str) -> bytes:
+        """Render Mermaid text to SVG bytes via Kroki.io.
+
+        Kroki endpoint: POST https://kroki.io/mermaid/svg
+        """
+        base_url = self._settings.kroki_base_url.rstrip("/")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{base_url}/mermaid/svg",
+                json={"diagram_source": mermaid_text},
+                headers={"Accept": "image/svg+xml"},
+            )
+            response.raise_for_status()
+            return response.content
+
+    async def render_drawio_to_svg(self, drawio_xml: str) -> bytes:
+        """Render draw.io / diagrams.net XML to SVG bytes via Kroki.io.
+
+        Kroki endpoint: POST https://kroki.io/diagramsnet/svg
+        Note: Kroki uses "diagramsnet" not "drawio" as the path segment.
+        """
+        base_url = self._settings.kroki_base_url.rstrip("/")
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(
+                f"{base_url}/diagramsnet/svg",
+                json={"diagram_source": drawio_xml},
+                headers={"Accept": "image/svg+xml"},
+            )
+            response.raise_for_status()
+            return response.content
+
     async def render_all(
         self,
         result: GenerationResult,
@@ -121,10 +152,19 @@ class RenderService:
 
     async def _render_kroki(self, puml_text: str, fmt: str) -> bytes:
         """Render via Kroki.io REST API (POST method with JSON body)."""
-        base_url = self._settings.kroki_base_url.rstrip("/")
-        url = f"{base_url}/plantuml/{fmt}"
+        return await self._render_kroki_text("plantuml", puml_text, fmt)
 
-        payload = {"diagram_source": puml_text}
+    async def _render_kroki_text(
+        self,
+        diagram_type: str,
+        diagram_text: str,
+        fmt: str,
+    ) -> bytes:
+        """Render diagram text via Kroki.io REST API (POST method with JSON body)."""
+        base_url = self._settings.kroki_base_url.rstrip("/")
+        url = f"{base_url}/{diagram_type}/{fmt}"
+
+        payload = {"diagram_source": diagram_text}
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(

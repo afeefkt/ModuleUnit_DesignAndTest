@@ -87,10 +87,47 @@ class ExcelImporter(BaseImporter):
                     errors=["No active worksheet found"],
                 )
 
-            # Read headers
-            headers: list[str] = []
-            for cell in ws[self.header_row]:
-                headers.append(str(cell.value or "").strip())
+            # Auto-detect header row: scan first 30 rows, pick the row that has
+            # req_id (or the most alias matches overall, minimum 2).
+            from mudtool.importers.base import DEFAULT_COLUMN_MAPPING
+            all_aliases = {
+                alias.lower(): field
+                for field, aliases in DEFAULT_COLUMN_MAPPING.items()
+                for alias in aliases
+            }
+            req_id_aliases = {a.lower() for a in DEFAULT_COLUMN_MAPPING.get("req_id", [])}
+
+            best_row = self.header_row
+            best_headers: list[str] = []
+            best_score = -1
+
+            for scan_row in range(1, 31):
+                try:
+                    candidate = [str(cell.value or "").strip() for cell in ws[scan_row]]
+                except Exception:
+                    break
+                has_req_id = any(h.lower() in req_id_aliases for h in candidate if h)
+                match_count = sum(1 for h in candidate if h and h.lower() in all_aliases)
+                # Prefer rows that have req_id; break immediately when found
+                if has_req_id:
+                    best_row = scan_row
+                    best_headers = candidate
+                    break
+                # Otherwise track the row with most matches (min 2)
+                if match_count >= 2 and match_count > best_score:
+                    best_score = match_count
+                    best_row = scan_row
+                    best_headers = candidate
+
+            actual_header_row = best_row
+            headers = best_headers if best_headers else [
+                str(cell.value or "").strip() for cell in ws[self.header_row]
+            ]
+            if actual_header_row != self.header_row:
+                logger.info(
+                    "Auto-detected header row %d (scanned up to row 30)",
+                    actual_header_row,
+                )
 
             # Build column index mapping: col_index -> canonical field name
             col_map: dict[int, str] = {}
@@ -121,9 +158,9 @@ class ExcelImporter(BaseImporter):
                     ],
                 )
 
-            # Read data rows
+            # Read data rows (start after the auto-detected header row)
             for row_idx, row in enumerate(
-                ws.iter_rows(min_row=self.header_row + 1), start=self.header_row + 1
+                ws.iter_rows(min_row=actual_header_row + 1), start=actual_header_row + 1
             ):
                 rows_processed += 1
                 row_data: dict[str, str] = {}

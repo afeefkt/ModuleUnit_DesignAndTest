@@ -51,6 +51,18 @@ class AUTOSARValidator:
         self._runnable_pattern = re.compile(settings.runnable_naming_regex)
         self._port_pattern = re.compile(settings.port_naming_regex)
 
+    def validate_quick(
+        self,
+        result: GenerationResult,
+        requirement_ids: Optional[list[str]] = None,
+    ) -> list[str]:
+        """Run validation and return issues as flat strings for AI retry prompts."""
+        report = self.validate(result, requirement_ids)
+        return [
+            f"[{issue.severity.value.upper()}] {issue.rule_id}: {issue.message}"
+            for issue in report.issues
+        ]
+
     def validate(
         self,
         result: GenerationResult,

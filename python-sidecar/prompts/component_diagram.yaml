@@ -1,15 +1,15 @@
 # Prompt Template: Component/Package Diagram Generation
-# Version: 1.0
+# Version: 1.1
 # Generates AUTOSAR SWC composition and port connectivity diagrams
 
 name: "AUTOSAR Component Diagram Generator"
-version: "1.0"
+version: "1.1"
 diagram_type: "component"
 
 metadata:
   author: "MUD Tool Team"
   domain: "AUTOSAR"
-  description: "Generates component diagrams showing SWC composition and port connectivity"
+  description: "Generates component diagrams showing SWC composition, port connectivity, and safety annotations"
 
 system_prompt: |
   You are an expert AUTOSAR software architect. Generate UML component diagrams
@@ -23,6 +23,7 @@ system_prompt: |
   - Connectors link P-Ports to R-Ports via shared interfaces:
     * Sender-Receiver Interface (IF_SR_*): Async data exchange
     * Client-Server Interface (IF_CS_*): Sync operation calls
+    * Parameter Interface (IF_Prm_*): Calibration data access (R-Port only, direction "required")
   - Stereotypes: <<ApplicationSWC>>, <<SensorActuatorSWC>>, <<ServiceSWC>>, <<CompositionSWC>>
 
   NAMING CONVENTIONS:
@@ -30,12 +31,32 @@ system_prompt: |
   - Port names: {{ port_naming_regex }}
   - Interface names: IF_SR_Name or IF_CS_Name
 
+  COMPOSITION PATTERNS:
+  - Use <<CompositionSWC>> when requirements describe a logical grouping of related SWCs
+    (e.g., a safety cluster, a sensor fusion subsystem, a powertrain domain controller).
+  - A CompositionSWC has no runnables itself — it delegates to its contained SWCs via
+    delegation ports (inner port connects to outer composition boundary port).
+  - Model delegation explicitly: outer PP_ port → inner SWC PP_ port (same interface_ref).
+
+  SAFETY PORT ANNOTATIONS:
+  - For ASIL-C/D components, add the ASIL level in the port description field.
+  - Example: {"description": "ASIL-D: safety-critical torque demand signal"}
+  - Redundant sensor ports (main + redundant) must have matching interface names with
+    a "_Redundant" suffix on the second port, e.g. RP_TorqueSensor and RP_TorqueSensorRedundant.
+
+  CALIBRATION PORT PATTERN:
+  - Calibration parameters are accessed via ParameterInterface (IF_Prm_*).
+  - Model as an R-Port with interface_type "parameter" and direction "required".
+  - Example: {"name": "RP_CalPrm_AssistGain", "direction": "required", "interface_ref": "IF_Prm_AssistGain", "interface_type": "parameter"}
+
   OUTPUT RULES:
   1. Every component must have at least one port
   2. P-Ports and R-Ports must use matching interface references
   3. Connectors must link a P-Port to an R-Port (not P-to-P or R-to-R)
   4. Every component must trace to requirements
   5. Use correct stereotypes based on component role
+  6. ASIL-D SWC ports must include their safety level in the port description
+  7. Calibration ports use direction "required" with interface_type "parameter"
 
   {{ few_shot_examples }}
   {{ additional_context }}
@@ -51,6 +72,7 @@ user_prompt: |
   {% endif %}
 
   Generate a JSON component diagram showing SWCs, ports, and connectors.
+  Annotate ASIL-D ports with their safety level. Include calibration ports where applicable.
   Output only valid JSON.
 
 output_schema: |
@@ -63,7 +85,11 @@ output_schema: |
         "id": "comp_1", "name": "SWC_Name", "stereotype": "ApplicationSWC",
         "ports": [
           {"id": "p_1", "name": "PP_DataOut", "direction": "provided",
-           "interface_ref": "IF_SR_SensorData", "interface_type": "sender_receiver"}
+           "interface_ref": "IF_SR_SensorData", "interface_type": "sender_receiver",
+           "description": "Optional: ASIL-D safety-critical output"},
+          {"id": "p_2", "name": "RP_CalPrm_Gain", "direction": "required",
+           "interface_ref": "IF_Prm_Gain", "interface_type": "parameter",
+           "description": "Calibration gain parameter access"}
         ],
         "trace_reqs": ["REQ-ID"], "confidence": 0.9
       }
@@ -73,7 +99,7 @@ output_schema: |
        "target_component": "comp_2", "target_port": "p_2",
        "interface_ref": "IF_SR_SensorData"}
     ],
-    "provenance": {"ai_model": "model", "prompt_version": "cmp-v1.0", "confidence": 0.88}
+    "provenance": {"ai_model": "model", "prompt_version": "cmp-v1.1", "confidence": 0.88}
   }
 
 few_shot_examples:
@@ -93,31 +119,44 @@ few_shot_examples:
           {
             "id": "comp_1", "name": "SWC_SensorFusion", "stereotype": "ApplicationSWC",
             "ports": [
-              {"id": "p_1", "name": "PP_FusedData", "direction": "provided", "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver"}
+              {"id": "p_1", "name": "PP_FusedData", "direction": "provided",
+               "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver",
+               "description": "Provides fused sensor output to consumers"}
             ],
             "trace_reqs": ["REQ-ARCH-0100"], "confidence": 0.93
           },
           {
             "id": "comp_2", "name": "SWC_VehicleControl", "stereotype": "ApplicationSWC",
             "ports": [
-              {"id": "p_2", "name": "RP_FusedData", "direction": "required", "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver"},
-              {"id": "p_3", "name": "RP_SafetyStatus", "direction": "required", "interface_ref": "IF_CS_SafetyCheck", "interface_type": "client_server"}
+              {"id": "p_2", "name": "RP_FusedData",    "direction": "required",
+               "interface_ref": "IF_SR_FusedSensor",  "interface_type": "sender_receiver",
+               "description": "Consumes fused sensor data for control algorithm"},
+              {"id": "p_3", "name": "RP_SafetyStatus", "direction": "required",
+               "interface_ref": "IF_CS_SafetyCheck",  "interface_type": "client_server",
+               "description": "Queries safety monitor status before actuation"}
             ],
             "trace_reqs": ["REQ-ARCH-0100", "REQ-ARCH-0101"], "confidence": 0.90
           },
           {
             "id": "comp_3", "name": "SWC_SafetyMonitor", "stereotype": "ApplicationSWC",
             "ports": [
-              {"id": "p_4", "name": "RP_FusedData", "direction": "required", "interface_ref": "IF_SR_FusedSensor", "interface_type": "sender_receiver"},
-              {"id": "p_5", "name": "PP_SafetyStatus", "direction": "provided", "interface_ref": "IF_CS_SafetyCheck", "interface_type": "client_server"}
+              {"id": "p_4", "name": "RP_FusedData",    "direction": "required",
+               "interface_ref": "IF_SR_FusedSensor",  "interface_type": "sender_receiver",
+               "description": "Receives fused data to evaluate system safety"},
+              {"id": "p_5", "name": "PP_SafetyStatus", "direction": "provided",
+               "interface_ref": "IF_CS_SafetyCheck",  "interface_type": "client_server",
+               "description": "Provides safety status response to VehicleControl"}
             ],
             "trace_reqs": ["REQ-ARCH-0101"], "confidence": 0.88
           }
         ],
         "connectors": [
-          {"id": "c_1", "source_component": "comp_1", "source_port": "p_1", "target_component": "comp_2", "target_port": "p_2", "interface_ref": "IF_SR_FusedSensor"},
-          {"id": "c_2", "source_component": "comp_1", "source_port": "p_1", "target_component": "comp_3", "target_port": "p_4", "interface_ref": "IF_SR_FusedSensor"},
-          {"id": "c_3", "source_component": "comp_3", "source_port": "p_5", "target_component": "comp_2", "target_port": "p_3", "interface_ref": "IF_CS_SafetyCheck"}
+          {"id": "c_1", "source_component": "comp_1", "source_port": "p_1",
+           "target_component": "comp_2", "target_port": "p_2", "interface_ref": "IF_SR_FusedSensor"},
+          {"id": "c_2", "source_component": "comp_1", "source_port": "p_1",
+           "target_component": "comp_3", "target_port": "p_4", "interface_ref": "IF_SR_FusedSensor"},
+          {"id": "c_3", "source_component": "comp_3", "source_port": "p_5",
+           "target_component": "comp_2", "target_port": "p_3", "interface_ref": "IF_CS_SafetyCheck"}
         ],
-        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "cmp-v1.0", "confidence": 0.90}
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "cmp-v1.1", "confidence": 0.90}
       }

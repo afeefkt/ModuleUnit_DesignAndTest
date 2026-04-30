@@ -1,0 +1,430 @@
+{
+  "thinking": [
+    "Stage 1: Identified 3 SWCs from 8 requirements: SWC_SensorFusion, SWC_VehicleControl, SWC_SafetyMonitor",
+    "Stage 2 SWC_SensorFusion: 2 port(s) → FusedEnvironmentModelSender, SensorDataReceiver",
+    "Stage 3 SWC_SensorFusion: 3 runnable(s) → RE_FuseSensorData, RE_CheckSensorHealth",
+    "Stage 2 SWC_VehicleControl: 1 port(s) → R_VehicleEnvironmentData",
+    "Stage 3 SWC_VehicleControl: 3 runnable(s) → RE_VehicleControlInit, RE_ProcessEnvironmentData",
+    "Stage 2 SWC_SafetyMonitor: 3 port(s) → RPort_SensorFusionStatus, RPort_VehicleControlStatus, PPort_EmergencyStopTrigger",
+    "Stage 3 SWC_SafetyMonitor: 5 runnable(s) → RE_InitSafetyMonitor, RE_CyclicCheckSystemHealth"
+  ],
+  "architecture_summary": "System decomposed into 3 SWC(s): SWC_SensorFusion, SWC_VehicleControl, SWC_SafetyMonitor.",
+  "elaborated": [
+    {
+      "req_id": "REQ-ARCH-0100",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_FuseSensorData",
+          "RE_CheckSensorHealth",
+          "RE_SendFusedModel"
+        ],
+        "ports": [
+          "FusedEnvironmentModelSender",
+          "SensorDataReceiver"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize sensor data structures → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0101",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_FuseSensorData",
+          "RE_CheckSensorHealth",
+          "RE_SendFusedModel"
+        ],
+        "ports": [
+          "FusedEnvironmentModelSender",
+          "SensorDataReceiver"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize sensor data structures → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0102",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_FuseSensorData",
+          "RE_CheckSensorHealth",
+          "RE_SendFusedModel"
+        ],
+        "ports": [
+          "FusedEnvironmentModelSender",
+          "SensorDataReceiver"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize sensor data structures → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0103",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_FuseSensorData",
+          "RE_CheckSensorHealth",
+          "RE_SendFusedModel"
+        ],
+        "ports": [
+          "FusedEnvironmentModelSender",
+          "SensorDataReceiver"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize sensor data structures → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0200",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_VehicleControlInit",
+          "RE_ProcessEnvironmentData",
+          "RE_ComputeControlCommands"
+        ],
+        "ports": [
+          "R_VehicleEnvironmentData"
+        ],
+        "interfaces": [
+          "IF_SR_EnvironmentModel"
+        ]
+      },
+      "logic_flow": "Initialize vehicle control parameters → Set default control commands",
+      "diagram_hints": {
+        "swc": "SWC_VehicleControl",
+        "primary_runnable": "RE_VehicleControlInit"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0201",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_VehicleControlInit",
+          "RE_ProcessEnvironmentData",
+          "RE_ComputeControlCommands"
+        ],
+        "ports": [
+          "R_VehicleEnvironmentData"
+        ],
+        "interfaces": [
+          "IF_SR_EnvironmentModel"
+        ]
+      },
+      "logic_flow": "Initialize vehicle control parameters → Set default control commands",
+      "diagram_hints": {
+        "swc": "SWC_VehicleControl",
+        "primary_runnable": "RE_VehicleControlInit"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0300",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_InitSafetyMonitor",
+          "RE_CyclicCheckSystemHealth",
+          "RE_OnDataReceptionSensorFusion",
+          "RE_OnDataReceptionVehicleControl",
+          "RE_TriggerEmergencyStop"
+        ],
+        "ports": [
+          "RPort_SensorFusionStatus",
+          "RPort_VehicleControlStatus",
+          "PPort_EmergencyStopTrigger"
+        ],
+        "interfaces": [
+          "IF_SR_EmergencyStopTrigger",
+          "IF_SR_SensorFusionStatus",
+          "IF_SR_VehicleControlStatus"
+        ]
+      },
+      "logic_flow": "Initialize sensor fusion status → Initialize vehicle control status → Set emergency stop trigger to false",
+      "diagram_hints": {
+        "swc": "SWC_SafetyMonitor",
+        "primary_runnable": "RE_InitSafetyMonitor"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-ARCH-0301",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_InitSafetyMonitor",
+          "RE_CyclicCheckSystemHealth",
+          "RE_OnDataReceptionSensorFusion",
+          "RE_OnDataReceptionVehicleControl",
+          "RE_TriggerEmergencyStop"
+        ],
+        "ports": [
+          "RPort_SensorFusionStatus",
+          "RPort_VehicleControlStatus",
+          "PPort_EmergencyStopTrigger"
+        ],
+        "interfaces": [
+          "IF_SR_EmergencyStopTrigger",
+          "IF_SR_SensorFusionStatus",
+          "IF_SR_VehicleControlStatus"
+        ]
+      },
+      "logic_flow": "Initialize sensor fusion status → Initialize vehicle control status → Set emergency stop trigger to false",
+      "diagram_hints": {
+        "swc": "SWC_SafetyMonitor",
+        "primary_runnable": "RE_InitSafetyMonitor"
+      },
+      "safety_level": "ASIL-D"
+    }
+  ],
+  "swc_list": [
+    {
+      "name": "SWC_SensorFusion",
+      "req_ids": [
+        "REQ-ARCH-0100",
+        "REQ-ARCH-0101",
+        "REQ-ARCH-0102",
+        "REQ-ARCH-0103"
+      ],
+      "purpose": "Fuses radar, camera, and lidar sensor data into a unified environment model"
+    },
+    {
+      "name": "SWC_VehicleControl",
+      "req_ids": [
+        "REQ-ARCH-0200",
+        "REQ-ARCH-0201"
+      ],
+      "purpose": "Computes vehicle control commands based on fused environment model data"
+    },
+    {
+      "name": "SWC_SafetyMonitor",
+      "req_ids": [
+        "REQ-ARCH-0300",
+        "REQ-ARCH-0301"
+      ],
+      "purpose": "Monitors system health and triggers emergency stop if necessary"
+    }
+  ],
+  "swc_ports": {
+    "SWC_SensorFusion": [
+      {
+        "port": "FusedEnvironmentModelSender",
+        "direction": "provided",
+        "interface": "IF_SR_FusedEnvironmentModel",
+        "data_type": "FusedEnvironmentModel",
+        "description": "Provides fused sensor data to consuming SWCs"
+      },
+      {
+        "port": "SensorDataReceiver",
+        "direction": "required",
+        "interface": "IF_SR_SensorData",
+        "data_type": "SensorData",
+        "description": "Receives raw sensor data from input sensors"
+      }
+    ],
+    "SWC_VehicleControl": [
+      {
+        "port": "R_VehicleEnvironmentData",
+        "direction": "required",
+        "interface": "IF_SR_EnvironmentModel",
+        "data_type": "uint8",
+        "description": "Fused environment model data from SWC_SensorFusion"
+      }
+    ],
+    "SWC_SafetyMonitor": [
+      {
+        "port": "RPort_SensorFusionStatus",
+        "direction": "required",
+        "interface": "IF_SR_SensorFusionStatus",
+        "data_type": "uint8",
+        "description": "Sensor fusion status data"
+      },
+      {
+        "port": "RPort_VehicleControlStatus",
+        "direction": "required",
+        "interface": "IF_SR_VehicleControlStatus",
+        "data_type": "uint8",
+        "description": "Vehicle control status data"
+      },
+      {
+        "port": "PPort_EmergencyStopTrigger",
+        "direction": "provided",
+        "interface": "IF_SR_EmergencyStopTrigger",
+        "data_type": "boolean",
+        "description": "Trigger for emergency stop"
+      }
+    ]
+  },
+  "swc_runnables": {
+    "SWC_SensorFusion": [
+      {
+        "runnable": "RE_FuseSensorData",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Initialize sensor data structures",
+          "Receive radar data",
+          "Receive camera data",
+          "Receive lidar data",
+          "Fusion algorithm execution",
+          "Update fused environment model"
+        ]
+      },
+      {
+        "runnable": "RE_CheckSensorHealth",
+        "trigger": "cyclic",
+        "period_ms": 50,
+        "pseudocode": [
+          "Check radar communication status",
+          "Check camera communication status",
+          "Check lidar communication status",
+          "If any sensor fails, transition to degraded mode",
+          "Log failure event",
+          "Notify system of failure"
+        ]
+      },
+      {
+        "runnable": "RE_SendFusedModel",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Receive request for fused model",
+          "Check if in degraded mode",
+          "If not in degraded mode, send fused environment model",
+          "If in degraded mode, send partial or default model",
+          "Log transmission event",
+          "Notify system of data sent"
+        ]
+      }
+    ],
+    "SWC_VehicleControl": [
+      {
+        "runnable": "RE_VehicleControlInit",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Initialize vehicle control parameters",
+          "Set default control commands"
+        ]
+      },
+      {
+        "runnable": "RE_ProcessEnvironmentData",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Receive environment data from R_VehicleEnvironmentData",
+          "Validate received data",
+          "Extract relevant information"
+        ]
+      },
+      {
+        "runnable": "RE_ComputeControlCommands",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Calculate control commands based on environment data",
+          "Apply safety constraints",
+          "Update control output ports"
+        ]
+      }
+    ],
+    "SWC_SafetyMonitor": [
+      {
+        "runnable": "RE_InitSafetyMonitor",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Initialize sensor fusion status",
+          "Initialize vehicle control status",
+          "Set emergency stop trigger to false"
+        ]
+      },
+      {
+        "runnable": "RE_CyclicCheckSystemHealth",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Read sensor fusion status",
+          "Read vehicle control status",
+          "Evaluate system health",
+          "If system healthy, set emergency stop trigger to false",
+          "If system unhealthy, set emergency stop trigger to true"
+        ]
+      },
+      {
+        "runnable": "RE_OnDataReceptionSensorFusion",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read new sensor fusion status",
+          "Update internal sensor fusion status",
+          "Evaluate system health based on updated status"
+        ]
+      },
+      {
+        "runnable": "RE_OnDataReceptionVehicleControl",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read new vehicle control status",
+          "Update internal vehicle control status",
+          "Evaluate system health based on updated status"
+        ]
+      },
+      {
+        "runnable": "RE_TriggerEmergencyStop",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check if emergency stop trigger is true",
+          "If true, send emergency stop command via P-Port"
+        ]
+      }
+    ]
+  },
+  "req_hash": "b7ecd4d2f1fe74c8",
+  "parse_ok": true,
+  "status": "ok",
+  "source": "chunked_generation",
+  "created_at": "2026-04-22T18:40:19.170061+00:00",
+  "elaborated_count": 8,
+  "quality_score": 1.0
+}

@@ -66,6 +66,8 @@ class TestPlantUMLExporter:
         assert "@enduml" in text
         assert "SWC_SensorFusion" in text
         assert "Rte_Write" in text
+        assert 'participant "SWC_SensorFusion" as ll_1' in text
+        assert "note right of ll_1: <<ApplicationSWC>>" in text
 
     def test_export_state_machine(self, sample_state_machine):
         exporter = PlantUMLExporter()

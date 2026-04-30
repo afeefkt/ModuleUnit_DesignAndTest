@@ -89,8 +89,9 @@ class PlantUMLExporter:
 
         # Participants (lifelines)
         for ll in diagram.lifelines:
-            stereotype = f" <<{ll.type}>>" if ll.type else ""
-            lines.append(f'participant "{ll.name}"{stereotype} as {ll.id}')
+            lines.append(f'participant "{ll.name}" as {ll.id}')
+            if ll.type:
+                lines.append(f'note right of {ll.id}: <<{ll.type}>>')
 
         lines.append("")
 

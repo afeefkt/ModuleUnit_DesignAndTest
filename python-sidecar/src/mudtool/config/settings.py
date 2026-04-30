@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # AI Backend Selection
     ai_backend: AIBackend = AIBackend.CLOUD
-    confidence_threshold: float = 0.6
+    confidence_threshold: float = 0.8
     max_retries: int = 3
 
     # Cloud AI - Anthropic
@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     openai_max_tokens: int = 8192
     openai_enable_thinking: bool = False   # MUD_OPENAI_ENABLE_THINKING — pass think:true to Ollama
+    openai_json_mode: bool = True           # MUD_OPENAI_JSON_MODE — force JSON output via Ollama format field
 
     cloud_provider: CloudProvider = CloudProvider.ANTHROPIC
 
@@ -104,6 +105,88 @@ class Settings(BaseSettings):
     pipeline_max_passes: int = 1
     # If draft provenance.confidence >= this value, skip critique/refine (early exit)
     pipeline_confidence_threshold: float = 0.75
+
+    # ── Visual QA (qwen2-vl via Ollama) ──────────────────────────────────────
+    # MUD_VISUAL_QA_ENABLED=true  → render every diagram to PNG and review with vision LLM
+    visual_qa_enabled: bool = False
+    # MUD_VISUAL_QA_MODEL  → any Ollama multimodal model (ollama pull qwen2-vl:7b)
+    visual_qa_model: str = "qwen2-vl:7b"
+    # MUD_VISUAL_QA_MAX_ROUNDS  → max correction-refinement rounds per diagram (1–3)
+    visual_qa_max_rounds: int = 2
+    # MUD_VISUAL_QA_MIN_SCORE  → approve diagram if vision score >= this (0.0–1.0)
+    visual_qa_min_score: float = 0.70
+
+    # ── Elaboration mode ─────────────────────────────────────────────────────
+    # MUD_ELABORATION_MODE: "single_shot" (default, 7B+ models) or "chunked"
+    # (2–3B models like Qwen 2.5 2B/3B).
+    #
+    # single_shot — one large prompt → one large JSON document (current behaviour).
+    #               Reliable for 7B+ models; drifts/hallucinates on 2–3B.
+    # chunked     — three small focused prompts assembled by Python code.
+    #               Each call targets ≤ 500 tokens output, well within 2–3B
+    #               reliable range.  More API calls but far higher reliability.
+    elaboration_mode: str = "single_shot"
+
+    # ── Skills (full-document injection for activity diagrams) ───────────────
+    # MUD_SKILLS_ENABLED=true  -> prepend skill block to activity diagram system prompts
+    skills_enabled: bool = True
+    # MUD_SKILLS_DIR  -> folder containing non-chunked skill .md files
+    skills_dir: Optional[Path] = None  # default: project_root / "data" / "skills"
+
+    # ── Guidelines RAG (design document injection) ────────────────────────────
+    # MUD_GUIDELINES_ENABLED=true  -> load docs from guidelines_dir before generation
+    guidelines_enabled: bool = True
+    # MUD_GUIDELINES_DIR  -> folder containing HTML/PDF/DOCX/TXT/MD guideline files
+    guidelines_dir: Optional[Path] = None
+    # MUD_GUIDELINES_CACHE_DIR  -> where chunked embeddings are cached
+    guidelines_cache_dir: Optional[Path] = None
+    # MUD_GUIDELINES_EMBED_MODEL  -> Ollama model for embeddings (nomic-embed-text recommended)
+    guidelines_embed_model: str = "nomic-embed-text"
+    # MUD_GUIDELINES_MAX_CHUNKS  -> max chunks injected per diagram type per generation
+    guidelines_max_chunks: int = 3
+    # MUD_GUIDELINES_CHUNK_SIZE  -> target characters per text chunk
+    guidelines_chunk_size: int = 800
+
+    # MUD_SPEC_SKELETON_MODEL: optional separate model for Stage 1 skeleton in
+    # the two-stage pipeline.  Empty = use the same model as Stage 3 (generator).
+    # Recommended: deepseek-r1:7b — better structured-JSON completeness on 7b GPUs.
+    mud_spec_skeleton_model: str = ""
+
+    # ── MUD Spec Generation Pipeline ─────────────────────────────────────────
+    # MUD_SPEC_PIPELINE controls the generation mode for /modules/mud-spec:
+    #   "single_pass"  — one AI call produces the full 7-section Markdown.
+    #                              Fast (~1 min), good for quick iterations.
+    #   "two_stage"    — Stage 1 generates a JSON skeleton (all ports/runnables/IRVs/
+    #                    CalPrm/DEM events), then Stage 3 expands Section 7 pseudo-code
+    #                    per runnable using exact port names from the skeleton.
+    #                    Better quality, ~3× slower.  Falls back to single_pass on error.
+    mud_spec_pipeline: str = "two_stage"
+
+    # ── Activity Diagram Pipeline (multi-stage) ──────────────────────────────
+    # MUD_ACTIVITY_PIPELINE_ENABLED=true → use 5-stage pipeline:
+    #   Stage1 skeleton (deepseek-r1:7b) → Stage3 per-runnable diagram
+    #   (qwen2.5-coder:7b) → Stage4 reviewer pass → Stage5 deterministic repair.
+    # When false (default) the legacy single-call path runs unchanged.
+    activity_pipeline_enabled: bool = False
+    # Optional per-stage backend overrides — empty = use generator model.
+    # Recommended: deepseek-r1:7b for both skeleton and reviewer.
+    activity_pipeline_skeleton_model: str = ""
+    activity_pipeline_reviewer_model: str = ""
+
+    def get_skills_dir(self) -> Path:
+        if self.skills_dir:
+            return self.skills_dir
+        return self.project_root / "data" / "skills"
+
+    def get_guidelines_dir(self) -> Path:
+        if self.guidelines_dir:
+            return self.guidelines_dir
+        return self.project_root / "data" / "guidelines"
+
+    def get_guidelines_cache_dir(self) -> Path:
+        if self.guidelines_cache_dir:
+            return self.guidelines_cache_dir
+        return self.project_root / "data" / "guidelines_cache"
 
     def get_prompts_dir(self) -> Path:
         if self.prompts_dir:

@@ -41,6 +41,7 @@ class BaseAIBackend(ABC):
         max_tokens: int = 8192,
         temperature: float = 0.2,
         stop_sequences: Optional[list[str]] = None,
+        response_format: str = "text",
     ) -> AIResponse:
         """Generate a completion.
 
@@ -50,6 +51,11 @@ class BaseAIBackend(ABC):
             max_tokens: Maximum tokens in response.
             temperature: Sampling temperature (lower = more deterministic).
             stop_sequences: Optional stop sequences.
+            response_format: ``"json"`` forces JSON-mode on backends that support
+                it (Ollama ``format`` field).  ``"text"`` (default) leaves the
+                model free to produce prose / Markdown.  NEVER pass ``"json"``
+                for prompts that ask for Markdown output — it will corrupt the
+                response.
 
         Returns:
             AIResponse with the generated text.

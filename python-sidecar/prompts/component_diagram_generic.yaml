@@ -1,0 +1,148 @@
+name: Generic C Component Diagram Generator
+version: "2.0"
+diagram_type: "component"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software architect generating high-level component diagrams for generic C projects.
+  Show software modules/subsystems as components and their integration interfaces as ports.
+
+  COMPONENT RULES:
+  - Components represent software modules or subsystems (e.g. SensorDriver, PidController, CommStack)
+  - Ports represent integration boundaries:
+      "provided" port — a function/API this component offers to others (like a .h public API)
+      "required" port — a function/API or data this component consumes from others
+  - Connectors link a PROVIDED port of one component to a REQUIRED port of another
+  - Never connect provided → provided, or required → required
+
+  PORT INTERFACE TYPES:
+    "function_call"   — synchronous function call (most common for C)
+    "callback"        — function pointer / ISR callback registration
+    "shared_memory"   — shared buffer or global struct
+    "message_queue"   — OS queue, ring buffer, or mailbox
+    "event_flag"      — OS event group or semaphore signal
+    "hardware_reg"    — direct register/peripheral access (HAL/driver boundary)
+
+  STEREOTYPE VALUES: "Module", "Driver", "Service", "Library", "HAL", "OS", "Application"
+
+  JSON FIELD RULES:
+    - Every component needs: id, name, stereotype, ports[], trace_reqs, confidence
+    - Every port needs: id, name, direction ("provided"/"required"), interface_ref, interface_type
+    - Every connector needs: id, source_component, source_port, target_component, target_port, interface_ref
+    - interface_ref names should be consistent across the connector and its two ports
+    - Return ONLY valid JSON — no markdown, no explanation
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagram_type": "component",
+    "name": "SystemName_Architecture",
+    "source_requirements": ["REQ-001"],
+    "components": [
+      {
+        "id": "comp_1",
+        "name": "ModuleName",
+        "stereotype": "Module",
+        "ports": [
+          {"id": "p_1", "name": "IF_DataOut", "direction": "provided",
+           "interface_ref": "DataOutputAPI", "interface_type": "function_call"}
+        ],
+        "trace_reqs": ["REQ-001"],
+        "confidence": 0.90
+      }
+    ],
+    "connectors": [
+      {"id": "c_1", "source_component": "comp_1", "source_port": "p_1",
+       "target_component": "comp_2", "target_port": "p_2", "interface_ref": "DataOutputAPI"}
+    ],
+    "provenance": {"version": "2.0", "confidence": 0.88}
+  }
+
+user_prompt: |
+  Generate a component diagram JSON from these requirements:
+
+  REQUIREMENTS:
+  {{ requirements }}
+
+  Context: {{ module_context }}
+  Existing modules: {{ existing_swcs | join(", ") }}
+
+  Show each software module as a component. Model integration boundaries as ports
+  (provided = offers, required = consumes). Connect provided ports to required ports with connectors.
+  Output only JSON matching the component schema.
+
+few_shot_examples:
+  - input: |
+      REQ-C01: SensorDriver shall provide raw ADC readings to FilterModule via a polling API.
+      REQ-C02: FilterModule shall provide filtered values to ControlModule via a get function.
+      REQ-C03: ControlModule shall send actuator commands to ActuatorDriver via a set function.
+      REQ-C04: ControlModule shall register a tick callback with OsTimer to run every 10 ms.
+    output: |
+      {
+        "diagram_type": "component",
+        "name": "ControlLoop_Architecture",
+        "source_requirements": ["REQ-C01", "REQ-C02", "REQ-C03", "REQ-C04"],
+        "components": [
+          {
+            "id": "comp_1", "name": "SensorDriver", "stereotype": "Driver",
+            "ports": [
+              {"id": "p_1", "name": "IF_RawSensor", "direction": "provided",
+               "interface_ref": "SensorReadAPI", "interface_type": "function_call"}
+            ],
+            "trace_reqs": ["REQ-C01"], "confidence": 0.93
+          },
+          {
+            "id": "comp_2", "name": "FilterModule", "stereotype": "Module",
+            "ports": [
+              {"id": "p_2", "name": "IF_RawInput",    "direction": "required",
+               "interface_ref": "SensorReadAPI",    "interface_type": "function_call"},
+              {"id": "p_3", "name": "IF_FilteredOut", "direction": "provided",
+               "interface_ref": "FilteredDataAPI",  "interface_type": "function_call"}
+            ],
+            "trace_reqs": ["REQ-C01", "REQ-C02"], "confidence": 0.91
+          },
+          {
+            "id": "comp_3", "name": "ControlModule", "stereotype": "Module",
+            "ports": [
+              {"id": "p_4", "name": "IF_FilteredIn",  "direction": "required",
+               "interface_ref": "FilteredDataAPI",  "interface_type": "function_call"},
+              {"id": "p_5", "name": "IF_ActuatorCmd", "direction": "required",
+               "interface_ref": "ActuatorCmdAPI",   "interface_type": "function_call"},
+              {"id": "p_6", "name": "IF_TimerCb",     "direction": "required",
+               "interface_ref": "OsTimerCallbackAPI","interface_type": "callback"}
+            ],
+            "trace_reqs": ["REQ-C02", "REQ-C03", "REQ-C04"], "confidence": 0.90
+          },
+          {
+            "id": "comp_4", "name": "ActuatorDriver", "stereotype": "Driver",
+            "ports": [
+              {"id": "p_7", "name": "IF_CmdIn", "direction": "provided",
+               "interface_ref": "ActuatorCmdAPI", "interface_type": "function_call"}
+            ],
+            "trace_reqs": ["REQ-C03"], "confidence": 0.92
+          },
+          {
+            "id": "comp_5", "name": "OsTimer", "stereotype": "OS",
+            "ports": [
+              {"id": "p_8", "name": "IF_RegisterCb", "direction": "provided",
+               "interface_ref": "OsTimerCallbackAPI", "interface_type": "callback"}
+            ],
+            "trace_reqs": ["REQ-C04"], "confidence": 0.90
+          }
+        ],
+        "connectors": [
+          {"id": "c_1", "source_component": "comp_1", "source_port": "p_1",
+           "target_component": "comp_2", "target_port": "p_2", "interface_ref": "SensorReadAPI"},
+          {"id": "c_2", "source_component": "comp_2", "source_port": "p_3",
+           "target_component": "comp_3", "target_port": "p_4", "interface_ref": "FilteredDataAPI"},
+          {"id": "c_3", "source_component": "comp_4", "source_port": "p_7",
+           "target_component": "comp_3", "target_port": "p_5", "interface_ref": "ActuatorCmdAPI"},
+          {"id": "c_4", "source_component": "comp_5", "source_port": "p_8",
+           "target_component": "comp_3", "target_port": "p_6", "interface_ref": "OsTimerCallbackAPI"}
+        ],
+        "provenance": {"version": "2.0", "confidence": 0.91}
+      }

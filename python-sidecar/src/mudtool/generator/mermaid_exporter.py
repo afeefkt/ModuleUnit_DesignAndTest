@@ -11,6 +11,7 @@ Generates Mermaid diagram text (.mmd files) that render natively in:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from mudtool.models.json_uml import (
@@ -58,7 +59,7 @@ class MermaidExporter:
 
         return paths
 
-    def export_result_inline(self, result: GenerationResult) -> dict[str, str]:
+    def export_result_inline(self, result: GenerationResult, *, preview: bool = False) -> dict[str, str]:
         """Export all diagrams as inline Mermaid text (for Web UI).
 
         Returns dict mapping diagram key → mermaid text string.
@@ -72,21 +73,23 @@ class MermaidExporter:
                 name = getattr(diagram, "name", "") or f"diagram_{i}"
                 suffix = diagram.diagram_type.value
                 key = f"{suffix}_{name}"
-                diagrams[key] = self.export_diagram(diagram)
+                diagrams[key] = self.export_diagram(diagram, preview=preview)
 
                 # Flatten sub-diagrams for hierarchical activity diagrams
                 if isinstance(diagram, ActivityDiagram) and diagram.sub_diagrams:
                     for sub in diagram.sub_diagrams:
+                        if preview and not self._include_subdiagram_in_preview(sub):
+                            continue
                         sub_name = sub.function_name or sub.name or "sub"
                         sub_key = f"{suffix}_{name}__fn__{sub_name}"
-                        diagrams[sub_key] = self.export_diagram(sub)
+                        diagrams[sub_key] = self.export_diagram(sub, preview=preview)
 
             except Exception as e:
                 logger.error(f"Failed to export diagram {i} inline: {e}")
 
         return diagrams
 
-    def export_diagram(self, diagram: AnyDiagram) -> str:
+    def export_diagram(self, diagram: AnyDiagram, *, preview: bool = False) -> str:
         """Export a single diagram to Mermaid text."""
         if isinstance(diagram, SequenceDiagram):
             return self._sequence_to_mermaid(diagram)
@@ -97,8 +100,26 @@ class MermaidExporter:
         elif isinstance(diagram, ComponentDiagram):
             return self._component_to_mermaid(diagram)
         elif isinstance(diagram, ActivityDiagram):
-            return self._activity_to_mermaid(diagram)
+            return self._activity_to_mermaid(diagram, preview=preview)
         return f"%% Unknown diagram type: {diagram.diagram_type}"
+
+    def _include_subdiagram_in_preview(self, diagram: ActivityDiagram) -> bool:
+        non_terminal = [
+            n for n in diagram.nodes
+            if n.node_type not in {ActivityNodeType.INITIAL, ActivityNodeType.FINAL}
+        ]
+        if len(non_terminal) < 2:
+            return False
+        meaningful = {
+            ActivityNodeType.DECISION,
+            ActivityNodeType.MERGE,
+            ActivityNodeType.EXCEPTION,
+            ActivityNodeType.CALL,
+            ActivityNodeType.FUNCTION_CALL,
+        }
+        if any(n.node_type in meaningful for n in non_terminal):
+            return True
+        return len(non_terminal) >= 3
 
     def _sequence_to_mermaid(self, diagram: SequenceDiagram) -> str:
         lines = ["sequenceDiagram"]
@@ -152,38 +173,50 @@ class MermaidExporter:
         lines = ["stateDiagram-v2"]
 
         if diagram.name:
+            safe_diag_name = diagram.name.replace(chr(10), ' ').replace(chr(13), '')
             # "title" keyword is NOT valid in stateDiagram-v2 — use a comment
-            lines.append(f"    %% {diagram.name}")
+            lines.append(f"    %% {safe_diag_name}")
         if diagram.owner_swc:
-            lines.append(f"    %% Owner SWC: {diagram.owner_swc}")
+            safe_swc = diagram.owner_swc.replace(chr(10), ' ').replace(chr(13), '')
+            lines.append(f"    %% Owner SWC: {safe_swc}")
 
         lines.append("")
+
+        import re
+        def _safe_state(sid: str, name: str) -> str:
+            s_name = name or sid
+            # Scrape out LLM-hallucinated mermaid aliases (e.g. state "..." as ID)
+            if '" as ' in s_name:
+                s_name = s_name.split('" as ')[0].replace('"', '')
+            if "' as " in s_name:
+                s_name = s_name.split("' as ")[0].replace("'", "")
+            return re.sub(r'[^a-zA-Z0-9_]', '_', s_name).strip('_')
+
+        # Provide a mapping array for transitions
+        state_map = {}
+        for state in diagram.states:
+            state_map[state.id] = _safe_state(state.id, state.name)
 
         # States
         for state in diagram.states:
             if state.is_initial or state.is_final:
                 continue  # [*] is implicit in Mermaid
 
-            # Mermaid stateDiagram-v2 only accepts "entry:" and "exit:" inside
-            # a "state Name {}" block.  "do:" is UML-valid but NOT Mermaid-valid
-            # and causes "AUe[s.shape] is not a function" at runtime.
-            # Render "do" actions as a note below the state instead.
+            safe_name = state_map[state.id]
             inline_actions = [a for a in state.actions
                               if a.action_type in ("entry", "exit")]
             note_actions   = [a for a in state.actions
                               if a.action_type not in ("entry", "exit")]
 
             if inline_actions:
-                lines.append(f"    state {state.name} {{")
+                lines.append(f"    state {safe_name} {{")
                 for action in inline_actions:
-                    lines.append(f"        {action.action_type}: {action.description}")
+                    safe_desc = action.description.replace(chr(10), ' ').replace(chr(13), '')
+                    lines.append(f"        {action.action_type}: {safe_desc}")
                 lines.append("    }")
             else:
-                lines.append(f"    {state.name}")
+                lines.append(f"    state {safe_name}")
 
-            # Emit "do" actions and trace info as %% comments (NOT "note right of").
-            # "note right of" combined with "state { entry: }" blocks causes
-            # "AUe[s.shape] is not a function" in Mermaid v10.
             note_lines = [
                 f"{a.action_type}: {a.description.replace(chr(10), ' ').replace(chr(13), '')}"
                 for a in note_actions
@@ -200,12 +233,11 @@ class MermaidExporter:
             source = trans.source
             target = trans.target
 
-            # Resolve state names from IDs
             source_state = next((s for s in diagram.states if s.id == source), None)
             target_state = next((s for s in diagram.states if s.id == target), None)
 
-            source_name = source_state.name if source_state else source
-            target_name = target_state.name if target_state else target
+            source_name = state_map.get(source, _safe_state(source, source))
+            target_name = state_map.get(target, _safe_state(target, target))
 
             if source_state and source_state.is_initial:
                 source_name = "[*]"
@@ -221,8 +253,10 @@ class MermaidExporter:
                 label_parts.append(f"/ {trans.action}")
 
             label = " ".join(label_parts)
-            if label:
-                lines.append(f"    {source_name} --> {target_name} : {label}")
+            safe_label = label.replace(chr(10), ' ').replace(chr(13), '')
+            
+            if safe_label:
+                lines.append(f"    {source_name} --> {target_name} : {safe_label}")
             else:
                 lines.append(f"    {source_name} --> {target_name}")
 
@@ -323,31 +357,35 @@ class MermaidExporter:
 
         return "\n".join(lines)
 
-    def _activity_to_mermaid(self, diagram: ActivityDiagram) -> str:
+    def _activity_to_mermaid(self, diagram: ActivityDiagram, *, preview: bool = False) -> str:
         lines = ["flowchart TD"]
 
-        if diagram.owner_swc or diagram.owner_runnable:
+        if not preview and (diagram.owner_swc or diagram.owner_runnable):
             swc_part = f"SWC: {diagram.owner_swc}" if diagram.owner_swc else ""
             run_part = f"Runnable: {diagram.owner_runnable}" if diagram.owner_runnable else ""
             comment = " / ".join(filter(None, [swc_part, run_part]))
             lines.append(f"    %% {comment}")
 
-        if diagram.name:
+        if not preview and diagram.name:
             lines.append(f"    %% {diagram.name}")
 
-        if diagram.provenance:
+        if not preview and diagram.provenance:
             lines.append(
                 f"    %% Generated by {diagram.provenance.ai_model} "
                 f"(confidence: {diagram.provenance.confidence})"
             )
-        if diagram.source_requirements:
+        if not preview and diagram.source_requirements:
             lines.append(f"    %% Requirements: {', '.join(diagram.source_requirements)}")
 
         lines.append("")
 
         def _safe(nid: str) -> str:
             """Convert node id to a safe Mermaid identifier."""
-            return nid.replace("-", "_").replace(".", "_")
+            safe = re.sub(r"[^A-Za-z0-9_]+", "_", nid or "")
+            safe = re.sub(r"_+", "_", safe).strip("_")
+            if not safe or not re.match(r"[A-Za-z_]", safe):
+                safe = f"N_{abs(hash(nid or 'node')) % 100000}"
+            return safe
 
         def _q(text: str) -> str:
             """Quote a label for safe use inside Mermaid node shapes.
@@ -366,31 +404,103 @@ class MermaidExporter:
                 .replace("|", " PIPE ")   # lone pipe → word form (Mermaid is not an HTML parser)
                 .replace("&&", " AND ")   # C logical-and (sanitize for safety)
             )
+            # Auto-wrap long pseudocode labels at ~60 chars for readability
+            if len(safe) > 60 and "<br/>" not in safe:
+                mid = len(safe) // 2
+                for i in range(mid, min(mid + 15, len(safe))):
+                    if safe[i] in (',', ' '):
+                        safe = safe[:i + 1] + "<br/>" + safe[i + 1:]
+                        break
             return f'"{safe}"'
+
+        def _preview_label(text: str) -> str:
+            if not preview:
+                return text
+            safe = re.sub(r"\s+", " ", text or "").strip()
+            if len(safe) <= 48:
+                return safe
+            if "(" in safe and ")" in safe:
+                fn_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(", safe)
+                if fn_match:
+                    return f"{fn_match.group(1)}(...)"
+            assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", safe)
+            if assign:
+                rhs = assign.group(2).strip()
+                fn_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(", rhs)
+                if fn_match:
+                    fn_name = fn_match.group(1)
+                    if len(fn_name) > 24:
+                        return f"{assign.group(1)} = call(...)"
+                    return f"{assign.group(1)} = {fn_name}(...)"
+                return f"{assign.group(1)} = ..."
+            return safe[:45].rstrip() + "..."
 
         def _guard(g: str) -> str:
             """Sanitize a guard string for use in Mermaid -->|guard| edge labels.
 
             The pipe character | terminates the guard prematurely, so C logical-or
-            (||) must be replaced with a word form.
+            (||) must be replaced with a word form.  Parentheses and angle brackets
+            also confuse the Mermaid edge-label parser, so replace them with
+            readable equivalents.
             """
             g = g.strip()
             if g.startswith("[") and g.endswith("]"):
                 g = g[1:-1]
-            # Replace all pipe chars (|| and lone |) and && with readable words
+            # Replace chars that break Mermaid edge-label parsing
             g = g.replace("||", " OR ").replace("|", " OR ").replace("&&", " AND ")
+            g = g.replace("(", "&#40;").replace(")", "&#41;")
+            g = g.replace(">", "&gt;").replace("<", "&lt;")
+            g = g.replace('"', "'")
             return g.strip()
+
+        def _norm_label(text: str) -> str:
+            text = (text or "").strip()
+            if text.startswith("[") and text.endswith("]"):
+                text = text[1:-1]
+            text = text.lower()
+            text = re.sub(r"[^a-z0-9]+", "", text)
+            return text
+
+        def _decision_guard(raw_guard: str, decision_label: str, branch_index: int, branch_count: int) -> str:
+            """Map a raw guard string to a clean Yes/No/Case N label for Mermaid edge display.
+
+            ISO 5807 flowchart convention: decision arrows show Yes/No, not C expressions.
+            The full C expression is preserved in ActivityEdge.guard for traceability and
+            in the draw.io export — this normalization is Mermaid-preview only.
+            """
+            guard = (raw_guard or "").strip()
+            normalized = _norm_label(guard)
+
+            # Explicit semantic mappings — handle "[else]", "else", "[default]", "default" etc.
+            if normalized in {"true", "yes", "y", "conditiontrue", "conditionmet", "then"}:
+                return "Yes"
+            if normalized in {"false", "no", "n", "conditionfalse", "conditionnotmet", "else", "default"}:
+                return "No"
+
+            # 2-branch decisions: unconditionally Yes/No regardless of guard content (ISO 5807)
+            if branch_count == 2:
+                return "Yes" if branch_index == 0 else "No"
+
+            # Switch-style (3+ branches): last branch → "No" (default/else), first → "Yes", others → "Case N"
+            if branch_count > 2:
+                if branch_index == branch_count - 1:
+                    return "No"       # default / else branch is always last
+                if branch_index == 0:
+                    return "Yes"      # primary matching branch
+                return f"Case {branch_index + 1}"
+
+            return _guard(guard)   # unreachable for well-formed diagrams
 
         # Emit nodes — traces go on a %% comment line BEFORE the node (never inline)
         for node in diagram.nodes:
             nid = _safe(node.id)
 
             # Trace comment on its own line (valid Mermaid; inline %% after node breaks parser)
-            if node.trace_reqs:
+            if node.trace_reqs and not preview:
                 lines.append(f"    %% traces: {', '.join(node.trace_reqs)}")
 
             if node.node_type == ActivityNodeType.INITIAL:
-                lines.append(f"    {nid}([{_q('Start: ' + node.name)}])")
+                lines.append(f"    {nid}([{_q('Start')}])")
 
             elif node.node_type == ActivityNodeType.FINAL:
                 lines.append(f"    {nid}([{_q('End')}])")
@@ -399,27 +509,25 @@ class MermaidExporter:
                 # Put full C description as %% comment above the diamond.
                 # Never embed C expressions directly in the label — || breaks the parser.
                 # Strip newlines — a multi-line %% comment breaks Mermaid's parser.
-                if node.description:
+                if node.description and not preview:
                     safe_desc = node.description.replace('\r', '').replace('\n', ' ')
                     lines.append(f"    %% decision: {safe_desc}")
-                lines.append(f"    {nid}{{{_q(node.name)}}}")
+                lines.append(f"    {nid}{{{_q(_preview_label(node.name))}}}")
 
             elif node.node_type == ActivityNodeType.CALL:
-                # RTE call: show as "RTE: Rte_Read(RP_Port, Element)"
-                parts = []
-                if node.rte_call:
-                    parts.append(node.rte_call)
-                if node.port:
-                    parts.append(node.port)
-                if node.element:
-                    parts.append(node.element)
-                if len(parts) > 1:
-                    call_label = f"RTE: {parts[0]}({', '.join(parts[1:])})"
-                elif parts:
-                    call_label = f"RTE: {parts[0]}"
+                # Prefer node.name if it already contains a C-style call
+                if "(" in node.name and ")" in node.name:
+                    call_label = node.name
                 else:
-                    call_label = f"RTE: {node.name}"
-                lines.append(f"    {nid}[{_q(call_label)}]")
+                    # Legacy fallback: construct from rte_call/port/element
+                    parts = [p for p in [node.rte_call, node.port, node.element] if p]
+                    if len(parts) > 1:
+                        call_label = f"RTE: {parts[0]}({', '.join(parts[1:])})"
+                    elif parts:
+                        call_label = f"RTE: {parts[0]}"
+                    else:
+                        call_label = f"RTE: {node.name}"
+                lines.append(f"    {nid}[/{_q(_preview_label(call_label))}/]")
 
             elif node.node_type == ActivityNodeType.FUNCTION_CALL:
                 # Private function call: subroutine box [[label]]
@@ -427,24 +535,34 @@ class MermaidExporter:
                 func_label = f"{callee_name}()"
                 if node.description:
                     func_label = node.description
-                lines.append(f"    %% → see sub-diagram: {callee_name}")
-                lines.append(f"    {nid}[[{_q(func_label)}]]")
+                if not preview:
+                    lines.append(f"    %% → see sub-diagram: {callee_name}")
+                lines.append(f"    {nid}[[{_q(_preview_label(func_label))}]]")
+                # Mermaid click callback — navigates to the sub-diagram card in the Web UI.
+                # Requires securityLevel:'loose' (already set in the Web UI's mermaid.initialize).
+                lines.append(f'    click {nid} navigateToSubDiagram "{callee_name}"')
 
             elif node.node_type == ActivityNodeType.EXCEPTION:
                 # Keep short: just the node name (description may contain parens that confuse parser)
-                lines.append(f"    {nid}[/{_q('FAULT: ' + node.name)}/]")
+                exc_label = _q(_preview_label(node.name))
+                lines.append(f"    {nid}{{{{{exc_label}}}}}")
 
             elif node.node_type in (ActivityNodeType.FORK, ActivityNodeType.JOIN):
-                lines.append(f"    {nid}({_q(node.name)})")
+                lines.append(f"    {nid}({_q(_preview_label(node.name))})")
 
             elif node.node_type == ActivityNodeType.MERGE:
-                lines.append(f"    {nid}({_q(node.name)})")
+                lines.append(f"    {nid}{{◆}}")
 
             else:  # ACTION
-                label = node.name
+                label = _preview_label(node.name)
                 lines.append(f"    {nid}[{_q(label)}]")
 
         lines.append("")
+
+        node_by_id = {node.id: node for node in diagram.nodes}
+        outgoing_by_source: dict[str, list] = {}
+        for edge in diagram.edges:
+            outgoing_by_source.setdefault(edge.source, []).append(edge)
 
         # Emit edges
         for edge in diagram.edges:
@@ -452,10 +570,41 @@ class MermaidExporter:
             tgt = _safe(edge.target)
             raw_guard = edge.guard or edge.label
             if raw_guard:
-                # Sanitize guard: strip [], replace C pipe-operators with words
-                g = _guard(raw_guard)
+                source_node = node_by_id.get(edge.source)
+                if source_node and source_node.node_type == ActivityNodeType.DECISION:
+                    siblings = outgoing_by_source.get(edge.source, [])
+                    g = _decision_guard(raw_guard, source_node.name, siblings.index(edge), len(siblings))
+                else:
+                    # Sanitize guard: strip [], replace C pipe-operators with words
+                    g = _guard(raw_guard)
                 lines.append(f"    {src} -->|{g}| {tgt}")
             else:
                 lines.append(f"    {src} --> {tgt}")
+
+        # ── Node styling: color-code by type ──────────────────────────
+        lines.append("")
+        lines.append("    %% Node type styling")
+        lines.append("    classDef rteCall fill:#d4e6f1,stroke:#2980b9,color:#000")
+        lines.append("    classDef decision fill:#fdebd0,stroke:#e67e22,color:#000")
+        lines.append("    classDef exception fill:#f5b7b1,stroke:#e74c3c,color:#000")
+        lines.append("    classDef funcCall fill:#d5f5e3,stroke:#27ae60,color:#000")
+        lines.append("    classDef initial fill:#d5dbdb,stroke:#566573,color:#000")
+        lines.append("    classDef final fill:#566573,stroke:#2c3e50,color:#fff")
+        lines.append("    classDef action fill:#ebf5fb,stroke:#3498db,color:#000")
+
+        # Assign classes to nodes
+        type_to_class = {
+            ActivityNodeType.CALL: "rteCall",
+            ActivityNodeType.DECISION: "decision",
+            ActivityNodeType.EXCEPTION: "exception",
+            ActivityNodeType.FUNCTION_CALL: "funcCall",
+            ActivityNodeType.INITIAL: "initial",
+            ActivityNodeType.FINAL: "final",
+            ActivityNodeType.ACTION: "action",
+        }
+        for node in diagram.nodes:
+            css_class = type_to_class.get(node.node_type)
+            if css_class:
+                lines.append(f"    class {_safe(node.id)} {css_class}")
 
         return "\n".join(lines)

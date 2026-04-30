@@ -1,0 +1,81 @@
+{
+  "normalized_markdown": "# MUD Spec: SWC_ElectricPowerSteering\n\n## 1. Overview\n| Field | Value |\n|-------|-------|\n| SWC Name | SWC_ElectricPowerSteering |\n| ASIL Level | ASIL-D |\n| Description | SWC_ElectricPowerSteering handles ePS SWC Architecture. |\n| Runnables | RE_ControlTorque, RE_MonitorSafety, RE_Initialize, RE_HandleModeChange, RE_DiagnosticUpdate |\n\n## 2. Ports\n\n### 2.1 Provided Ports (P-Ports)\n| Port Name | Interface | Data Element | Data Type | Range / Unit | Period | Description |\n|-----------|-----------|--------------|-----------|--------------|--------|-------------|\n| PP_MotorCurrentDemand | IF_SR_MotorCurrent | DE_MotorCurrentDemand | int16 | [-32768, 32767] A |  | Motor current demand to be sent to motor controller |\n| PP_EPSStatus | IF_SR_EPSStatus | DE_EPSStatus | uint8 | [0, 3] |  | EPS status to be sent to upper layers |\n| PP_AssistLevel | IF_SR_AssistLevel | DE_AssistLevel | uint8 | [0, 100] % |  | Assist level to be sent to upper layers |\n\n### 2.2 Required Ports (R-Ports)\n| Port Name | Interface | Data Element | Data Type | Range / Unit | Provider | Description |\n|-----------|-----------|--------------|-----------|--------------|----------|-------------|\n| RP_VehicleSpeed | IF_SR_VehicleSpeed | DE_VehicleSpeed | uint16 | [0, 255] km/h | \u2014 | Vehicle speed from CAN signal |\n| RP_IgnitionStatus | IF_SR_IgnitionStatus | DE_IgnitionStatus | uint8 | [0, 1] | \u2014 | Ignition status from CAN signal |\n| RP_YawRate | IF_SR_YawRate | DE_YawRate | int16 | [-32768, 32767] deg/s | \u2014 | Yaw rate from CAN signal |\n| RP_TorqueSensorPrimary | IF_SR_TorqueSensor | DE_TorqueSensorPrimary | int16 | [-32768, 32767] Nm | \u2014 | Torque sensor primary signal from CAN signal |\n| RP_TorqueSensorSecondary | IF_SR_TorqueSensor | DE_TorqueSensorSecondary | int16 | [-32768, 32767] Nm | \u2014 | Torque sensor secondary signal from CAN signal |\n| RP_MotorTemperature | IF_SR_Temperature | DE_MotorTemperature | uint8 | [0, 255] \u00b0C | \u2014 | Motor temperature from CAN signal |\n\n### 2.3 Calibration Ports (CalPrm)\n| Port Name | Interface | Data Type | Default | Range | Description |\n|-----------|-----------|-----------|---------|-------|-------------|\n| \u2014 | \u2014 | \u2014 | \u2014 | \u2014 | No calibration parameters defined |\n\n## 3. Runnables\n\n### 3.1 Main Runnables (OS-scheduled via AUTOSAR RTE)\n| Runnable | Trigger | Period | ASIL | Description |\n|----------|---------|--------|------|-------------|\n| RE_ControlTorque | Cyclic | 5ms | ASIL-D | Computes torque assist demand and writes motor current output. |\n| RE_MonitorSafety | Cyclic | 10ms | ASIL-D | Performs plausibility checks and updates diagnostics. |\n| RE_Initialize | Init |  | ASIL-D | Initializes the SWC on ECU startup. |\n| RE_HandleModeChange | DataReceivedEvent |  | ASIL-D | Handles mode transitions based on IgnitionStatus_CAN signal. |\n| RE_DiagnosticUpdate | DataReceivedEvent |  | ASIL-D | Updates active DTCs to NVM via NvM_WriteBlock. |\n\n### 3.2 Sub-Functions (internal C helpers called by main runnables)\n| Function | Called By | Description |\n|----------|-----------|-------------|\n| \u2014 | \u2014 | No sub-functions defined |\n\n## 4. Inter-Runnable Variables (IRV)\n| IRV Name | Data Type | Producer Runnable | Consumer Runnable | ExclusiveArea? | Description |\n|----------|-----------|-------------------|-------------------|----------------|-------------|\n| \u2014 | \u2014 | \u2014 | \u2014 | \u2014 | No IRVs defined |\n\n## 5. Data Types\n| Type Name | Base Type | Range | Unit | Description |\n|-----------|-----------|-------|------|-------------|\n| VehicleSpeed_t | uint16 | [0, 255] | km/h | Vehicle speed from CAN signal |\n| IgnitionStatus_t | uint8 | [0, 1] |  | Ignition status from CAN signal |\n| YawRate_t | int16 | [-32768, 32767] | deg/s | Yaw rate from CAN signal |\n| TorqueSensorPrimary_t | int16 | [-32768, 32767] | Nm | Torque sensor primary signal from CAN signal |\n| TorqueSensorSecondary_t | int16 | [-32768, 32767] | Nm | Torque sensor secondary signal from CAN signal |\n| MotorTemperature_t | uint8 | [0, 255] | \u00b0C | Motor temperature from CAN signal |\n| MotorCurrentDemand_t | int16 | [-32768, 32767] | A | Motor current demand to be sent to motor controller |\n| EPSStatus_t | uint8 | [0, 3] |  | EPS status to be sent to upper layers |\n| AssistLevel_t | uint8 | [0, 100] | % | Assist level to be sent to upper layers |\n\n## 6. Error Handling & Safety\n\nASIL Level: ASIL-D\n\n| DEM Event ID | Description | ASIL | Trigger | Safe-State Reaction |\n|-------------|-------------|------|---------|---------------------|\n| SWC_DEM_E_EPS_CAN_TIMEOUT | CAN communication timeout detected. | ASIL-D | RP_VehicleSpeed == 0 && RP_TorqueSensorPrimary == 0 | Set EPS status to FAIL_SAFE and clear all DTCs. |\n| SWC_DEM_E_EPS_OVERCURRENT | Overcurrent detected in motor. | ASIL-D | PP_MotorCurrentDemand > 32767 | Set EPS status to FAIL_SAFE and clear all DTCs. |\n| SWC_DEM_E_EPS_OVERHEAT | Motor temperature exceeds safe limit. | ASIL-D | RP_MotorTemperature > 100 | Set EPS status to FAIL_SAFE and clear all DTCs. |\n| SWC_DEM_E_EPS_SENSOR_FAIL | One or more sensors fail. | ASIL-D | RP_VehicleSpeed == 0 || RP_TorqueSensorPrimary == 0 || RP_TorqueSensorSecondary == 0 || RP_MotorTemperature == 255 | Set EPS status to FAIL_SAFE and clear all DTCs. |\n| SWC_DEM_E_EPS_MIN_ASSIST_HIGH_SPEED | Assist exceeds maximum limit at high speed. | ASIL-D | RP_VehicleSpeed >= 120 && PP_MotorCurrentDemand > 32767 * 0.1 | Set EPS status to FAIL_SAFE and clear all DTCs. |\n\n## 7. Functional Description\n\n### RE_ControlTorque\n// Reads:  RP_VehicleSpeed, RP_TorqueSensorPrimary\n// Writes: PP_MotorCurrentDemand, PP_AssistLevel\n**1. Guard**\n```c\n   if (RP_IgnitionStatus != 1) {\n   Rte_IWrite(PP_MotorCurrentDemand, 0);\n   Rte_IWrite(PP_AssistLevel, 0);\n   return;\n}\n```\n\n**2. Read inputs**\n```c\nuint16 vehicleSpeed = Rte_IRead(RP_VehicleSpeed);\nint16 torqueSensorPrimary = Rte_IRead(RP_TorqueSensorPrimary);\n```\n\n**3. Validate**\n```c\n   if (vehicleSpeed < 0 || vehicleSpeed > 255) {\n   Rte_IWrite(PP_MotorCurrentDemand, 0);\n   Rte_IWrite(PP_AssistLevel, 0);\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n   if (torqueSensorPrimary < -32768 || torqueSensorPrimary > 32767) {\n   Rte_IWrite(PP_MotorCurrentDemand, 0);\n   Rte_IWrite(PP_AssistLevel, 0);\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n```\n\n**4. Compute**\n```c\n// Placeholder for computation logic\nint16 motorCurrentDemand = torqueSensorPrimary * 0.5;\nuint8 assistLevel = (torqueSensorPrimary > 0) ? 100 : 0;\n```\n\n**5. Write outputs**\n```c\n   Rte_IWrite(PP_MotorCurrentDemand, motorCurrentDemand);\n   Rte_IWrite(PP_AssistLevel, assistLevel);\n```\n\n**6. Watchdog update**\n```c\nWdgM_UpdateAliveCounter(WDG_ENTITY_RE_CONTROL_TORQUE);\n```\n\n### RE_MonitorSafety\n// Reads:  RP_IgnitionStatus, RP_YawRate\n// Writes: none\n**1. Guard**\n```c\n   if (Rte_IRead(RP_IgnitionStatus) == 0) {\n   Rte_IWrite(PP_EPSStatus, 3);\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n```\n\n**2. Read inputs**\n```c\nuint16 vehicleSpeed = Rte_IRead(RP_VehicleSpeed);\nint16 yawRate = Rte_IRead(RP_YawRate);\n```\n\n**3. Validate**\n```c\n   if (vehicleSpeed < 0 || vehicleSpeed > 255) {\n   Rte_IWrite(PP_EPSStatus, 3);\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n   if (yawRate < -32768 || yawRate > 32767) {\n   Rte_IWrite(PP_EPSStatus, 3);\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n```\n\n**4. Compute**\n```c\n// Placeholder for computation logic\n   if (yawRate > 1000 && vehicleSpeed > 50) {\n   Rte_IWrite(PP_EPSStatus, 3);\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_MIN_ASSIST_HIGH_SPEED, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n```\n\n**5. Write outputs**\n```c\n// No output ports to write\n```\n\n**6. Watchdog update**\n```c\nWdgM_UpdateAliveCounter(1);\n```\n\n### RE_Initialize\n// Reads:  none\n// Writes: PP_EPSStatus\n**1. Set EPS status to INIT**\n```c\n   Rte_IWrite(PP_EPSStatus, EPS_STATUS_INIT);\n```\n\n**2. Report initialization complete**\n```c\nWdgM_UpdateAliveCounter(WDG_ENTITY_ID_RE);\n```\n\n### RE_HandleModeChange\n// Reads:  RP_IgnitionStatus\n// Writes: none\n**1. Guard: mode check**\n```c\n   if (Rte_IRead(RP_IgnitionStatus) != 1) {\nPP_EPSStatus = FAIL_SAFE;\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n```\n\n**2. Read inputs**\n```c\nuint8 ignition_status = Rte_IRead(RP_IgnitionStatus);\n```\n\n**3. Validate**\n```c\n   if (ignition_status != 1) {\nPP_EPSStatus = FAIL_SAFE;\n   Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);\n   return;\n}\n```\n\n**4. Compute**\n```c\n// No computation needed for this example\n```\n\n**5. Write outputs**\n```c\n// No outputs to write for this example\n```\n\n**6. Watchdog update**\n```c\nWdgM_UpdateAliveCounter(ENTITY_ID);\n```\n\n### RE_DiagnosticUpdate\n// Reads:  none\n// Writes: PP_EPSStatus\n**1. Guard**\n```c\n   if (Rte_IRead(RP_IgnitionStatus) != 1) {\n      Rte_IWrite(PP_EPSStatus, 0);\n      return;\n}\n```\n\n**2. Read inputs**\n```c\n// No inputs to read\n```\n\n**3. Validate**\n```c\n// No validation needed\n```\n\n**4. Compute**\n```c\n// No computation needed\n```\n\n**5. Write outputs**\n```c\n   Rte_IWrite(PP_EPSStatus, 1);\n```\n\n**6. Watchdog update**\n```c\nWdgM_UpdateAliveCounter(WDG_ENTITY_ID_RE_DiagnosticUpdate);\n```\n",
+  "warnings": [
+    "RE_ControlTorque: left mixed prose/code line unchanged because structure was ambiguous",
+    "RE_ControlTorque: left mixed prose/code line unchanged because header + inline code structure was ambiguous",
+    "RE_MonitorSafety: left mixed prose/code line unchanged because structure was ambiguous",
+    "RE_Initialize: left mixed prose/code line unchanged because structure was ambiguous",
+    "RE_HandleModeChange: left mixed prose/code line unchanged because structure was ambiguous",
+    "RE_DiagnosticUpdate: left mixed prose/code line unchanged because structure was ambiguous"
+  ],
+  "runnable_reports": [
+    {
+      "runnable_name": "RE_ControlTorque",
+      "changed": true,
+      "warnings": [
+        "left mixed prose/code line unchanged because structure was ambiguous",
+        "left mixed prose/code line unchanged because header + inline code structure was ambiguous"
+      ],
+      "control_structures": [
+        "if",
+        "return"
+      ],
+      "mixed_rewrites": 0,
+      "ambiguous_lines": 4
+    },
+    {
+      "runnable_name": "RE_MonitorSafety",
+      "changed": true,
+      "warnings": [
+        "left mixed prose/code line unchanged because structure was ambiguous"
+      ],
+      "control_structures": [
+        "if",
+        "return"
+      ],
+      "mixed_rewrites": 0,
+      "ambiguous_lines": 3
+    },
+    {
+      "runnable_name": "RE_Initialize",
+      "changed": true,
+      "warnings": [
+        "left mixed prose/code line unchanged because structure was ambiguous"
+      ],
+      "control_structures": [],
+      "mixed_rewrites": 0,
+      "ambiguous_lines": 1
+    },
+    {
+      "runnable_name": "RE_HandleModeChange",
+      "changed": true,
+      "warnings": [
+        "left mixed prose/code line unchanged because structure was ambiguous"
+      ],
+      "control_structures": [
+        "if",
+        "return"
+      ],
+      "mixed_rewrites": 0,
+      "ambiguous_lines": 2
+    },
+    {
+      "runnable_name": "RE_DiagnosticUpdate",
+      "changed": true,
+      "warnings": [
+        "left mixed prose/code line unchanged because structure was ambiguous"
+      ],
+      "control_structures": [
+        "if",
+        "return"
+      ],
+      "mixed_rewrites": 0,
+      "ambiguous_lines": 1
+    }
+  ],
+  "changed": true,
+  "succeeded": true,
+  "normalized_runnable_count": 5,
+  "changed_runnable_count": 5,
+  "warning_count": 12
+}

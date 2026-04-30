@@ -31,6 +31,8 @@ from mudtool.ai.base_backend import AIResponse
 from mudtool.config.settings import Settings
 from mudtool.models.json_uml import DiagramType, GenerationResult
 from mudtool.models.requirements import Requirement
+from mudtool.validation.structural_validator import StructuralValidator
+from mudtool.validation.autosar_validator import AUTOSARValidator
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,10 @@ class PipelineConfig:
     critique_temperature: float = 0.40
     refine_temperature: float = 0.15
     max_tokens: int = 8192
+    generation_profile: str = "autosar"
+    activity_label_style: str = "pseudocode"
+    autosar_compliant: bool = True
+    elaborated_data: Optional[dict] = None
 
 
 # ── Result Data Classes ───────────────────────────────────────────────────────
@@ -173,7 +179,30 @@ class _TemporaryModelOverride:
 
 # ── Critique Prompt Builders ───────────────────────────────────────────────────
 
-def _build_critique_system_prompt(diagram_type: DiagramType) -> str:
+def _build_critique_system_prompt(
+    diagram_type: DiagramType,
+    autosar_compliant: bool = True,
+) -> str:
+    if not autosar_compliant:
+        return f"""You are a senior software architecture reviewer.
+
+Review the provided {diagram_type.value} diagram JSON and identify issues in:
+- structural correctness
+- requirement traceability coverage
+- completeness and naming consistency for a generic C-project design
+
+OUTPUT: Return ONLY a valid JSON object.
+{{
+  "issues": [
+    {{"element": "element_id_or_name", "severity": "error|warning", "description": "what is wrong"}}
+  ],
+  "quality_score": 0.0,
+  "approved": false,
+  "missing_elements": [],
+  "naming_violations": [],
+  "traceability_gaps": []
+}}"""
+
     return f"""You are a senior AUTOSAR software architecture reviewer with expertise in \
 ISO 26262 functional safety and AUTOSAR Classic platform standards.
 
@@ -229,6 +258,7 @@ def _build_critique_user_prompt(
     draft_result: GenerationResult,
     requirements: list[Requirement],
     diagram_type: DiagramType,
+    autosar_compliant: bool = True,
 ) -> str:
     diagrams_json = [
         d.model_dump(mode="json", exclude_none=True)
@@ -243,8 +273,9 @@ def _build_critique_user_prompt(
         f" {r.title or ''}: {r.description or ''}"
         for r in requirements
     )
+    domain = "AUTOSAR" if autosar_compliant else "generic C-project"
     return (
-        f"Review this AUTOSAR {diagram_type.value} diagram JSON.\n\n"
+        f"Review this {domain} {diagram_type.value} diagram JSON.\n\n"
         f"REQUIREMENTS (all must be traced):\n{reqs_text}\n\n"
         f"GENERATED DIAGRAM JSON:\n{draft_str}\n\n"
         "Identify all issues. Output only the JSON review result — no other text."
@@ -256,6 +287,7 @@ def _build_refinement_user_prompt(
     critique: CritiqueResult,
     requirements: list[Requirement],
     diagram_type: DiagramType,
+    autosar_compliant: bool = True,
 ) -> str:
     diagrams_json = [
         d.model_dump(mode="json", exclude_none=True)
@@ -281,8 +313,9 @@ def _build_refinement_user_prompt(
         for r in requirements
     )
 
+    domain = "AUTOSAR" if autosar_compliant else "generic C-project"
     return (
-        f"Fix ALL issues listed below in this AUTOSAR {diagram_type.value} diagram JSON.\n\n"
+        f"Fix ALL issues listed below in this {domain} {diagram_type.value} diagram JSON.\n\n"
         f"REQUIREMENTS (trace every element back to these):\n{reqs_text}\n\n"
         f"CURRENT DIAGRAM JSON (fix this):\n{draft_str}\n\n"
         f"ISSUES TO FIX:\n{issues_text}\n\n"
@@ -364,6 +397,7 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         module_context: Optional[str] = None,
         existing_swcs: Optional[list[str]] = None,
+        progress_callback: Optional[callable] = None,
     ) -> list[PipelineGenerationResult]:
         """Run multi-stage generation for all requested diagram types sequentially.
 
@@ -372,7 +406,8 @@ class PipelineOrchestrator:
         results: list[PipelineGenerationResult] = []
         for dt in diagram_types:
             pr = await self._run_pipeline_for_type(
-                dt, requirements, config, module_context, existing_swcs
+                dt, requirements, config, module_context, existing_swcs,
+                progress_callback=progress_callback,
             )
             results.append(pr)
         return results
@@ -384,6 +419,7 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         module_context: Optional[str],
         existing_swcs: Optional[list[str]],
+        progress_callback: Optional[callable] = None,
     ) -> PipelineGenerationResult:
         start = time.monotonic()
         stages: list[StageResult] = []
@@ -393,6 +429,10 @@ class PipelineOrchestrator:
             gen = await self.orchestrator.generate_diagram(
                 diagram_type, requirements, module_context, existing_swcs,
                 temperature=config.draft_temperature,
+                generation_profile=config.generation_profile,
+                activity_label_style=config.activity_label_style,
+                autosar_compliant=config.autosar_compliant,
+                elaborated_data=config.elaborated_data,
             )
             return PipelineGenerationResult(
                 diagram_type=diagram_type,
@@ -412,7 +452,16 @@ class PipelineOrchestrator:
         # ── MULTI-STAGE PIPELINE ─────────────────────────────────────────────
 
         # Stage 1: Draft
-        logger.info(f"[Pipeline:{diagram_type.value}] Stage 1 — DRAFT ({config.generator_model})")
+        logger.info(f"[Pipeline:{diagram_type.value}] Stage 1 - DRAFT ({config.generator_model})")
+        if progress_callback:
+            progress_callback({
+                "stage": "pipeline_stage",
+                "diagram_type": diagram_type.value,
+                "pipeline_stage_name": "DRAFT",
+                "stage_num": 1,
+                "model": config.generator_model,
+                "message": f"[Pipeline:{diagram_type.value}] Stage 1 - DRAFT ({config.generator_model})",
+            })
         draft_stage = await self._run_draft_stage(
             diagram_type, requirements, config, module_context, existing_swcs
         )
@@ -438,7 +487,7 @@ class PipelineOrchestrator:
         if draft_conf >= config.min_confidence:
             logger.info(
                 f"[Pipeline:{diagram_type.value}] Draft confidence {draft_conf:.2f} "
-                f">= {config.min_confidence:.2f} — skipping critique/refine"
+                f">= {config.min_confidence:.2f} - skipping critique/refine"
             )
             stages.append(StageResult(
                 stage_name="critique", model_used="skipped",
@@ -451,9 +500,10 @@ class PipelineOrchestrator:
                 pipeline_mode=config.mode, passes_completed=1,
             )
 
-        # Stage 2 + 3: Critique-Refinement loop
+        # Stage 2 + 3: Critique-Refinement loop with convergence tracking
         final_result = current_result
         passes = 0
+        prev_issue_count: Optional[int] = None
 
         for pass_num in range(1, config.max_passes + 1):
             passes = pass_num
@@ -466,9 +516,22 @@ class PipelineOrchestrator:
             )
 
             logger.info(
-                f"[Pipeline:{diagram_type.value}] Stage 2 — CRITIQUE pass {pass_num}/{config.max_passes}"
+                f"[Pipeline:{diagram_type.value}] Stage 2 - CRITIQUE pass {pass_num}/{config.max_passes}"
                 f" ({reviewer})"
             )
+            if progress_callback:
+                progress_callback({
+                    "stage": "pipeline_stage",
+                    "diagram_type": diagram_type.value,
+                    "pipeline_stage_name": "CRITIQUE",
+                    "stage_num": 2,
+                    "pass_num": pass_num,
+                    "model": reviewer,
+                    "message": (
+                        f"[Pipeline:{diagram_type.value}] Stage 2 - CRITIQUE"
+                        f" pass {pass_num} ({reviewer})"
+                    ),
+                })
             critique_stage = await self._run_critique_stage(
                 diagram_type, current_result, requirements, config, reviewer, pass_num
             )
@@ -477,17 +540,18 @@ class PipelineOrchestrator:
             if critique_stage.error or not critique_stage.critique:
                 logger.warning(
                     f"[Pipeline:{diagram_type.value}] Critique failed: {critique_stage.error} "
-                    "— keeping draft result"
+                    "- keeping draft result"
                 )
                 break
 
             critique = critique_stage.critique
+            current_issue_count = len(critique.issues)
 
             # Early exit: critique approved
             if critique.approved and critique.quality_score >= config.min_confidence:
                 logger.info(
                     f"[Pipeline:{diagram_type.value}] Critique approved "
-                    f"(score={critique.quality_score:.2f}) — skipping refinement"
+                    f"(score={critique.quality_score:.2f}) - skipping refinement"
                 )
                 stages.append(StageResult(
                     stage_name="refinement", model_used="skipped",
@@ -495,12 +559,41 @@ class PipelineOrchestrator:
                 ))
                 break
 
+            # Convergence check: if issues are not decreasing, stop early
+            if prev_issue_count is not None and current_issue_count >= prev_issue_count:
+                logger.warning(
+                    f"[Pipeline:{diagram_type.value}] Convergence stalled: "
+                    f"pass {pass_num} has {current_issue_count} issues "
+                    f"(prev: {prev_issue_count}) - stopping refinement"
+                )
+                break
+            prev_issue_count = current_issue_count
+
+            # Adaptive temperature: adjust refinement temp based on critique findings
+            refine_temp = self._adaptive_temperature(critique, config, pass_num)
+
             logger.info(
-                f"[Pipeline:{diagram_type.value}] Stage 3 — REFINEMENT pass {pass_num} "
-                f"({config.generator_model}), {len(critique.issues)} issue(s)"
+                f"[Pipeline:{diagram_type.value}] Stage 3 - REFINEMENT pass {pass_num} "
+                f"({config.generator_model}), {current_issue_count} issue(s), temp={refine_temp:.2f}"
             )
+            if progress_callback:
+                progress_callback({
+                    "stage": "pipeline_stage",
+                    "diagram_type": diagram_type.value,
+                    "pipeline_stage_name": "REFINEMENT",
+                    "stage_num": 3,
+                    "pass_num": pass_num,
+                    "issue_count": current_issue_count,
+                    "model": config.generator_model,
+                    "message": (
+                        f"[Pipeline:{diagram_type.value}] Stage 3 - REFINEMENT"
+                        f" pass {pass_num} ({config.generator_model}),"
+                        f" {current_issue_count} issue(s)"
+                    ),
+                })
             refine_stage = await self._run_refinement_stage(
-                diagram_type, current_result, critique, requirements, config, pass_num
+                diagram_type, current_result, critique, requirements, config, pass_num,
+                temperature_override=refine_temp,
             )
             stages.append(refine_stage)
 
@@ -514,7 +607,7 @@ class PipelineOrchestrator:
             else:
                 logger.warning(
                     f"[Pipeline:{diagram_type.value}] Refinement failed: {refine_stage.error} "
-                    "— keeping previous result"
+                    "- keeping previous result"
                 )
                 break
 
@@ -543,6 +636,10 @@ class PipelineOrchestrator:
                 result = await self.orchestrator.generate_diagram(
                     diagram_type, requirements, module_context, existing_swcs,
                     temperature=config.draft_temperature,
+                    generation_profile=config.generation_profile,
+                    activity_label_style=config.activity_label_style,
+                    autosar_compliant=config.autosar_compliant,
+                    elaborated_data=config.elaborated_data,
                 )
             return StageResult(
                 stage_name="draft",
@@ -572,8 +669,38 @@ class PipelineOrchestrator:
     ) -> StageResult:
         t0 = time.monotonic()
         try:
-            system_prompt = _build_critique_system_prompt(diagram_type)
-            user_prompt   = _build_critique_user_prompt(draft_result, requirements, diagram_type)
+            system_prompt = _build_critique_system_prompt(
+                diagram_type, autosar_compliant=config.autosar_compliant
+            )
+            user_prompt = _build_critique_user_prompt(
+                draft_result,
+                requirements,
+                diagram_type,
+                autosar_compliant=config.autosar_compliant,
+            )
+
+            # Inject real validation results so the AI reviewer sees actual
+            # structural / AUTOSAR issues, not just generic rules.
+            req_ids = [r.req_id for r in requirements]
+            real_issues: list[str] = []
+            try:
+                real_issues.extend(StructuralValidator.validate_quick(draft_result))
+            except Exception:
+                pass
+            if config.autosar_compliant:
+                try:
+                    real_issues.extend(
+                        AUTOSARValidator(self.settings).validate_quick(draft_result, req_ids)
+                    )
+                except Exception:
+                    pass
+            if real_issues:
+                issues_block = "\n".join(f"  - {v}" for v in real_issues[:20])
+                user_prompt += (
+                    f"\n\nAUTOMATED VALIDATION RESULTS (must be addressed):\n"
+                    f"{issues_block}\n"
+                    "Include these automated findings in your review."
+                )
 
             backend = self.orchestrator._get_backend()
             with _TemporaryModelOverride(self.settings, reviewer_model):
@@ -604,6 +731,31 @@ class PipelineOrchestrator:
                 error=str(exc),
             )
 
+    @staticmethod
+    def _adaptive_temperature(
+        critique: CritiqueResult,
+        config: PipelineConfig,
+        pass_num: int,
+    ) -> float:
+        """Compute refinement temperature based on critique findings and pass number.
+
+        Strategy:
+          - Naming violations → lower temp (precise corrections)
+          - Missing elements  → higher temp (creative additions)
+          - Later passes      → progressively lower (converge)
+        """
+        base = config.refine_temperature  # default 0.15
+
+        if critique.naming_violations:
+            base = min(base, 0.12)
+        elif critique.missing_elements:
+            base = max(base, 0.25)
+
+        # Converge: reduce temperature by 0.03 per pass beyond the first
+        base = max(0.05, base - 0.03 * (pass_num - 1))
+
+        return round(base, 2)
+
     async def _run_refinement_stage(
         self,
         diagram_type: DiagramType,
@@ -612,8 +764,10 @@ class PipelineOrchestrator:
         requirements: list[Requirement],
         config: PipelineConfig,
         pass_num: int,
+        temperature_override: Optional[float] = None,
     ) -> StageResult:
         t0 = time.monotonic()
+        refine_temp = temperature_override if temperature_override is not None else config.refine_temperature
         try:
             # Reuse existing YAML system prompt for the refiner (same domain knowledge)
             system_prompt = self.orchestrator.prompt_engine.render_system_prompt(
@@ -623,9 +777,15 @@ class PipelineOrchestrator:
                     "runnable_regex": self.settings.runnable_naming_regex,
                     "port_regex":     self.settings.port_naming_regex,
                 },
+                profile=config.generation_profile,
+                activity_label_style=config.activity_label_style,
             )
             user_prompt = _build_refinement_user_prompt(
-                draft_result, critique, requirements, diagram_type
+                draft_result,
+                critique,
+                requirements,
+                diagram_type,
+                autosar_compliant=config.autosar_compliant,
             )
             prompt_hash = self.orchestrator.prompt_engine.compute_prompt_hash(
                 system_prompt, user_prompt
@@ -637,7 +797,7 @@ class PipelineOrchestrator:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_tokens=config.max_tokens,
-                    temperature=config.refine_temperature,
+                    temperature=refine_temp,
                 )
 
             # Parse refined output using the orchestrator's existing parser

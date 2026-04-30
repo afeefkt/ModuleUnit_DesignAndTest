@@ -1,15 +1,15 @@
 # Prompt Template: State Machine Diagram Generation
-# Version: 1.0
+# Version: 1.1
 # Generates AUTOSAR state machines for mode management, error handling, lifecycle
 
 name: "AUTOSAR State Machine Generator"
-version: "1.0"
+version: "1.1"
 diagram_type: "state_machine"
 
 metadata:
   author: "MUD Tool Team"
   domain: "AUTOSAR"
-  description: "Generates state machine diagrams for AUTOSAR mode management and lifecycle"
+  description: "Generates state machine diagrams for AUTOSAR mode management, lifecycle, and safety-rated functional degradation"
 
 system_prompt: |
   You are an expert AUTOSAR software architect specializing in state-based behavior design.
@@ -21,13 +21,14 @@ system_prompt: |
   - Mode switches trigger runnable execution via OnModeSwitch trigger type
   - State machines model SWC internal behavior and lifecycle management
   - Common AUTOSAR state patterns:
-    * Init -> Running -> Shutdown (basic lifecycle)
-    * Running -> Error -> Recovery -> Running (error handling)
-    * Normal -> Degraded -> SafeState (safety-related)
-  - Entry/Exit actions map to runnable calls (Rte_Switch for mode changes)
+    * Basic lifecycle:       INITIAL → INIT → RUNNING → SHUTDOWN
+    * Error handling:        RUNNING → ERROR → RECOVERY → RUNNING (or SHUTDOWN if unrecoverable)
+    * Safety degradation:    NORMAL → DEGRADED → SAFE_STATE → LIMP_HOME
+    * ASIL functional:       NORMAL → FAULT_ACTIVE → SAFE_STATE (outputs frozen at safe value)
+  - Entry/exit actions map to runnable calls; mode-switch actions use Rte_Switch(PP_ModeSwitchPort, MODE)
 
   NAMING CONVENTIONS:
-  - State names: UPPER_CASE (e.g., INIT, RUNNING, ERROR_ACTIVE)
+  - State names: UPPER_CASE (e.g., INIT, RUNNING, ERROR_ACTIVE, SAFE_STATE)
   - SWC names: {{ swc_naming_regex }}
   - Transition triggers: camelCase events or AUTOSAR mode switch events
 
@@ -37,10 +38,15 @@ system_prompt: |
   IMPORTANT RULES:
   1. Every state machine must have exactly one initial state (is_initial: true)
   2. States should use UPPER_CASE names following AUTOSAR mode naming
-  3. Transitions must have triggers and/or guards - no unlabeled transitions
+  3. Transitions must have triggers and/or guards — no unlabeled transitions
   4. Entry/exit actions should map to AUTOSAR runnable calls where applicable
   5. Trace every state and transition to source requirement IDs
   6. Include confidence scores per element
+  7. ASIL-C/D state machines MUST include a SAFE_STATE with entry action calling
+     Dem_SetEventStatus(DTC_xxx, DEM_EVENT_STATUS_FAILED) for all active faults;
+     outputs must be frozen or set to safe default values in the SAFE_STATE entry action
+  8. Mode-switch transition actions use Rte_Switch(PP_ModeSwitchPort, MODE_NAME)
+     (e.g., "Rte_Switch_PP_OperationalMode_currentMode(MODE_SAFE)")
 
   {{ few_shot_examples }}
   {{ additional_context }}
@@ -56,6 +62,8 @@ user_prompt: |
   {% endif %}
 
   Generate a JSON state machine showing states, transitions, and actions.
+  For ASIL-C/D requirements include a SAFE_STATE with DEM reporting in the entry action.
+  Use Rte_Switch for mode-switch transition actions.
   Output only valid JSON - no markdown, no explanation.
 
 output_schema: |
@@ -65,6 +73,7 @@ output_schema: |
     "owner_swc": "SWC_Name",
     "source_requirements": ["REQ-ID"],
     "states": [
+      {"id": "s_0", "name": "INITIAL",    "is_initial": true,  "is_final": false, "actions": [], "trace_reqs": []},
       {"id": "s_1", "name": "STATE_NAME", "is_initial": false, "is_final": false,
        "actions": [{"action_type": "entry|do|exit", "description": "action"}],
        "trace_reqs": ["REQ-ID"], "confidence": 0.9}
@@ -72,9 +81,9 @@ output_schema: |
     "transitions": [
       {"id": "t_1", "source": "s_1", "target": "s_2",
        "trigger": "event_name", "guard": {"condition": "expression"},
-       "action": "action description", "trace_req": "REQ-ID", "confidence": 0.85}
+       "action": "Rte_Switch_PP_Port_Mode(MODE_NAME)", "trace_req": "REQ-ID", "confidence": 0.85}
     ],
-    "provenance": {"ai_model": "model", "prompt_version": "sm-v1.0", "confidence": 0.87}
+    "provenance": {"ai_model": "model", "prompt_version": "sm-v1.1", "confidence": 0.87}
   }
 
 few_shot_examples:
@@ -92,18 +101,84 @@ few_shot_examples:
         "owner_swc": "SWC_SensorFusion",
         "source_requirements": ["REQ-ARCH-0300", "REQ-ARCH-0301"],
         "states": [
-          {"id": "s_0", "name": "INITIAL", "is_initial": true, "trace_reqs": []},
-          {"id": "s_1", "name": "INIT", "actions": [{"action_type": "entry", "description": "RE_InitSensorInterfaces()"}], "trace_reqs": ["REQ-ARCH-0300"], "confidence": 0.92},
-          {"id": "s_2", "name": "RUNNING", "actions": [{"action_type": "do", "description": "RE_FuseSensorData() cyclic 10ms"}], "trace_reqs": ["REQ-ARCH-0300"], "confidence": 0.95},
-          {"id": "s_3", "name": "ERROR", "actions": [{"action_type": "entry", "description": "RE_LogFault()"}], "trace_reqs": ["REQ-ARCH-0301"], "confidence": 0.88},
-          {"id": "s_4", "name": "SHUTDOWN", "actions": [{"action_type": "entry", "description": "RE_CleanupResources()"}], "trace_reqs": ["REQ-ARCH-0300"], "confidence": 0.90}
+          {"id": "s_0", "name": "INITIAL",  "is_initial": true,  "is_final": false, "actions": [], "trace_reqs": []},
+          {"id": "s_1", "name": "INIT",     "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "entry", "description": "RE_InitSensorInterfaces()"}],
+           "trace_reqs": ["REQ-ARCH-0300"], "confidence": 0.92},
+          {"id": "s_2", "name": "RUNNING",  "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "do", "description": "RE_FuseSensorData() cyclic 10ms"}],
+           "trace_reqs": ["REQ-ARCH-0300"], "confidence": 0.95},
+          {"id": "s_3", "name": "ERROR",    "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "entry", "description": "RE_LogFault(); Rte_Switch_PP_OperationalMode_currentMode(MODE_ERROR)"}],
+           "trace_reqs": ["REQ-ARCH-0301"], "confidence": 0.88},
+          {"id": "s_4", "name": "SHUTDOWN", "is_initial": false, "is_final": true,
+           "actions": [{"action_type": "entry", "description": "RE_CleanupResources()"}],
+           "trace_reqs": ["REQ-ARCH-0300"], "confidence": 0.90}
         ],
         "transitions": [
-          {"id": "t_1", "source": "s_0", "target": "s_1", "trigger": "PowerOn", "confidence": 0.95},
-          {"id": "t_2", "source": "s_1", "target": "s_2", "trigger": "InitComplete", "guard": {"condition": "allSensorsConfigured"}, "confidence": 0.90},
-          {"id": "t_3", "source": "s_2", "target": "s_3", "trigger": "SensorCommFailure", "trace_req": "REQ-ARCH-0301", "confidence": 0.88},
-          {"id": "t_4", "source": "s_3", "target": "s_2", "trigger": "RecoveryTimeout", "guard": {"condition": "timeout >= 500ms"}, "action": "RE_ResetSensorComm()", "trace_req": "REQ-ARCH-0301", "confidence": 0.85},
-          {"id": "t_5", "source": "s_2", "target": "s_4", "trigger": "ShutdownRequest", "confidence": 0.92}
+          {"id": "t_1", "source": "s_0", "target": "s_1", "trigger": "PowerOn",
+           "trace_req": "REQ-ARCH-0300", "confidence": 0.95},
+          {"id": "t_2", "source": "s_1", "target": "s_2", "trigger": "InitComplete",
+           "guard": {"condition": "allSensorsConfigured == TRUE"},
+           "trace_req": "REQ-ARCH-0300", "confidence": 0.90},
+          {"id": "t_3", "source": "s_2", "target": "s_3", "trigger": "SensorCommFailure",
+           "trace_req": "REQ-ARCH-0301", "confidence": 0.88},
+          {"id": "t_4", "source": "s_3", "target": "s_2", "trigger": "RecoveryTimeout",
+           "guard": {"condition": "timeout_ms >= 500"},
+           "action": "RE_ResetSensorComm(); Rte_Switch_PP_OperationalMode_currentMode(MODE_RUNNING)",
+           "trace_req": "REQ-ARCH-0301", "confidence": 0.85},
+          {"id": "t_5", "source": "s_2", "target": "s_4", "trigger": "ShutdownRequest",
+           "trace_req": "REQ-ARCH-0300", "confidence": 0.92}
         ],
-        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "sm-v1.0", "confidence": 0.89}
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "sm-v1.1", "confidence": 0.89}
+      }
+
+  - input: |
+      [REQ-EPS-FSM-001] (safety, ASIL-D) EPS Functional State Management
+        Description: SWC_ElectricPowerSteering shall implement NORMAL, DEGRADED, and SAFE_STATE
+        operational modes. SAFE_STATE shall freeze assist torque output at 0 Nm and report
+        DTC_EPS_SAFE_STATE_ACTIVE via Dem_SetEventStatus.
+      [REQ-EPS-FSM-002] (safety, ASIL-D) Degradation Trigger
+        Description: Transition to DEGRADED when a non-critical sensor fault is detected.
+        Transition from DEGRADED to SAFE_STATE if a critical fault is detected or if
+        the degraded state persists for more than DEGRADED_TIMEOUT_MS.
+    output: |
+      {
+        "diagram_type": "state_machine",
+        "name": "SWC_ElectricPowerSteering_SafetyFSM",
+        "owner_swc": "SWC_ElectricPowerSteering",
+        "source_requirements": ["REQ-EPS-FSM-001", "REQ-EPS-FSM-002"],
+        "states": [
+          {"id": "s_0", "name": "INITIAL",    "is_initial": true,  "is_final": false, "actions": [], "trace_reqs": []},
+          {"id": "s_1", "name": "NORMAL",     "is_initial": false, "is_final": false,
+           "actions": [{"action_type": "do", "description": "RE_ControlTorque() cyclic 5ms — full assist active"}],
+           "trace_reqs": ["REQ-EPS-FSM-001"], "confidence": 0.95},
+          {"id": "s_2", "name": "DEGRADED",   "is_initial": false, "is_final": false,
+           "actions": [
+             {"action_type": "entry", "description": "RE_SetReducedAssist(); Rte_Switch_PP_EpsMode_currentMode(MODE_DEGRADED)"},
+             {"action_type": "do",    "description": "RE_ControlTorque() with reduced gain — partial assist"}
+           ],
+           "trace_reqs": ["REQ-EPS-FSM-002"], "confidence": 0.90},
+          {"id": "s_3", "name": "SAFE_STATE", "is_initial": false, "is_final": false,
+           "actions": [
+             {"action_type": "entry", "description": "l_f32AssistTorque = 0.0F; Rte_Write_PP_MotorCurrent_MotorCurrentDemand(0.0F); Dem_SetEventStatus(DTC_EPS_SAFE_STATE_ACTIVE, DEM_EVENT_STATUS_FAILED); Rte_Switch_PP_EpsMode_currentMode(MODE_SAFE_STATE)"},
+             {"action_type": "do",    "description": "Maintain zero assist output; monitor for recovery conditions"}
+           ],
+           "trace_reqs": ["REQ-EPS-FSM-001"], "confidence": 0.92}
+        ],
+        "transitions": [
+          {"id": "t_1", "source": "s_0", "target": "s_1",
+           "trigger": "PowerOn", "trace_req": "REQ-EPS-FSM-001", "confidence": 0.95},
+          {"id": "t_2", "source": "s_1", "target": "s_2",
+           "trigger": "NonCriticalSensorFault",
+           "trace_req": "REQ-EPS-FSM-002", "confidence": 0.90},
+          {"id": "t_3", "source": "s_2", "target": "s_3",
+           "trigger": "CriticalFaultOrTimeout",
+           "guard": {"condition": "criticalFault == TRUE OR degraded_ms >= DEGRADED_TIMEOUT_MS"},
+           "trace_req": "REQ-EPS-FSM-002", "confidence": 0.88},
+          {"id": "t_4", "source": "s_1", "target": "s_3",
+           "trigger": "CriticalFault",
+           "trace_req": "REQ-EPS-FSM-002", "confidence": 0.90}
+        ],
+        "provenance": {"ai_model": "claude-sonnet", "prompt_version": "sm-v1.1", "confidence": 0.91}
       }

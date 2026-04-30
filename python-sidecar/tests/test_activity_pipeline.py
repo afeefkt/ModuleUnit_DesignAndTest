@@ -44,6 +44,7 @@ import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -313,6 +314,283 @@ class TestParseResponseWrapper:
         )
         print(f"\n  [PASS] no empty-diagram regression: {len(diag.nodes)} nodes")
 
+    def test_wrapper_accepts_legacy_activity_shape(self):
+        """Legacy payloads with node `type` and edges without `id` must parse."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Legacy Activity",
+                "nodes": [
+                    {"id": "0", "type": "InitialNode", "name": "Start"},
+                    {"id": "1", "type": "ActivityNode", "name": "Read Sensor Data"},
+                    {"id": "2", "type": "DecisionNode", "name": "Check Sensor Data"},
+                    {"id": "3", "type": "FinalNode", "name": "End"},
+                ],
+                "edges": [
+                    {"source": "0", "target": "1"},
+                    {"source": "1", "target": "2"},
+                    {"source": "2", "target": "3"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        assert len(result.diagrams) == 1
+        diag = result.diagrams[0]
+        assert isinstance(diag, ActivityDiagram)
+        assert diag.nodes[0].node_type == ActivityNodeType.INITIAL
+        assert diag.nodes[1].node_type == ActivityNodeType.ACTION
+        assert diag.nodes[2].node_type == ActivityNodeType.DECISION
+        assert diag.edges[0].id == "E_01"
+        assert diag.edges[1].id == "E_02"
+        assert diag.edges[2].id == "E_03"
+        print("\n  [PASS] legacy activity node/edge schema normalized")
+
+    def test_wrapper_legacy_activity_missing_name_is_derived(self):
+        """Legacy nodes without `name` must be auto-filled from description/id."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Legacy Missing Name",
+                "nodes": [
+                    {"id": "initial_node", "type": "InitialNode"},
+                    {"id": "read_sensor_data", "type": "ActivityNode",
+                     "description": "Read sensor data from source"},
+                    {"id": "end_node", "type": "FinalNode"},
+                ],
+                "edges": [
+                    {"source": "initial_node", "target": "read_sensor_data"},
+                    {"source": "read_sensor_data", "target": "end_node"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.nodes[0].name == "initial node"
+        assert "Read sensor data from source" in diag.nodes[1].name
+        assert diag.nodes[2].name == "end node"
+        print("\n  [PASS] missing node names are derived for legacy activity payloads")
+
+    def test_wrapper_null_node_type_uses_legacy_type(self):
+        """node_type=null should backfill from legacy `type`."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Null NodeType Backfill",
+                "nodes": [
+                    {"id": "initial_node", "node_type": None, "type": "InitialNode"},
+                    {"id": "check_sensor_data", "node_type": "", "type": "DecisionNode"},
+                    {"id": "end_node", "node_type": None, "type": "FinalNode"},
+                ],
+                "edges": [
+                    {"source": "initial_node", "target": "check_sensor_data"},
+                    {"source": "check_sensor_data", "target": "end_node"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.nodes[0].node_type == ActivityNodeType.INITIAL
+        assert diag.nodes[1].node_type == ActivityNodeType.DECISION
+        assert diag.nodes[2].node_type == ActivityNodeType.FINAL
+        assert not result.warnings, f"Unexpected normalization warnings: {result.warnings}"
+        print("\n  [PASS] node_type=None/empty falls back to legacy `type`")
+
+    def test_wrapper_camel_case_node_type_is_supported(self):
+        """nodeType camelCase key should be accepted when node_type is absent."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Camel NodeType",
+                "nodes": [
+                    {"id": "start", "nodeType": "initial"},
+                    {"id": "do_work", "nodeType": "action"},
+                    {"id": "end", "nodeType": "final"},
+                ],
+                "edges": [
+                    {"source": "start", "target": "do_work"},
+                    {"source": "do_work", "target": "end"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.nodes[0].node_type == ActivityNodeType.INITIAL
+        assert diag.nodes[1].node_type == ActivityNodeType.ACTION
+        assert diag.nodes[2].node_type == ActivityNodeType.FINAL
+        assert not result.warnings, f"Unexpected normalization warnings: {result.warnings}"
+        print("\n  [PASS] camelCase nodeType is normalized")
+
+    def test_wrapper_infers_and_defaults_node_type_with_warning(self):
+        """Missing/invalid node type should infer from id/name or default to action."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Inference NodeType",
+                "nodes": [
+                    {"id": "end_node", "name": "End Node", "node_type": None},
+                    {"id": "ambiguous_step", "name": "Compute Value", "node_type": "???"},
+                ],
+                "edges": [
+                    {"source": "end_node", "target": "ambiguous_step"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        node_types = {n.id: n.node_type for n in diag.nodes}
+        assert node_types["end_node"] == ActivityNodeType.FINAL
+        assert node_types["ambiguous_step"] == ActivityNodeType.ACTION
+        assert result.warnings, "Expected normalization warning for inferred/defaulted node types"
+        warning = " ".join(result.warnings)
+        assert "inferred node_type for 1 node(s)" in warning
+        assert "defaulted 1 to action" in warning
+        print("\n  [PASS] node_type inference/defaulting emits warning")
+
+    def test_wrapper_accepts_edge_source_target_id_aliases(self):
+        """Edges using source_id/target_id should normalize to source/target."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Edge Alias Activity",
+                "nodes": [
+                    {"id": "n1", "name": "Start", "node_type": "initial"},
+                    {"id": "n2", "name": "Read input", "node_type": "action"},
+                    {"id": "n3", "name": "End", "node_type": "final"},
+                ],
+                "edges": [
+                    {"source_id": "n1", "target_id": "n2"},
+                    {"from": "n2", "target_id": "n3"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert diag.edges[0].source == "n1"
+        assert diag.edges[0].target == "n2"
+        assert diag.edges[1].source == "n2"
+        assert diag.edges[1].target == "n3"
+        print("\n  [PASS] source_id/target_id edge aliases normalized")
+
+    def test_wrapper_normalizes_subdiagram_edge_aliases(self):
+        """Edge alias normalization should apply recursively for sub_diagrams."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "Parent",
+                "nodes": [
+                    {"id": "n1", "name": "Start", "node_type": "initial"},
+                    {"id": "n2", "name": "Call helper", "node_type": "function_call", "callee": "Helper"},
+                    {"id": "n3", "name": "End", "node_type": "final"},
+                ],
+                "edges": [
+                    {"source_id": "n1", "target_id": "n2"},
+                    {"source_id": "n2", "target_id": "n3"},
+                ],
+                "sub_diagrams": [{
+                    "diagram_type": "activity",
+                    "name": "Helper",
+                    "function_name": "Helper",
+                    "nodes": [
+                        {"id": "s1", "name": "Start", "node_type": "initial"},
+                        {"id": "s2", "name": "Compute", "node_type": "action"},
+                        {"id": "s3", "name": "End", "node_type": "final"},
+                    ],
+                    "edges": [
+                        {"source_id": "s1", "target_id": "s2"},
+                        {"source_id": "s2", "target_id": "s3"},
+                    ],
+                }],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        parent = result.diagrams[0]
+        child = result.diagrams[1]
+        assert parent.edges[0].source == "n1"
+        assert parent.edges[0].target == "n2"
+        assert child.edges[0].source == "s1"
+        assert child.edges[0].target == "s2"
+        print("\n  [PASS] sub-diagram edge aliases normalized")
+
+    def test_wrapper_sanitizes_mud_style_node_ids(self):
+        """MUD-first activity payloads often reuse labels as ids; normalize them safely."""
+        orch = self._make_orchestrator()
+
+        payload = {
+            "diagrams": [{
+                "name": "RE_Control Flowchart",
+                "nodes": [
+                    {"id": "Start", "name": "Start", "node_type": "initial"},
+                    {"id": "Rte_Read(RP_Speed, &speed)", "name": "Rte_Read(RP_Speed, &speed)"},
+                    {"id": "assist = CalcAssist(speed)", "name": "assist = CalcAssist(speed)"},
+                    {"id": "End", "name": "End", "node_type": "final"},
+                ],
+                "edges": [
+                    {"source": "Start", "target": "Rte_Read(RP_Speed, &speed)"},
+                    {"source": "Rte_Read(RP_Speed, &speed)", "target": "assist = CalcAssist(speed)"},
+                    {"source": "assist = CalcAssist(speed)", "target": "End"},
+                ],
+            }]
+        }
+        resp = self._fake_response(json.dumps(payload))
+        result = orch._parse_response(
+            resp, DiagramType.ACTIVITY, "hash", "test", req_ids=["REQ-001"]
+        )
+
+        assert not result.errors, f"Unexpected errors: {result.errors}"
+        diag = result.diagrams[0]
+        assert [node.id for node in diag.nodes] == [
+            "Start",
+            "Rte_Read_RP_Speed_speed",
+            "assist_CalcAssist_speed",
+            "End",
+        ]
+        assert diag.edges[0].target == "Rte_Read_RP_Speed_speed"
+        assert diag.edges[1].source == "Rte_Read_RP_Speed_speed"
+        assert diag.edges[1].target == "assist_CalcAssist_speed"
+        print("\n  [PASS] MUD-style label ids sanitized and edge refs updated")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LAYER 2 — Mermaid Exporter
@@ -431,6 +709,39 @@ class TestMermaidExporterActivity:
         assert "l_bValid" in mmd
         print("\n  [PASS] C logical operators sanitized: || -> OR, && -> AND")
 
+    def test_special_character_node_ids_are_mermaid_safe(self):
+        """Exporter should not leak spaces, parens, or ampersands into node identifiers."""
+        diag = ActivityDiagram(
+            name="MUD Output",
+            nodes=[
+                ActivityNode(id="Start", name="Start", node_type=ActivityNodeType.INITIAL, trace_reqs=["R1"]),
+                ActivityNode(
+                    id="Rte_Read(RP_Speed, &speed)",
+                    name="Rte_Read(RP_Speed, &speed)",
+                    node_type=ActivityNodeType.CALL,
+                    trace_reqs=["R1"],
+                ),
+                ActivityNode(
+                    id="assist = CalcAssist(speed)",
+                    name="assist = CalcAssist(speed)",
+                    node_type=ActivityNodeType.ACTION,
+                    trace_reqs=["R1"],
+                ),
+                ActivityNode(id="End", name="End", node_type=ActivityNodeType.FINAL, trace_reqs=["R1"]),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="Start", target="Rte_Read(RP_Speed, &speed)"),
+                ActivityEdge(id="E_02", source="Rte_Read(RP_Speed, &speed)", target="assist = CalcAssist(speed)"),
+                ActivityEdge(id="E_03", source="assist = CalcAssist(speed)", target="End"),
+            ],
+        )
+        mmd = MermaidExporter().export_diagram(diag)
+        assert "Rte_Read(RP_Speed, &speed) -->" not in mmd
+        assert "assist = CalcAssist(speed) -->" not in mmd
+        assert "Rte_Read_RP_Speed_speed" in mmd
+        assert "assist_CalcAssist_speed" in mmd
+        print("\n  [PASS] exporter sanitizes special-character node ids")
+
     def test_inline_export_returns_dict(self, eps_generation_result):
         """export_result_inline must return {key: mermaid_text} with ≥1 entry."""
         result = MermaidExporter().export_result_inline(eps_generation_result)
@@ -465,6 +776,37 @@ class TestMermaidExporterActivity:
 class TestDrawIOExporterActivity:
     """Verify DrawIOExporter produces non-empty XML for activity diagrams."""
 
+    @staticmethod
+    def _activity_boxes_from_xml(xml_text: str) -> dict[str, dict[str, float]]:
+        root = ET.fromstring(xml_text)
+        boxes: dict[str, dict[str, float]] = {}
+        for cell in root.findall(".//mxCell[@vertex='1']"):
+            cell_id = cell.get("id", "")
+            geo = cell.find("mxGeometry")
+            if geo is None:
+                continue
+            boxes[cell_id] = {
+                "x": float(geo.get("x", "0")),
+                "y": float(geo.get("y", "0")),
+                "w": float(geo.get("width", "0")),
+                "h": float(geo.get("height", "0")),
+                "value": cell.get("value", ""),
+            }
+        return boxes
+
+    @staticmethod
+    def _assert_no_overlaps(boxes: dict[str, dict[str, float]], margin_x: float = 16.0, margin_y: float = 12.0) -> None:
+        items = list(boxes.items())
+        for i, (left_id, left) in enumerate(items):
+            for right_id, right in items[i + 1:]:
+                overlap = not (
+                    left["x"] + left["w"] + margin_x <= right["x"]
+                    or right["x"] + right["w"] + margin_x <= left["x"]
+                    or left["y"] + left["h"] + margin_y <= right["y"]
+                    or right["y"] + right["h"] + margin_y <= left["y"]
+                )
+                assert not overlap, f"Boxes overlap or are too tight: {left_id} vs {right_id}"
+
     def test_produces_xml_cells(self, tmp_path, eps_generation_result):
         """DrawIO export must create a .drawio file with actual cell elements."""
         from mudtool.generator.drawio_exporter import DrawIOExporter
@@ -497,6 +839,131 @@ class TestDrawIOExporterActivity:
                 f"DrawIO file suspiciously small ({size} bytes) — likely empty:\n{p}"
             )
         print(f"\n  [PASS] DrawIO file size = {size} bytes (not blank)")
+
+    def test_branching_layout_has_no_overlaps_and_visible_fanout(self):
+        from mudtool.generator.drawio_exporter import DrawIOExporter
+
+        diagram = ActivityDiagram(
+            name="Branch Layout",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Branch",
+            nodes=[
+                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                ActivityNode(id="N_01", name="vehicleSpeed > threshold", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_02", name="Rte_IWrite(PP_AssistLevel, HighAssistCommand)", node_type=ActivityNodeType.CALL),
+                ActivityNode(id="N_03", name="Rte_IWrite(PP_AssistLevel, LowAssistCommand)", node_type=ActivityNodeType.CALL),
+                ActivityNode(id="N_04", name="Merge", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_05", name="End", node_type=ActivityNodeType.FINAL),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="N_00", target="N_01"),
+                ActivityEdge(id="E_02", source="N_01", target="N_02", guard="[true]"),
+                ActivityEdge(id="E_03", source="N_01", target="N_03", guard="[false]"),
+                ActivityEdge(id="E_04", source="N_02", target="N_04"),
+                ActivityEdge(id="E_05", source="N_03", target="N_04"),
+                ActivityEdge(id="E_06", source="N_04", target="N_05"),
+            ],
+        )
+
+        xml_text = DrawIOExporter().export_diagram(diagram)
+        boxes = self._activity_boxes_from_xml(xml_text)
+        self._assert_no_overlaps(boxes)
+
+        decision = next(box for box in boxes.values() if "vehicleSpeed > threshold" in box["value"])
+        high = next(box for box in boxes.values() if "HighAssistCommand" in box["value"])
+        low = next(box for box in boxes.values() if "LowAssistCommand" in box["value"])
+        merge = next(box for box in boxes.values() if box["value"] == "Merge")
+
+        assert abs((high["x"] + high["w"] / 2) - (low["x"] + low["w"] / 2)) >= 180
+        assert merge["y"] > max(high["y"], low["y"])
+        assert high["y"] > decision["y"] and low["y"] > decision["y"]
+
+    def test_activity_drawio_labels_do_not_render_trace_requirements(self):
+        from mudtool.generator.drawio_exporter import DrawIOExporter
+
+        diagram = ActivityDiagram(
+            name="Trace Label Cleanup",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Trace",
+            nodes=[
+                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL, trace_reqs=["REQ-1", "REQ-2"]),
+                ActivityNode(
+                    id="N_01",
+                    name="Compute Assist",
+                    node_type=ActivityNodeType.ACTION,
+                    description="Use filtered torque demand",
+                    trace_reqs=["REQ-1", "REQ-2", "REQ-3"],
+                ),
+                ActivityNode(
+                    id="N_02",
+                    name="Rte_Write(PP_AssistTorque, assistTorque)",
+                    node_type=ActivityNodeType.CALL,
+                    rte_call="Rte_Write",
+                    port="PP_AssistTorque",
+                    element="AssistTorque",
+                    trace_reqs=["REQ-9"],
+                ),
+                ActivityNode(id="N_03", name="End", node_type=ActivityNodeType.FINAL, trace_reqs=["REQ-1"]),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="N_00", target="N_01"),
+                ActivityEdge(id="E_02", source="N_01", target="N_02"),
+                ActivityEdge(id="E_03", source="N_02", target="N_03"),
+            ],
+        )
+
+        xml_text = DrawIOExporter().export_diagram(diagram)
+
+        assert "REQ-1" not in xml_text
+        assert "REQ-2" not in xml_text
+        assert "REQ-9" not in xml_text
+        assert "Compute Assist" in xml_text
+        assert "Use filtered torque demand" in xml_text
+        assert "Rte_Write(PP_AssistTorque, AssistTorque)" in xml_text
+
+    def test_nested_branching_and_loop_layout_has_no_overlaps(self):
+        from mudtool.generator.drawio_exporter import DrawIOExporter
+
+        diagram = ActivityDiagram(
+            name="Nested Layout",
+            owner_swc="SWC_Test",
+            owner_runnable="RE_Nested",
+            nodes=[
+                ActivityNode(id="N_00", name="Start", node_type=ActivityNodeType.INITIAL),
+                ActivityNode(id="N_01", name="mode == ACTIVE", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_02", name="speed > limit", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_03", name="Rte_IRead(RP_VehicleSpeed, vehicleSpeedBuffer, CurrentVehicleSpeedValue, SafetyMonitoredLongName)", node_type=ActivityNodeType.CALL),
+                ActivityNode(id="N_04", name="Dem_ReportErrorStatus(DTC_LIMIT_EXCEEDED, DEM_EVENT_STATUS_FAILED)", node_type=ActivityNodeType.EXCEPTION),
+                ActivityNode(id="N_05", name="Inner Merge", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_06", name="retryCounter < 3", node_type=ActivityNodeType.DECISION),
+                ActivityNode(id="N_07", name="UpdateRetryCounter()", node_type=ActivityNodeType.FUNCTION_CALL),
+                ActivityNode(id="N_08", name="Loop exit", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_09", name="Outer Merge", node_type=ActivityNodeType.MERGE),
+                ActivityNode(id="N_10", name="End", node_type=ActivityNodeType.FINAL),
+            ],
+            edges=[
+                ActivityEdge(id="E_01", source="N_00", target="N_01"),
+                ActivityEdge(id="E_02", source="N_01", target="N_02", guard="[true]"),
+                ActivityEdge(id="E_03", source="N_01", target="N_09", guard="[false]"),
+                ActivityEdge(id="E_04", source="N_02", target="N_03", guard="[true]"),
+                ActivityEdge(id="E_05", source="N_02", target="N_04", guard="[false]"),
+                ActivityEdge(id="E_06", source="N_03", target="N_05"),
+                ActivityEdge(id="E_07", source="N_04", target="N_05"),
+                ActivityEdge(id="E_08", source="N_05", target="N_06"),
+                ActivityEdge(id="E_09", source="N_06", target="N_07", guard="[loop]"),
+                ActivityEdge(id="E_10", source="N_07", target="N_06"),
+                ActivityEdge(id="E_11", source="N_06", target="N_08", guard="[done]"),
+                ActivityEdge(id="E_12", source="N_08", target="N_09"),
+                ActivityEdge(id="E_13", source="N_09", target="N_10"),
+            ],
+        )
+
+        xml_text = DrawIOExporter().export_diagram(diagram)
+        boxes = self._activity_boxes_from_xml(xml_text)
+        self._assert_no_overlaps(boxes)
+
+        long_call = next(box for box in boxes.values() if "CurrentVehicleSpeedValue" in box["value"])
+        assert long_call["w"] >= 300
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -603,6 +1070,7 @@ class TestLiveGenerate:
                                "triggered cyclically every 5ms. Safety: ASIL-D.",
                 "req_type": "functional",
                 "safety_level": "ASIL-D",
+                "priority": "must",
             },
             {
                 "req_id": "REQ-EPS-010",
@@ -611,6 +1079,7 @@ class TestLiveGenerate:
                                "vehicle speed from RP_VehicleSpeed, compute a speed-dependent assist "
                                "torque, and write the result to PP_MotorCurrent.",
                 "req_type": "interface",
+                "priority": "must",
             },
             {
                 "req_id": "REQ-EPS-041",
@@ -621,9 +1090,30 @@ class TestLiveGenerate:
                                "set l_f32AssistTorque = 0.0F. Safety: ASIL-D.",
                 "req_type": "safety",
                 "safety_level": "ASIL-D",
+                "priority": "must",
             },
         ]
     }
+
+    EPS_MUD_SPEC = """# MUD Spec: SWC_ElectricPowerSteering
+
+## 3. Runnables
+### 3.1 Main Runnables (OS-scheduled via AUTOSAR RTE)
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_ControlTorque | Cyclic | 5 ms | ASIL-D | Main EPS assist loop |
+
+## 7. Functional Description
+### RE_ControlTorque
+// Reads: RP_TorqueSensor, RP_TorqueSensorRedundant, RP_VehicleSpeed
+// Writes: PP_MotorCurrent
+
+1. Rte_Read(RP_VehicleSpeed, &l_u16SpeedKmh)
+2. Rte_Read(RP_TorqueSensor, &l_f32TorqueMain)
+3. Rte_Read(RP_TorqueSensorRedundant, &l_f32TorqueRedundant)
+4. l_f32AssistTorque = EPS_CalcAssistTorque(l_f32TorqueMain, l_u16SpeedKmh)
+5. Rte_Write(PP_MotorCurrent, l_f32AssistTorque)
+"""
 
     def test_generate_activity_single_pass(self):
         """Single-pass generation must return ≥1 activity diagram with nodes."""
@@ -633,6 +1123,9 @@ class TestLiveGenerate:
             "diagram_types": ["activity"],
             "pipeline_mode": "single_pass",
             "apply_autosar_mapping": False,
+            "activity_source": "mud_spec",
+            "mud_spec_markdown": self.EPS_MUD_SPEC,
+            "module_context": "SWC_ElectricPowerSteering",
         }
         r = httpx.post(
             f"{LIVE_BASE}/generate", json=payload,
@@ -686,6 +1179,9 @@ class TestLiveGenerate:
             "diagram_types": ["activity"],
             "pipeline_mode": "single_pass",
             "apply_autosar_mapping": False,
+            "activity_source": "mud_spec",
+            "mud_spec_markdown": self.EPS_MUD_SPEC,
+            "module_context": "SWC_ElectricPowerSteering",
         }
         r1 = httpx.post(f"{LIVE_BASE}/generate", json=gen_payload, timeout=300.0)
         assert r1.status_code == 200, f"Generate failed: {r1.status_code}"

@@ -52,7 +52,7 @@ class Requirement(BaseModel):
     req_id: str = Field(
         ...,
         description="Unique requirement identifier from ALM tool (e.g., REQ-ARCH-0142)",
-        pattern=r"^[A-Z]+-[A-Z]+-\d+$",
+        pattern=r"^[A-Z]+-(?:[A-Z]+-)*\d+$",
     )
     title: str = Field(
         ...,

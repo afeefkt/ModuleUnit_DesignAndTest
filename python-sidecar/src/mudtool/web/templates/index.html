@@ -161,6 +161,26 @@
       background: #eff6ff;
     }
 
+    /* ── Elaboration / AI Reasoning ─────────────────────── */
+    .thinking-step {
+      border-left: 2px solid #a78bfa;
+      padding: 4px 8px;
+      background: #faf5ff;
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+
+    .elab-entity {
+      display: inline-block;
+      font-size: 10px;
+      background: #ede9fe;
+      color: #6d28d9;
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin: 1px 2px;
+    }
+
     /* ── Pipeline stage progress badges ────────────────── */
     .pipeline-badge {
       font-size: 10px;
@@ -306,6 +326,29 @@
       color: #374151;
     }
 
+    .preview-status {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .preview-status.suspicious {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .preview-status.fallback {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .preview-status.error {
+      background: #fecaca;
+      color: #991b1b;
+    }
+
     .mmd-render-error {
       color: #ef4444;
       font-size: 12px;
@@ -345,6 +388,83 @@
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+    }
+
+    .diagram-modal-box {
+      background: white;
+      border-radius: 14px;
+      width: min(1200px, 96vw);
+      max-width: 96vw;
+      height: min(88vh, 920px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .diagram-modal-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #fff;
+    }
+
+    .diagram-modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f172a;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .diagram-modal-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .diagram-tool-btn {
+      border: 1px solid #d1d5db;
+      background: white;
+      color: #334155;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .diagram-tool-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
+    .diagram-modal-body {
+      flex: 1;
+      overflow: auto;
+      background: #f8fafc;
+      padding: 16px;
+    }
+
+    .diagram-modal-canvas {
+      display: inline-block;
+      min-width: 100%;
+      transform-origin: top left;
+    }
+
+    .diagram-modal-canvas .mermaid {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      display: inline-block;
+      min-width: 100%;
     }
 
     .backend-card {
@@ -420,6 +540,184 @@
       color: #dc2626;
       font-size: 12px;
     }
+
+    /* ── Module Planner & MUD Spec ───────────────────────── */
+    .module-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: white;
+    }
+    .module-card:hover {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+    .module-card.selected {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+    .asil-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      letter-spacing: .04em;
+    }
+    .asil-qm  { background:#e5e7eb; color:#374151; }
+    .asil-a   { background:#d1fae5; color:#065f46; }
+    .asil-b   { background:#fef3c7; color:#92400e; }
+    .asil-c   { background:#fed7aa; color:#9a3412; }
+    .asil-d   { background:#fee2e2; color:#991b1b; }
+    .complexity-low  { color:#16a34a; }
+    .complexity-medium { color:#d97706; }
+    .complexity-high { color:#dc2626; }
+
+    /* MUD Spec viewer */
+    #mudSpecContent {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1e293b;
+    }
+    #mudSpecContent h1 { font-size: 1.3em; font-weight: 700; color: #1e293b; margin: 0 0 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+    #mudSpecContent h2 { font-size: 1.05em; font-weight: 700; color: #1e293b; margin: 18px 0 8px; }
+    #mudSpecContent h3 { font-size: .95em; font-weight: 600; color: #475569; margin: 12px 0 4px; }
+    #mudSpecContent table { border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 12px; }
+    #mudSpecContent th { background: #f1f5f9; color: #475569; font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid #e2e8f0; }
+    #mudSpecContent td { padding: 5px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+    #mudSpecContent tr:nth-child(even) td { background: #f8fafc; }
+    #mudSpecContent code {
+      background: #eef2f7;
+      color: #0f172a;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    #mudSpecContent pre {
+      background: #f8fafc;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      padding: 14px 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: normal;
+    }
+    #mudSpecContent pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
+
+    /* Review result badges */
+    .review-error   { border-left: 3px solid #ef4444; background: #fef2f2; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
+    .review-warning { border-left: 3px solid #f59e0b; background: #fffbeb; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
+    .review-info    { border-left: 3px solid #3b82f6; background: #eff6ff; padding: 6px 10px; border-radius: 0 6px 6px 0; margin-bottom: 4px; }
+
+    /* Review report full panel */
+    .review-section-header {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 4px 0 2px;
+      margin-top: 10px;
+      border-bottom: 1px solid currentColor;
+      opacity: 0.6;
+    }
+    .iter-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .iter-badge.current {
+      background: #3b82f6;
+      color: white;
+    }
+    #reviewHistoryList .history-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    #reviewHistoryList .history-item.current-iter {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+    .regen-btn {
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      color: white;
+      border-radius: 7px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      border: none;
+    }
+    .regen-btn:hover { opacity: 0.88; }
+    .regen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .regen-btn.ready {
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18), 0 6px 18px rgba(59, 130, 246, 0.18);
+      opacity: 1;
+    }
+
+    /* ── Fixed Info Panel (top of main content) ────────────── */
+    #infoPanel {
+      height: 240px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-bottom: 2px solid #e2e8f0;
+      background: #fff;
+    }
+    .info-tab-btn {
+      font-size: 11px;
+      padding: 4px 14px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      font-weight: 500;
+      margin-bottom: -1px;
+      transition: all 0.1s;
+      white-space: nowrap;
+    }
+    .info-tab-btn:hover  { color: #334155; background: #f8fafc; }
+    .info-tab-btn.active { color: #2563eb; font-weight: 700; border-bottom-color: #3b82f6; }
+    #infoTabContent { flex: 1; overflow-y: auto; }
+    /* Log entry styles */
+    .alog-entry { font-size: 11px; padding: 3px 12px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: baseline; gap: 6px; }
+    .alog-time  { color: #94a3b8; font-size: 10px; flex-shrink: 0; font-family: monospace; }
+    .alog-msg   { color: #334155; flex: 1; }
+    .alog-ok    { color: #16a34a; }
+    .alog-warn  { color: #d97706; }
+    .alog-err   { color: #dc2626; }
+    /* AI live stream */
+    #aiStreamContent {
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      padding: 10px 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #e2e8f0;
+      background: #0f172a;
+      min-height: 100%;
+    }
+    /* Sidebar requirements list */
+    #reqList { font-size: 11.5px; overflow-y: auto; }
   </style>
 </head>
 
@@ -436,9 +734,9 @@
       <span class="text-slate-400 text-sm">AUTOSAR Module &amp; Unit Design</span>
     </div>
     <div class="ml-auto flex items-center gap-3">
-      <span id="backendBadge" class="badge bg-slate-700 text-slate-300">AI: —</span>
+      <span id="backendBadge" class="badge bg-slate-700 text-slate-300">AI: -</span>
       <span id="healthDot" class="w-2 h-2 rounded-full bg-gray-500" title="Server health"></span>
-      <a href="/docs" target="_blank" class="text-slate-400 hover:text-white text-xs">API Docs ↗</a>
+      <a href="/docs" target="_blank" class="text-slate-400 hover:text-white text-xs">API Docs -></a>
       <button id="btnOpenSettings" title="AI Backend Settings"
         class="text-slate-400 hover:text-white transition-colors ml-1" onclick="openSettings()">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -464,10 +762,10 @@
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
         <div>
-          <h2 class="font-bold text-slate-800 text-base">⚙️ AI Backend Settings</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Changes apply instantly — no server restart needed</p>
+          <h2 class="font-bold text-slate-800 text-base">AI Backend Settings</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Changes apply instantly - no server restart needed</p>
         </div>
-        <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+        <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">X</button>
       </div>
 
       <!-- Backend cards -->
@@ -478,37 +776,37 @@
         <div class="grid grid-cols-3 gap-2 mb-5" id="backendCards">
 
           <div class="backend-card" data-backend="anthropic" onclick="selectBackend('anthropic')">
-            <div class="icon">🤖</div>
+            <div class="icon">AI</div>
             <div class="label">Claude</div>
             <div class="sublabel">Anthropic API</div>
           </div>
 
           <div class="backend-card" data-backend="ollama" onclick="selectBackend('ollama')">
-            <div class="icon">🦙</div>
+            <div class="icon">AI</div>
             <div class="label">Ollama</div>
-            <div class="sublabel">Local · Free</div>
+            <div class="sublabel">Local - Free</div>
           </div>
 
           <div class="backend-card" data-backend="localai" onclick="selectBackend('localai')">
-            <div class="icon">🏠</div>
+            <div class="icon">AI</div>
             <div class="label">LocalAI</div>
-            <div class="sublabel">Docker · Local</div>
+            <div class="sublabel">Docker - Local</div>
           </div>
 
           <div class="backend-card" data-backend="lmstudio" onclick="selectBackend('lmstudio')">
-            <div class="icon">🔷</div>
+            <div class="icon">AI</div>
             <div class="label">LM Studio</div>
-            <div class="sublabel">GUI App · Local</div>
+            <div class="sublabel">GUI App - Local</div>
           </div>
 
           <div class="backend-card" data-backend="openai" onclick="selectBackend('openai')">
-            <div class="icon">💚</div>
+            <div class="icon">AI</div>
             <div class="label">OpenAI</div>
             <div class="sublabel">GPT-4o API</div>
           </div>
 
           <div class="backend-card" data-backend="openai_compatible" onclick="selectBackend('openai_compatible')">
-            <div class="icon">🔌</div>
+            <div class="icon">API</div>
             <div class="label">Custom API</div>
             <div class="sublabel">Any compatible</div>
           </div>
@@ -539,7 +837,7 @@
               <input type="password" id="cfgKey" placeholder="sk-ant-..." class="pr-10" />
               <button onclick="toggleKeyVisibility()"
                 class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">
-                👁
+                Show
               </button>
             </div>
             <p id="keyHint" class="text-xs text-slate-400 mt-1"></p>
@@ -550,7 +848,7 @@
             <div class="field-group">
               <label>Confidence Threshold</label>
               <input type="number" id="cfgConfidence" step="0.05" min="0.1" max="1.0" placeholder="0.4" />
-              <p class="text-xs text-slate-400 mt-1">0.4 local · 0.6 cloud</p>
+              <p class="text-xs text-slate-400 mt-1">0.4 local - 0.6 cloud</p>
             </div>
             <div class="field-group">
               <label>Max Retries</label>
@@ -564,7 +862,7 @@
         <!-- Test + Apply row -->
         <div class="flex items-center gap-3 py-4 border-t border-slate-100 mt-2">
           <button class="secondary text-xs px-4 py-2" id="btnTestConn" onclick="testConnection()">
-            🔌 Test Connection
+            Test Connection
           </button>
           <span id="testResult" class="text-xs"></span>
           <div class="ml-auto flex gap-2">
@@ -579,28 +877,43 @@
     </div>
   </div>
 
+  <div id="diagramModal" class="modal-overlay hidden" onclick="closeDiagramModalIfBackdrop(event)">
+    <div class="diagram-modal-box">
+      <div class="diagram-modal-toolbar">
+        <div id="diagramModalTitle" class="diagram-modal-title">Diagram</div>
+        <div class="diagram-modal-controls">
+          <span id="diagramModalZoomLabel" class="text-xs text-slate-500">100%</span>
+          <button class="diagram-tool-btn" onclick="adjustDiagramZoom(-0.15)">-</button>
+          <button class="diagram-tool-btn" onclick="resetDiagramZoom()">Reset</button>
+          <button class="diagram-tool-btn" onclick="adjustDiagramZoom(0.15)">+</button>
+          <button class="diagram-tool-btn" onclick="closeDiagramModal()">Close</button>
+        </div>
+      </div>
+      <div id="diagramModalBody" class="diagram-modal-body">
+        <div id="diagramModalCanvas" class="diagram-modal-canvas"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════ MAIN LAYOUT ══════════════════════ -->
   <div class="flex flex-1 overflow-hidden" style="height:calc(100vh - 54px)">
 
     <!-- ── SIDEBAR ── -->
     <aside class="sidebar bg-white border-r border-slate-100 flex flex-col overflow-hidden">
-      <div class="p-4 border-b border-slate-100">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-          1 · Import Requirements
-        </p>
 
-        <!-- File upload -->
+      <!-- ① Import section -->
+      <div class="p-4 border-b border-slate-100 flex-shrink-0">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          ① Import Requirements
+        </p>
         <label class="block mb-2">
           <span class="text-xs text-slate-600">Upload file (.csv .xlsx .txt .md)</span>
           <input type="file" id="reqFile" accept=".csv,.xlsx,.txt,.md" class="mt-1 w-full text-xs" />
         </label>
         <button class="primary w-full mb-2" id="btnImport">Import</button>
-
-        <!-- OR paste text -->
         <details class="mt-1">
           <summary class="text-xs text-blue-500 cursor-pointer hover:underline">or paste text…</summary>
-          <textarea id="reqText" rows="5" placeholder="REQ-001 | Functional | Description..." class="mt-2 w-full border border-slate-200 rounded text-xs p-2 font-mono resize-none
-                         focus:outline-none focus:border-blue-400"></textarea>
+          <textarea id="reqText" rows="4" placeholder="REQ-001 | Functional | Description..." class="mt-2 w-full border border-slate-200 rounded text-xs p-2 font-mono resize-none focus:outline-none focus:border-blue-400"></textarea>
           <div class="flex gap-1 mt-1">
             <select id="reqTextFmt" class="flex-1 text-xs">
               <option value="txt">TXT (pipe)</option>
@@ -612,74 +925,344 @@
         </details>
       </div>
 
-      <!-- Requirements list -->
-      <div class="flex-1 overflow-y-auto">
-        <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-white z-10
-                  border-b border-slate-50">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Requirements
-          </span>
-          <span id="reqCount" class="badge bg-slate-100 text-slate-600">0</span>
-        </div>
-        <div id="reqList" class="text-xs">
-          <p class="text-slate-400 p-4 text-center">No requirements loaded</p>
-        </div>
-      </div>
+      <!-- ② Actions (fixed at bottom) -->
+      <div class="border-t border-slate-100 flex-shrink-0 overflow-y-auto" style="max-height:320px">
 
-      <!-- Generate button -->
-      <div class="p-4 border-t border-slate-100">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          2 · Generate Diagrams
-        </p>
-        <!-- Pipeline mode selector -->
-        <div class="flex items-center gap-2 mb-2">
-          <label class="text-xs text-slate-500 whitespace-nowrap" for="pipelineMode">Pipeline:</label>
-          <select id="pipelineMode" class="flex-1 text-xs">
-            <option value="single_pass">1-pass · fast (~3-5 min)</option>
-            <option value="multi_pass">Self-review · multi-pass (~8-12 min)</option>
-            <option value="two_model_fast">Dual AI · fast (~12 min)</option>
-            <option value="two_model" selected>Dual AI · generator+reviewer · best (~15 min)</option>
-          </select>
-        </div>
-        <!-- Stage progress chips — shown during multi-stage runs -->
-        <div id="pipelineProgress"></div>
-
-        <div class="flex flex-wrap gap-1 mb-2" id="diagramTypeToggles">
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="sequence" checked class="diag-type" /> Sequence
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="state_machine" checked class="diag-type" /> State Machine
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="class" checked class="diag-type" /> Class
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="component" class="diag-type" /> Component
-          </label>
-          <label class="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" value="activity" checked class="diag-type" /> Activity/Flow
-          </label>
-        </div>
-        <div class="flex gap-2">
-          <button class="primary flex-1" id="btnGenerate" disabled>
-            <span id="genLabel">Generate</span>
-            <svg id="genSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+        <!-- Elaborate -->
+        <div class="p-3 border-b border-slate-50">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">② Elaborate</span>
+            <span class="text-xs text-slate-400">AI pre-analysis</span>
+          </div>
+          <button class="secondary w-full text-xs" id="btnElaborate" disabled>
+            <span id="elabLabel">Elaborate</span>
+            <svg id="elabSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
             </svg>
           </button>
-          <button class="secondary px-3 text-base" id="btnClear" title="Clear results — keeps requirements loaded"
-            disabled>↺</button>
+          <div id="elabStatus" class="text-xs mt-1 hidden"></div>
         </div>
+
+        <!-- Analyse Modules -->
+        <div class="p-3 border-b border-slate-50">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">③ Modules</span>
+            <span class="text-xs text-slate-400">Detect SWCs</span>
+          </div>
+          <button class="secondary w-full text-xs" id="btnPlanModules" disabled>
+            <span id="planLabel">Plan Modules</span>
+            <svg id="planSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </button>
+          <div id="planStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+        </div>
+
+        <!-- MUD Spec -->
+        <div class="p-3 border-b border-slate-50" id="mudSpecSection">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">④ MUD Spec</span>
+          </div>
+          <select id="moduleSelect" class="w-full text-xs mb-2" disabled>
+            <option value="">— plan modules first —</option>
+          </select>
+          <div class="flex items-center gap-2 mb-2">
+            <label class="text-xs text-slate-500 whitespace-nowrap" for="specPipelineMode">Quality:</label>
+            <select id="specPipelineMode" class="flex-1 text-xs" title="single_pass: fast 1-call generation&#10;two_stage: skeleton+Section7+validation (~3x slower, better pseudo-code)">
+              <option value="single_pass">1-pass · fast</option>
+              <option value="two_stage" selected>2-stage · best quality</option>
+            </select>
+          </div>
+          <button class="primary w-full text-xs mb-1" id="btnGenerateMudSpec" disabled>
+            <span id="mudSpecLabel">Generate MUD Spec</span>
+            <svg id="mudSpecSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </button>
+          <button class="secondary w-full text-xs" id="btnReviewMudSpec" disabled>AI Review Spec</button>
+          <div id="mudSpecStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+        </div>
+
+        <!-- Generate Diagrams -->
+        <div class="p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">⑤ Diagrams</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <label class="text-xs text-slate-500 whitespace-nowrap" for="pipelineMode">Mode:</label>
+            <select id="pipelineMode" class="flex-1 text-xs">
+              <option value="single_pass">1-pass · fast</option>
+              <option value="multi_pass">Self-review · multi</option>
+              <option value="two_model_fast">Dual AI · fast</option>
+              <option value="two_model" selected>Dual AI · best</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <input id="autosarCompliant" type="checkbox" checked />
+            <label class="text-xs text-slate-600 cursor-pointer" for="autosarCompliant">AUTOSAR compliant</label>
+          </div>
+          <div id="pipelineProgress"></div>
+          <div class="space-y-3 mb-2">
+            <div id="architectureDiagramSection" class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div class="flex items-center gap-2 mb-2">
+                <input id="generationScopeArchitecture" type="radio" name="generationScope" value="architecture" checked />
+                <label class="text-xs font-semibold text-slate-600 cursor-pointer" for="generationScopeArchitecture">Section 1: Architecture Diagrams</label>
+              </div>
+              <label class="block text-[11px] text-slate-500 mb-1" for="architectureDiagramSelect">Generate one architecture diagram at a time</label>
+              <select id="architectureDiagramSelect" class="w-full text-xs">
+                <option value="sequence">Sequence</option>
+                <option value="state_machine">State Machine</option>
+                <option value="class">Class</option>
+                <option value="component">Component</option>
+              </select>
+            </div>
+            <div id="mudDiagramSection" class="rounded-lg border border-slate-200 bg-white p-3">
+              <div class="flex items-center gap-2 mb-1">
+                <input id="generationScopeMud" type="radio" name="generationScope" value="mud" disabled />
+                <label id="activityToggleLabel" class="text-xs font-semibold text-slate-400 cursor-pointer" for="generationScopeMud">Section 2: MUD Diagrams</label>
+              </div>
+              <div class="ml-6">
+                <div class="text-xs text-slate-600">Activity diagram</div>
+                <div id="activityToggleHint" class="text-[11px] text-slate-400 mt-1">Activity flowcharts require a selected module MUD spec.</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button class="primary flex-1" id="btnGenerate" disabled>
+              <span id="genLabel">Generate</span>
+              <svg id="genSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+            </button>
+            <button class="secondary px-3 text-base" id="btnClear" title="Clear results" disabled>Reset</button>
+          </div>
+          <div id="aiModelBadge" class="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Gen:</span>
+              <span id="genModelName" class="font-mono text-slate-600 truncate ml-1 max-w-[160px]" title="">—</span>
+            </div>
+            <div class="flex items-center justify-between mt-0.5">
+              <span class="text-slate-400">Review:</span>
+              <span id="reviewModelName" class="font-mono text-slate-600 truncate ml-1 max-w-[160px]" title="">—</span>
+            </div>
+          </div>
+        </div>
+
       </div>
+
     </aside>
 
     <!-- ── CENTER: DIAGRAMS ── -->
     <main class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- ── FIXED TOP INFO PANEL ── -->
+      <div id="infoPanel">
+        <!-- Tab header row -->
+        <div class="flex items-center gap-0 px-3 border-b border-slate-200 bg-slate-50" style="flex-shrink:0;height:34px">
+          <button class="info-tab-btn active" data-tab="requirements" onclick="openInfoTab('requirements')">
+            📋 Requirements <span id="reqCountBadge" class="ml-1 badge bg-slate-200 text-slate-600">0</span>
+          </button>
+          <button class="info-tab-btn" data-tab="actlog" onclick="openInfoTab('actlog')">
+            ⚡ Activity Log
+          </button>
+          <button class="info-tab-btn" data-tab="aistream" onclick="openInfoTab('aistream')">
+            ✦ AI Live Stream
+          </button>
+          <span id="infoPanelHint" class="ml-auto text-xs text-slate-400 pr-3">Import requirements to begin</span>
+        </div>
+        <!-- Tab content -->
+        <div id="infoTabContent">
+          <!-- Requirements tab (default visible) -->
+          <div id="infoTab_requirements" class="h-full overflow-y-auto">
+            <div id="reqList" class="text-xs">
+              <p class="text-slate-400 p-4 text-center">No requirements loaded</p>
+            </div>
+          </div>
+          <!-- Activity Log tab (hidden by default) -->
+          <div id="infoTab_actlog" class="h-full overflow-y-auto hidden">
+            <div id="actLogList">
+              <p class="text-xs text-slate-400 p-4">No activity yet.</p>
+            </div>
+          </div>
+          <!-- AI Live Stream tab (hidden by default) -->
+          <div id="infoTab_aistream" class="h-full overflow-y-auto hidden" style="background:#0f172a">
+            <div id="aiStreamContent">Waiting for AI response…</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Diagram tabs -->
       <div id="diagramTabs" class="flex border-b border-slate-200 bg-white px-4 pt-2 gap-1 text-sm text-slate-500">
         <p class="py-2 text-slate-400 text-xs">Generate diagrams to see them here</p>
+      </div>
+
+      <!-- ── MODULE PICKER PANEL ── -->
+      <div id="modulePickerPanel" class="hidden flex-1 overflow-auto p-6">
+        <div class="max-w-4xl mx-auto">
+          <div class="mb-4 flex items-center gap-3">
+            <div>
+              <h2 class="font-bold text-slate-800 text-base">Module Analysis Results</h2>
+              <p class="text-xs text-slate-500 mt-0.5">AI detected the following SWC modules — select one to generate its MUD spec</p>
+            </div>
+            <span id="modulePlanCount" class="ml-auto badge bg-indigo-100 text-indigo-700 font-semibold">0 modules</span>
+          </div>
+
+          <!-- Architecture summary -->
+          <div id="archSummaryBox" class="hidden mb-4 p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-800">
+            <div class="font-semibold mb-1">Architecture Summary</div>
+            <div id="archSummaryText"></div>
+          </div>
+
+          <!-- Module cards grid -->
+          <div id="moduleCardsGrid" class="grid grid-cols-1 gap-4 md:grid-cols-2"></div>
+
+          <!-- Action buttons -->
+          <div class="mt-5 flex items-center gap-3">
+            <button class="primary px-5" id="btnConfirmModule" disabled>
+              Generate MUD Spec for Selected Module →
+            </button>
+            <button class="secondary text-sm" onclick="showDiagramPanel()">← Back to Diagrams</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SPEC / FLOWCHART TAB BAR ── -->
+      <div id="mainContentTabs" class="hidden border-b border-slate-200 bg-white px-4 flex items-center gap-0 shrink-0" style="min-height:40px">
+        <button id="tabBtnSpec"
+                onclick="showMudSpecPanel()"
+                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors -mb-px">
+          📋 MUD Spec
+        </button>
+        <button id="tabBtnFlowcharts"
+                onclick="showDiagramPanel()"
+                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors -mb-px">
+          📊 Flowcharts
+        </button>
+      </div>
+
+      <!-- ── MUD SPEC PANEL ── -->
+      <div id="mudSpecPanel" class="hidden flex-1 overflow-auto">
+        <div class="max-w-5xl mx-auto p-6">
+          <!-- Header bar -->
+          <div class="flex items-center gap-3 mb-4">
+            <div>
+              <h2 class="font-bold text-slate-800 text-base" id="mudSpecTitle">MUD Specification</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Detailed module design spec generated by AI</p>
+            </div>
+            <div class="ml-auto flex gap-2 items-center">
+              <button class="secondary text-xs px-3" onclick="showModulePickerPanel()">← Modules</button>
+              <button class="primary text-xs px-3" id="btnUseMudSpecForDiagrams">Use for Diagrams →</button>
+              <button class="secondary text-xs px-3" id="btnDownloadMudSpec">Download .md</button>
+            </div>
+          </div>
+
+          <!-- ── AI REVIEW REPORT PANEL ── -->
+          <div id="reviewPanel" class="hidden mb-5">
+
+            <!-- Summary header bar -->
+            <div id="reviewSummaryBar" class="flex items-center gap-2 mb-3 p-3 rounded-xl border">
+              <span id="reviewApprovedBadge" class="badge font-semibold px-3 py-1 text-xs"></span>
+              <span class="text-sm font-semibold text-slate-700" id="reviewCoverage"></span>
+              <div class="ml-auto flex items-center gap-2">
+                <span id="reviewIterBadge" class="iter-badge current"></span>
+                <span class="text-xs text-slate-400" id="reviewIssueCount"></span>
+              </div>
+            </div>
+
+            <!-- Issue counts row -->
+            <div class="flex gap-3 mb-3 text-xs" id="reviewCountsRow">
+              <div class="flex-1 rounded-lg p-2 text-center bg-red-50 border border-red-100">
+                <div class="font-bold text-red-600 text-base" id="reviewErrorCount">0</div>
+                <div class="text-red-400">Errors</div>
+              </div>
+              <div class="flex-1 rounded-lg p-2 text-center bg-amber-50 border border-amber-100">
+                <div class="font-bold text-amber-600 text-base" id="reviewWarnCount">0</div>
+                <div class="text-amber-400">Warnings</div>
+              </div>
+              <div class="flex-1 rounded-lg p-2 text-center bg-blue-50 border border-blue-100">
+                <div class="font-bold text-blue-600 text-base" id="reviewInfoCount">0</div>
+                <div class="text-blue-400">Info</div>
+              </div>
+              <div class="flex-1 rounded-lg p-2 text-center bg-green-50 border border-green-100">
+                <div class="font-bold text-green-600 text-base" id="reviewCoverageNum">0%</div>
+                <div class="text-green-400">Coverage</div>
+              </div>
+            </div>
+
+            <!-- Full issue list -->
+            <details open>
+              <summary class="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none mb-2">
+                Full Issue Report
+              </summary>
+              <div id="reviewFullIssueList" class="space-y-1 max-h-72 overflow-y-auto text-xs rounded-lg border border-slate-100 p-2 bg-white"></div>
+            </details>
+
+            <!-- Suggestions -->
+            <details class="mt-2" id="reviewSuggestionsDetails">
+              <summary class="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none mb-2">
+                AI Suggestions
+              </summary>
+              <div id="reviewSuggestions" class="text-xs text-slate-600 bg-white rounded-lg border border-slate-100 p-3"></div>
+            </details>
+
+            <!-- Coverage Gaps — which requirement IDs are uncovered and why -->
+            <div id="reviewCoverageGaps" class="hidden mt-2 p-3 rounded-lg border border-red-100 bg-red-50">
+              <div class="text-xs font-semibold text-red-700 uppercase tracking-wider mb-2">Uncovered Requirements</div>
+              <div id="reviewUncoveredBadges" class="flex flex-wrap gap-1 mb-2"></div>
+              <div id="reviewGapsList" class="text-xs text-slate-600"></div>
+            </div>
+
+            <!-- Regenerate action -->
+            <div class="mt-4 p-4 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl">
+              <div class="flex items-start gap-3">
+                <div class="flex-1">
+                  <div class="font-semibold text-indigo-800 text-sm mb-1">Regenerate with AI Fixes</div>
+                  <div class="text-xs text-indigo-600" id="regenDescription">
+                    AI will fix all errors and warnings and apply all suggestions to produce an improved MUD spec.
+                  </div>
+                </div>
+                <button class="regen-btn" id="btnRegenMudSpec" disabled>
+                  <span id="regenLabel">Regenerate Spec</span>
+                  <svg id="regenSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                  </svg>
+                </button>
+              </div>
+              <div id="regenStatus" class="text-xs mt-2 text-indigo-500 hidden"></div>
+            </div>
+
+          </div>
+
+          <!-- Iteration history (one entry per review round) -->
+          <div id="iterHistoryBox" class="hidden mb-4">
+            <details>
+              <summary class="text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none mb-2">
+                Iteration History
+                <span id="iterHistoryCount" class="ml-1 badge bg-slate-100 text-slate-600">0</span>
+              </summary>
+              <div id="reviewHistoryList" class="space-y-1 max-h-64 overflow-y-auto"></div>
+            </details>
+          </div>
+
+          <!-- Spec content area (rendered markdown) -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+            <!-- Loading skeleton -->
+            <div id="mudSpecLoading" class="hidden p-8 text-center text-slate-400">
+              <svg class="spin w-8 h-8 mx-auto mb-3 text-blue-400" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+              </svg>
+              <p id="mudSpecLoadingMsg">Generating MUD specification…</p>
+            </div>
+            <!-- Rendered content -->
+            <div id="mudSpecContent" class="p-6 prose max-w-none"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Diagram canvas -->
@@ -727,30 +1310,62 @@
         <div class="coverage-bar mb-1">
           <div id="coverageFill" class="coverage-fill" style="width:0%"></div>
         </div>
-        <p id="coverageText" class="text-xs text-slate-500">—</p>
+        <p id="coverageText" class="text-xs text-slate-500">-</p>
         <div id="uncoveredList" class="mt-2 text-xs text-red-500"></div>
+      </div>
+
+      <!-- AI Reasoning (from elaboration) -->
+      <div class="p-4 border-b border-slate-100">
+        <details id="reasoningDetails">
+          <summary class="text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none">
+            AI Reasoning
+            <span id="reasoningCount" class="badge bg-purple-100 text-purple-700 ml-1 hidden">0</span>
+          </summary>
+          <div id="reasoningList" class="mt-2 space-y-1 max-h-64 overflow-y-auto text-xs">
+            <p class="text-slate-400">Click "Elaborate" to see AI reasoning</p>
+          </div>
+          <div id="elabEntities" class="mt-2 hidden">
+            <p class="text-xs font-semibold text-slate-500 mb-1">Extracted Entities</p>
+            <div id="elabEntitiesList" class="flex flex-wrap gap-0.5"></div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Design Guidelines -->
+      <div class="p-4 border-b border-slate-100" id="guidelinesPanel">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Design Guidelines
+          </p>
+          <span id="guidelinesBadge" class="hidden text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-semibold">0</span>
+        </div>
+        <div id="guidelinesStatus" class="text-xs text-slate-400 mb-2">Checking...</div>
+        <div id="guidelinesFiles" class="hidden text-xs space-y-0.5 max-h-24 overflow-y-auto mb-2 text-slate-500"></div>
+        <button class="secondary w-full text-xs" id="btnClearGuidelinesCache">
+          Clear Cache
+        </button>
       </div>
 
       <!-- Export -->
       <div class="p-4 border-b border-slate-100">
         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          3 · Export
+          4 - Export
         </p>
         <div class="space-y-1.5">
-          <button class="secondary w-full text-left text-xs" id="btnExportMermaid" disabled>
-            📄 Mermaid .mmd files
+          <button class="secondary w-full text-left text-xs bg-indigo-50 text-indigo-700 border border-indigo-200"
+            id="btnExportMudSpecFile" disabled>MUD Spec .md file
           </button>
-          <button class="secondary w-full text-left text-xs" id="btnExportDrawio" disabled>
-            🔷 draw.io .drawio files
+          <button class="secondary w-full text-left text-xs" id="btnExportMermaid" disabled>Mermaid .mmd files
           </button>
-          <button class="secondary w-full text-left text-xs" id="btnExportPlantuml" disabled>
-            🌿 PlantUML .puml files
+          <button class="secondary w-full text-left text-xs" id="btnExportDrawio" disabled>draw.io .drawio files
           </button>
-          <button class="secondary w-full text-left text-xs" id="btnExportXmi" disabled>
-            📦 XMI (UML 2.x) for Modelio
+          <button class="secondary w-full text-left text-xs" id="btnExportPlantuml" disabled>PlantUML .puml files
           </button>
-          <button class="secondary w-full text-left text-xs" id="btnExportSvg" disabled>
-            🖼️ SVG images via Kroki.io
+          <button class="secondary w-full text-left text-xs" id="btnExportXmi" disabled>XMI (UML 2.x) for Modelio
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportSvg" disabled>SVG images via Kroki.io
+          </button>
+          <button class="secondary w-full text-left text-xs" id="btnExportCSkeleton" disabled>C-Code Skeleton (.c)
           </button>
         </div>
         <label class="flex items-center gap-2 mt-2 text-xs text-slate-500">
@@ -771,13 +1386,23 @@
           </button>
         </div>
         <pre id="mmdSource" class="mmd-source text-xs"></pre>
-        <div id="copyFeedback" class="text-xs text-green-500 hidden mt-1">
-          ✓ Copied to clipboard
+        <div id="copyFeedback" class="text-xs text-green-500 hidden mt-1">Copied to clipboard
         </div>
       </div>
     </aside>
 
   </div><!-- end main layout -->
+
+  <!-- ══════════════════════ NODE DETAIL PANEL ══════════════════════ -->
+  <div id="nodeDetailPanel" class="fixed bottom-4 left-4 bg-white border border-slate-300 rounded-lg shadow-xl
+            p-4 z-50 max-w-sm hidden text-xs" style="min-width:280px">
+    <div class="flex justify-between items-center mb-2">
+      <span class="font-bold text-slate-700 text-sm" id="nodeDetailTitle">Node Details</span>
+      <button onclick="document.getElementById('nodeDetailPanel').classList.add('hidden')"
+        class="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+    </div>
+    <div id="nodeDetailBody" class="space-y-1.5 text-slate-600"></div>
+  </div>
 
   <!-- ══════════════════════ TOAST ══════════════════════ -->
   <div id="toast" class="fixed bottom-4 right-4 bg-slate-800 text-white text-sm px-4 py-2.5
@@ -792,13 +1417,48 @@
     const API = '/api/v1';
     mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
+    // ── Sub-diagram navigation (called by Mermaid click directives) ─────────
+    // Each FUNCTION_CALL node emits:  click NODE_ID navigateToSubDiagram "callee"
+    // This function finds the child diagram card whose key ends with __fn__<callee>
+    // and scrolls it into view with a brief highlight.
+    window.navigateToSubDiagram = function(callee) {
+      const cards = document.querySelectorAll('[data-key]');
+      for (const card of cards) {
+        const key = card.getAttribute('data-key') || '';
+        if (key.includes('__fn__' + callee)) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('ring-2', 'ring-blue-400');
+          setTimeout(() => card.classList.remove('ring-2', 'ring-blue-400'), 2000);
+          return;
+        }
+      }
+      // No card found — callee sub-diagram was not generated
+      toast('Sub-diagram for ' + callee + '() not found — it may not have been generated.');
+    };
+
     // ── State ───────────────────────────────────────────────
     let state = {
-      requirements: null,     // RequirementSet from last import
-      generationResult: null, // GenerationResult from last generate
-      diagrams: {},           // { key: mermaid_text }
+      requirements: null,      // RequirementSet from last import
+      generationResult: null,  // GenerationResult from last generate
+      diagrams: {},            // { key: mermaid_text }
       activeTab: null,
       validationReport: null,
+      // --- Enhanced workflow ---
+      modules: [],             // ModuleInfo[] from plan_modules
+      selectedModule: null,    // The chosen ModuleInfo object
+      mudSpec: null,           // Current MUD spec Markdown (latest iteration)
+      mudReview: null,         // Latest SpecReviewResult from AI review
+      mudIteration: 0,         // How many specs have been generated (0=none, 1=first, ...)
+      reviewHistory: [],       // [{iteration, review, spec_snapshot}] — full audit trail
+      activitySource: 'requirements',
+      lastActivitySourceUsed: 'requirements',
+      // --- Info panel ---
+      infoActiveTab: 'requirements',
+      aiStreamBuffer: '',      // accumulated raw tokens for AI Live Stream tab
+      progressLogKeys: new Set(),
+      diagramRenderMeta: {},   // { key: { rendered, fallback, reason } }
+      diagramModalKey: null,
+      diagramModalZoom: 1,
     };
 
     // ── Helpers ─────────────────────────────────────────────
@@ -817,12 +1477,312 @@
       document.getElementById('statusMsg').textContent = msg;
     }
 
+    function currentGenerationScope() {
+      const mudScope = document.getElementById('generationScopeMud');
+      return mudScope && mudScope.checked ? 'mud' : 'architecture';
+    }
+
+    function getSelectedDiagramTypes() {
+      if (currentGenerationScope() === 'mud') {
+        return isMudActivityAvailable() ? ['activity'] : [];
+      }
+      const architectureSelect = document.getElementById('architectureDiagramSelect');
+      return architectureSelect && architectureSelect.value ? [architectureSelect.value] : [];
+    }
+
+    function isMudActivityAvailable() {
+      return !!(state.selectedModule && state.mudSpec);
+    }
+
+    function describeSelectedGeneration() {
+      const selectedTypes = getSelectedDiagramTypes();
+      if (!selectedTypes.length) return 'diagram';
+      const only = selectedTypes[0];
+      if (only === 'activity') return 'MUD activity diagram';
+      return `${only.replace(/_/g, ' ')} diagram`;
+    }
+
+    function syncGenerationSectionState() {
+      const hasMud = isMudActivityAvailable();
+      const architectureScope = document.getElementById('generationScopeArchitecture');
+      const mudScope = document.getElementById('generationScopeMud');
+      const architectureSection = document.getElementById('architectureDiagramSection');
+      const mudSection = document.getElementById('mudDiagramSection');
+      const architectureSelect = document.getElementById('architectureDiagramSelect');
+      const activityLabel = document.getElementById('activityToggleLabel');
+      const activityHint = document.getElementById('activityToggleHint');
+      const btnGenerate = document.getElementById('btnGenerate');
+      const genLabel = document.getElementById('genLabel');
+
+      mudScope.disabled = !hasMud;
+      if (!hasMud && mudScope.checked) architectureScope.checked = true;
+
+      const scope = currentGenerationScope();
+      architectureSelect.disabled = scope !== 'architecture';
+
+      architectureSection.className = `rounded-lg border p-3 transition-colors ${
+        scope === 'architecture'
+          ? 'border-blue-200 bg-blue-50'
+          : 'border-slate-200 bg-slate-50'
+      }`;
+      mudSection.className = `rounded-lg border p-3 transition-colors ${
+        scope === 'mud'
+          ? 'border-blue-200 bg-blue-50'
+          : 'border-slate-200 bg-white'
+      }`;
+
+      activityLabel.classList.toggle('text-slate-400', !hasMud);
+      activityLabel.classList.toggle('text-slate-600', hasMud);
+      activityHint.textContent = hasMud
+        ? `Activity: generated from MUD spec for ${state.selectedModule.swc_name}.`
+        : 'Activity flowcharts require a selected module MUD spec.';
+
+      const canGenerate = !!state.requirements && getSelectedDiagramTypes().length > 0;
+      btnGenerate.disabled = !canGenerate;
+      genLabel.textContent = currentGenerationScope() === 'mud' ? 'Generate Activity' : 'Generate Diagram';
+    }
+
+    function syncActivityGenerationAvailability() {
+      state.activitySource = isMudActivityAvailable() ? 'mud_spec' : 'requirements';
+      syncGenerationSectionState();
+    }
+
+    function summarizeGenerationDiagnostics(data) {
+      const items = [];
+
+      const precheckSummary = data.precheck_summary || {};
+      Object.entries(precheckSummary).forEach(([diagramType, summary]) => {
+        (summary.gaps || []).forEach(gap => {
+          items.push({
+            severity: summary.blocked ? 'error' : 'warning',
+            message: `[PreCheck:${diagramType}] ${gap}`,
+          });
+        });
+        (summary.warnings || []).forEach(warning => {
+          items.push({
+            severity: 'warning',
+            message: `[PreCheck:${diagramType}] ${warning}`,
+          });
+        });
+      });
+
+      const lintSummary = data.lint_summary || {};
+      Object.entries(lintSummary).forEach(([diagramKey, summary]) => {
+        (summary.errors || []).forEach(error => {
+          items.push({
+            severity: 'error',
+            message: `[Lint:${diagramKey}] ${error}`,
+          });
+        });
+        (summary.warnings || []).forEach(warning => {
+          items.push({
+            severity: 'warning',
+            message: `[Lint:${diagramKey}] ${warning}`,
+          });
+        });
+      });
+
+      ((data.validation_report || {}).issues || []).forEach(issue => {
+        items.push({
+          severity: issue.severity || 'info',
+          section: issue.category || issue.section || 'Validation',
+          message: `[${issue.rule_id || 'Validation'}] ${issue.message || ''}`,
+        });
+      });
+
+      return items;
+    }
+
+    function generationSummaryText(summary) {
+      if (!summary) return '';
+      const planned = summary.planned_count ?? 0;
+      const generated = summary.generated_count ?? 0;
+      const rendered = summary.rendered_count ?? generated;
+      const status = summary.quality_status || 'needs_fix';
+      const label = status === 'pass'
+        ? 'quality passed'
+        : status === 'failed'
+          ? 'generation failed'
+          : 'quality needs fix';
+      return `Generated ${generated}/${planned} diagrams · rendered ${rendered} · ${label}`;
+    }
+
+    function renderGenerationDiagnostics(data, diagIssues) {
+      const canvas = document.getElementById('diagramCanvas');
+      if (!canvas) return;
+      const old = document.getElementById('generationDiagnostics');
+      if (old) old.remove();
+      const summary = data.generation_summary || {};
+      const grouped = {
+        'Generation failures': [],
+        'Render/lint blockers': [],
+        'Validation errors': [],
+        'Validation warnings': [],
+        'Traceability coverage gaps': [],
+      };
+      (summary.failed_items || []).forEach(item => grouped['Generation failures'].push(String(item)));
+      (diagIssues || []).forEach(issue => {
+        const msg = issue.message || '';
+        const severity = (issue.severity || '').toLowerCase();
+        if (msg.includes('[Lint:')) grouped['Render/lint blockers'].push(msg);
+        else if (msg.includes('AUT-010') || msg.toLowerCase().includes('requirement')) grouped['Traceability coverage gaps'].push(msg);
+        else if (severity === 'error') grouped['Validation errors'].push(msg);
+        else if (severity === 'warning') grouped['Validation warnings'].push(msg);
+      });
+      const rows = Object.entries(grouped)
+        .filter(([, items]) => items.length)
+        .map(([title, items]) => `
+          <div class="mb-2">
+            <div class="font-semibold text-slate-600">${escapeHtml(title)} (${items.length})</div>
+            ${items.map(item => `<div class="font-mono text-[11px] text-slate-500">${escapeHtml(item)}</div>`).join('')}
+          </div>`)
+        .join('');
+      if (!rows && summary.quality_status === 'pass') return;
+      canvas.insertAdjacentHTML('afterbegin', `
+        <details id="generationDiagnostics" class="mx-4 mt-4 mb-2 rounded border border-slate-200 bg-white text-xs">
+          <summary class="cursor-pointer px-3 py-2 text-slate-600">${escapeHtml(generationSummaryText(summary) || 'Quality diagnostics')}</summary>
+          <div class="px-3 pb-3">${rows || '<div class="text-slate-500">No diagnostics.</div>'}</div>
+        </details>`);
+    }
+
+    document.getElementById('generationScopeArchitecture').addEventListener('change', syncGenerationSectionState);
+    document.getElementById('generationScopeMud').addEventListener('change', syncGenerationSectionState);
+    document.getElementById('architectureDiagramSelect').addEventListener('change', syncGenerationSectionState);
+    syncActivityGenerationAvailability();
+
+    function mergeGenerationIssuesIntoReview(review, diagIssues) {
+      if (!review || !diagIssues.length) return review;
+
+      const existing = new Set(
+        (review.issues || []).map(issue => `${issue.severity}|${issue.section || ''}|${issue.message}`)
+      );
+      const mergedIssues = [...(review.issues || [])];
+
+      diagIssues.forEach(issue => {
+        const synthetic = {
+          severity: issue.severity,
+          section: 'diagram-generation',
+          message: issue.message,
+        };
+        const key = `${synthetic.severity}|${synthetic.section}|${synthetic.message}`;
+        if (!existing.has(key)) {
+          existing.add(key);
+          mergedIssues.push(synthetic);
+        }
+      });
+
+      const errorCount = mergedIssues.filter(i => i.severity === 'error').length;
+      const warningCount = mergedIssues.filter(i => i.severity === 'warning').length;
+      const infoCount = mergedIssues.filter(i => i.severity === 'info').length;
+
+      return {
+        ...review,
+        approved: false,
+        issues: mergedIssues,
+        error_count: errorCount,
+        warning_count: warningCount,
+        info_count: infoCount,
+      };
+    }
+
+    // ── Import ───────────────────────────────────────────────
+    document.getElementById('btnImport').addEventListener('click', async () => {
+      console.log("[DEBUG] Import button clicked.");
+      const file = document.getElementById('reqFile').files[0];
+      if (!file) { 
+        console.warn("[DEBUG] No file selected.");
+        toast('Select a file first', true); 
+        return; 
+      }
+
+      console.log(`[DEBUG] Selected file: ${file.name}, size: ${file.size} bytes`);
+      setStatus('Importing…');
+      addActivityLog(`Started importing requirements file: ${file.name}`, 'ok');
+
+      const fd = new FormData();
+      fd.append('file', file);
+
+      try {
+        console.log("[DEBUG] Sending POST request to /requirements/import");
+        const r = await fetch(`${API}/requirements/import`, { method: 'POST', body: fd });
+        console.log(`[DEBUG] Received response with status ${r.status}`);
+        if (!r.ok) {
+          const errText = await r.text();
+          console.error(`[DEBUG] Request failed: ${errText}`);
+          throw new Error(errText);
+        }
+        const d = await r.json();
+        console.log(`[DEBUG] Import successful. Parsed ${d.requirement_set.requirements.length} requirements.`);
+        state.requirements = d.requirement_set;
+        console.log("[DEBUG] Calling renderReqList...");
+        renderReqList(d.requirement_set.requirements);
+        console.log("[DEBUG] renderReqList completed successfully.");
+        syncGenerationSectionState();
+        document.getElementById('btnElaborate').disabled = false;
+        document.getElementById('btnPlanModules').disabled = false;
+        toast(`Imported ${d.requirement_set.requirements.length} requirements`);
+        setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
+        addActivityLog(`Imported ${d.requirement_set.requirements.length} requirements successfully`, 'ok');
+      } catch (e) {
+        console.error("[DEBUG] Import caught an exception:", e);
+        toast('Import failed: ' + e.message, true);
+        setStatus('Import failed');
+        addActivityLog(`Requirement import failed: ${e.message}`, 'err');
+      }
+    });
+
+    document.getElementById('btnImportText').addEventListener('click', async () => {
+      console.log("[DEBUG] Import text button clicked.");
+      const text = document.getElementById('reqText').value.trim();
+      if (!text) { 
+        console.warn("[DEBUG] No text pasted.");
+        toast('Paste some requirements first', true); 
+        return; 
+      }
+
+      console.log(`[DEBUG] Pasted text length: ${text.length} characters.`);
+      const fmt = document.getElementById('reqTextFmt').value;
+      const fd = new FormData();
+      fd.append('requirements_text', text);
+      fd.append('format', fmt);
+
+      setStatus('Importing…');
+      addActivityLog(`Started importing requirements from pasted text`, 'ok');
+
+      try {
+        console.log(`[DEBUG] Sending POST request to /requirements/import/text with format: ${fmt}`);
+        const r = await fetch(`${API}/requirements/import/text`, { method: 'POST', body: fd });
+        console.log(`[DEBUG] Received response with status ${r.status}`);
+        if (!r.ok) {
+          const errText = await r.text();
+          console.error(`[DEBUG] Request failed: ${errText}`);
+          throw new Error(errText);
+        }
+        const d = await r.json();
+        console.log(`[DEBUG] Import successful! Parsed ${d.requirement_set.requirements.length} requirements.`);
+        state.requirements = d.requirement_set;
+        console.log("[DEBUG] Calling renderReqList...");
+        renderReqList(d.requirement_set.requirements);
+        console.log("[DEBUG] renderReqList completed successfully.");
+        syncGenerationSectionState();
+        document.getElementById('btnElaborate').disabled = false;
+        document.getElementById('btnPlanModules').disabled = false;
+        toast(`Imported ${d.requirement_set.requirements.length} requirements`);
+        setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
+        addActivityLog(`Imported ${d.requirement_set.requirements.length} requirements successfully`, 'ok');
+      } catch (e) {
+        console.error("[DEBUG] Text import caught an exception:", e);
+        toast('Import failed: ' + e.message, true);
+        addActivityLog(`Requirement import failed: ${e.message}`, 'err');
+      }
+    });
+
     function setGenerating(active) {
       const btn = document.getElementById('btnGenerate');
       const lbl = document.getElementById('genLabel');
       const spinner = document.getElementById('genSpinner');
-      btn.disabled = active || !state.requirements;
-      lbl.textContent = active ? 'Generating…' : 'Generate';
+      btn.disabled = active || !state.requirements || getSelectedDiagramTypes().length === 0;
+      lbl.textContent = active ? 'Generating…' : (currentGenerationScope() === 'mud' ? 'Generate Activity' : 'Generate Diagram');
       spinner.classList.toggle('active', active);
     }
 
@@ -836,66 +1796,34 @@
         const backend = d.backends || {};
         const names = Object.keys(backend).filter(k => backend[k]);
         document.getElementById('backendBadge').textContent =
-          'AI: ' + (names.length ? names.join('+') : 'none');
-      } catch {
+          'AI: ' + (names.length ? names.join(',') : 'None');
+        // Populate dual-AI model badges
+        const genEl = document.getElementById('genModelName');
+        const revEl = document.getElementById('reviewModelName');
+        if (genEl && d.generator_model) {
+          genEl.textContent = d.generator_model;
+          genEl.title = d.generator_model;
+        }
+        if (revEl && d.reviewer_model) {
+          revEl.textContent = d.reviewer_model;
+          revEl.title = d.reviewer_model;
+        }
+      } catch (e) {
         document.getElementById('healthDot').className = 'w-2 h-2 rounded-full bg-red-500';
-        document.getElementById('backendBadge').textContent = 'AI: offline';
+        document.getElementById('backendBadge').textContent = 'AI: Error';
       }
     }
 
-    // ── Import ───────────────────────────────────────────────
-    document.getElementById('btnImport').addEventListener('click', async () => {
-      const file = document.getElementById('reqFile').files[0];
-      if (!file) { toast('Select a file first', true); return; }
-
-      setStatus('Importing…');
-      const fd = new FormData();
-      fd.append('file', file);
-
-      try {
-        const r = await fetch(`${API}/requirements/import`, { method: 'POST', body: fd });
-        if (!r.ok) throw new Error(await r.text());
-        const d = await r.json();
-        state.requirements = d.requirement_set;
-        renderReqList(d.requirement_set.requirements);
-        document.getElementById('btnGenerate').disabled = false;
-        toast(`Imported ${d.requirement_set.requirements.length} requirements`);
-        setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
-      } catch (e) {
-        toast('Import failed: ' + e.message, true);
-        setStatus('Import failed');
-      }
-    });
-
-    document.getElementById('btnImportText').addEventListener('click', async () => {
-      const text = document.getElementById('reqText').value.trim();
-      if (!text) { toast('Paste some requirements first', true); return; }
-
-      const fmt = document.getElementById('reqTextFmt').value;
-      const fd = new FormData();
-      fd.append('requirements_text', text);
-      fd.append('format', fmt);
-
-      setStatus('Importing…');
-      try {
-        const r = await fetch(`${API}/requirements/import/text`, { method: 'POST', body: fd });
-        if (!r.ok) throw new Error(await r.text());
-        const d = await r.json();
-        state.requirements = d.requirement_set;
-        renderReqList(d.requirement_set.requirements);
-        document.getElementById('btnGenerate').disabled = false;
-        toast(`Imported ${d.requirement_set.requirements.length} requirements`);
-        setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
-      } catch (e) {
-        toast('Import failed: ' + e.message, true);
-      }
-    });
-
+    // ── Render Requirements List ────────────────────────────
     function renderReqList(reqs) {
       const list = document.getElementById('reqList');
-      document.getElementById('reqCount').textContent = reqs.length;
+      const badge = document.getElementById('reqCountBadge');
+      const hint = document.getElementById('infoPanelHint');
+      if (badge) badge.textContent = reqs ? reqs.length : 0;
+      if (hint && reqs && reqs.length > 0)
+        hint.textContent = `${reqs.length} requirements loaded`;
 
-      if (!reqs.length) {
+      if (!reqs || reqs.length === 0) {
         list.innerHTML = '<p class="text-slate-400 p-4 text-center">No requirements</p>';
         return;
       }
@@ -922,119 +1850,465 @@
       })[t] || 'bg-gray-100 text-gray-600';
     }
 
-    // ── Generate ─────────────────────────────────────────────
+    // ── Generate (SSE streaming with progress) ──────────────
+    const modeLabels = {
+      single_pass: '1-pass',
+      multi_pass: 'self-review',
+      two_model_fast: 'dual AI (fast)',
+      two_model: 'dual AI (best)',
+    };
+
+    function buildProgressHTML(selectedTypes) {
+      return `<div id="genProgress" class="px-4 py-3 space-y-2">
+        <p class="text-xs font-semibold text-slate-500 mb-2">GENERATION PROGRESS</p>
+        ${selectedTypes.map(dt => `
+          <div class="flex items-center gap-2 text-xs" id="prog_${dt}">
+            <span class="w-5 text-center" id="progIcon_${dt}">
+              <span class="inline-block w-2 h-2 rounded-full bg-slate-300"></span>
+            </span>
+            <span class="w-24 font-medium text-slate-600">${dt.replace(/_/g, ' ')}</span>
+            <div class="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div class="h-full bg-blue-500 rounded-full transition-all duration-500" id="progBar_${dt}" style="width: 0%"></div>
+            </div>
+            <span class="flex-1 text-slate-400 truncate text-xs" id="progLabel_${dt}" title="">Waiting...</span>
+          </div>
+        `).join('')}
+        <div id="pipelineLog" class="mt-3 space-y-0.5 max-h-32 overflow-y-auto"></div>
+      </div>`;
+    }
+
+    function resetProgressLogCache() {
+      state.progressLogKeys = new Set();
+    }
+
+    function shouldLogProgressEvent(signature) {
+      if (!signature) return true;
+      if (!state.progressLogKeys) state.progressLogKeys = new Set();
+      if (state.progressLogKeys.has(signature)) return false;
+      state.progressLogKeys.add(signature);
+      return true;
+    }
+
+    // Append a one-line entry to the pipeline log panel (below progress bars)
+    function logPipelineEvent(msg, colorClass, signature) {
+      const log = document.getElementById('pipelineLog');
+      if (log) {
+        const row = document.createElement('div');
+        row.className = `text-xs font-mono ${colorClass || 'text-slate-500'} leading-tight`;
+        row.textContent = msg;
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;  // auto-scroll to latest
+      }
+
+      let type = 'ok';
+      if (colorClass && colorClass.includes('red')) type = 'err';
+      if (colorClass && (colorClass.includes('yellow') || colorClass.includes('orange'))) type = 'warn';
+      if (shouldLogProgressEvent(signature || msg)) {
+        addActivityLog(msg, type);
+      }
+    }
+
+    function updateProgress(event) {
+      const dt = event.diagram_type;
+      const stage = event.stage;
+
+      // Global-only events (no per-diagram bar)
+      if (stage === 'precheck') {
+        const color = event.blocked ? 'text-red-500'
+                    : event.gap_count > 0 ? 'text-yellow-600'
+                    : 'text-green-600';
+        logPipelineEvent(event.message || `[PreCheck:${dt}]`, color);
+        setStatus(event.message || 'Pre-check...');
+        return;
+      }
+
+      if (stage === 'guidelines') {
+        const color = event.doc_count > 0 ? 'text-sky-600' : 'text-slate-400';
+        const embeddedNote = event.embedded ? ' (vector)' : ' (keyword)';
+        logPipelineEvent(
+          event.message || `[Guidelines] ${event.doc_count} doc(s)${embeddedNote}`,
+          color
+        );
+        setStatus(event.message || 'Loading guidelines...');
+        // Update sidebar badge
+        const badge = document.getElementById('guidelinesBadge');
+        const statusEl = document.getElementById('guidelinesStatus');
+        if (event.doc_count > 0) {
+          badge.textContent = event.doc_count;
+          badge.classList.remove('hidden');
+        }
+        if (statusEl) {
+          statusEl.textContent = event.message || `${event.doc_count} doc(s) loaded${embeddedNote}`;
+          statusEl.className = event.doc_count > 0
+            ? 'text-xs text-sky-600 mb-2'
+            : 'text-xs text-slate-400 mb-2';
+        }
+        return;
+      }
+
+      if (stage === 'mermaid_lint') {
+        const color = event.error_count > 0 ? 'text-red-500'
+                    : event.warning_count > 0 ? 'text-yellow-600'
+                    : 'text-green-600';
+        logPipelineEvent(event.message || `[Lint:${event.diagram_key}]`, color);
+        setStatus(event.message || 'Linting...');
+        return;
+      }
+
+      if (stage === 'visual_qa_start') {
+        logPipelineEvent(event.message || '[VisualQA] Starting...', 'text-purple-600');
+        setStatus(event.message || 'Visual QA...');
+        return;
+      }
+
+      if (stage === 'visual_qa') {
+        logPipelineEvent(event.message || `[VisualQA] ${event.diagram_key}`, 'text-purple-500');
+        if (dt) _setBar(dt, 92, 'bg-purple-400', 'text-purple-600',
+          '<span class="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>',
+          event.message);
+        setStatus(event.message || 'Visual QA rendering...');
+        return;
+      }
+
+      if (stage === 'visual_qa_result') {
+        const color = event.approved ? 'text-green-600'
+                    : event.skipped ? 'text-slate-400'
+                    : 'text-orange-500';
+        logPipelineEvent(event.message || `[VisualQA] ${event.diagram_key}`, color);
+        if (dt) {
+          const barColor = event.approved ? 'bg-green-400' : event.skipped ? 'bg-slate-300' : 'bg-orange-400';
+          _setBar(dt, event.approved ? 97 : 93, barColor, color,
+            event.approved
+              ? '<span class="text-green-500 text-xs">QA OK</span>'
+              : event.skipped
+                ? '<span class="text-slate-400 text-xs">QA skip</span>'
+                : '<span class="text-orange-500 text-xs">QA fix</span>',
+            event.message);
+        }
+        setStatus(event.message || 'Visual QA...');
+        return;
+      }
+
+      if (stage === 'visual_correction') {
+        logPipelineEvent(event.message || `[VisualQA correction] ${event.diagram_key}`, 'text-orange-600');
+        if (dt) _setBar(dt, 88, 'bg-orange-400', 'text-orange-600',
+          '<span class="inline-block w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>',
+          event.message);
+        setStatus(event.message || 'Visual correction...');
+        return;
+      }
+
+      if (stage === 'activity_pipeline') {
+        const runnable = event.runnable || event.runnable_name || '';
+        const signature = ['activity_pipeline', event.stage_num || '', runnable, event.message || ''].join('|');
+        logPipelineEvent(event.message || '[Activity Pipeline]', 'text-indigo-600', signature);
+        setStatus(event.message || 'Building activity diagram...');
+        const activityDt = dt || 'activity';
+        if (document.getElementById(`progBar_${activityDt}`)) {
+          const pct = Math.max(12, Math.min(95, event.progress || 0));
+          _setBar(
+            activityDt,
+            pct,
+            pct >= 90 ? 'bg-indigo-500' : 'bg-blue-500',
+            'text-indigo-600',
+            '<span class="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>',
+            event.message || 'Building activity diagram...'
+          );
+        }
+        return;
+      }
+
+      // Per-diagram bar events
+      if (!dt) return;
+      const icon  = document.getElementById(`progIcon_${dt}`);
+      const bar   = document.getElementById(`progBar_${dt}`);
+      const label = document.getElementById(`progLabel_${dt}`);
+      if (!icon || !bar || !label) return;
+
+      if (stage === 'start') {
+        label.textContent = event.message || 'Starting...';
+        label.title = event.message || 'Starting...';
+        icon.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>';
+        bar.style.width = '5%';
+
+      } else if (stage === 'pipeline_stage') {
+        const stageMessage = event.message || event.pipeline_stage_name || 'Pipeline stage';
+        const stageNum = event.stage_num || 1;
+        const barColor = stageNum === 1 ? 'bg-blue-500' : stageNum === 2 ? 'bg-yellow-500' : 'bg-orange-500';
+        const dotColor = stageNum === 1 ? 'bg-blue-500' : stageNum === 2 ? 'bg-yellow-500' : 'bg-orange-500';
+        label.textContent = stageMessage;
+        label.title = stageMessage;
+        label.dataset.pipelineStageActive = 'true';
+        bar.className = `h-full ${barColor} rounded-full transition-all duration-500`;
+        icon.innerHTML = `<span class="inline-block w-2 h-2 rounded-full ${dotColor} animate-pulse"></span>`;
+        bar.style.width = (stageNum === 1 ? 20 : stageNum === 2 ? 50 : 75) + '%';
+        label.className = label.className.replace(/text-(slate-400|yellow-600|green-600|red-600)/, 'text-slate-600');
+        logPipelineEvent(stageMessage, 'text-blue-500', ['pipeline_stage', dt, stageNum, stageMessage].join('|'));
+
+      } else if (stage === 'generate') {
+        if (label.dataset.pipelineStageActive !== 'true') {
+          label.textContent = event.message || 'Generating...';
+          label.title = event.message || 'Generating...';
+        }
+        icon.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>';
+        const pct = Math.min(80, (event.attempt || 1) / (event.max_attempts || 5) * 80);
+        bar.style.width = pct + '%';
+
+      } else if (stage === 'validate') {
+        label.dataset.pipelineStageActive = 'false';
+        label.textContent = event.message || 'Validating...';
+        label.title = event.message || 'Validating...';
+        bar.style.width = '85%';
+        bar.className = bar.className.replace(/bg-(blue|orange|purple)-[45]00/, 'bg-yellow-500');
+        label.className = label.className.replace('text-slate-400', 'text-yellow-600');
+
+      } else if (stage === 'verify') {
+        label.dataset.pipelineStageActive = 'false';
+        label.textContent = event.message || 'Verifying...';
+        label.title = event.message || 'Verifying...';
+        bar.style.width = '90%';
+
+      } else if (stage === 'diagram_complete') {
+        label.dataset.pipelineStageActive = 'false';
+        label.textContent = event.message || (event.success ? 'Complete' : 'Failed');
+        label.title = event.message || (event.success ? 'Complete' : 'Failed');
+        bar.style.width = '100%';
+        if (event.success) {
+          icon.innerHTML = '<span class="text-green-500 font-bold">&#10003;</span>';
+          bar.className = bar.className.replace(/bg-\w+-[45]00/, 'bg-green-500');
+          label.className = label.className.replace(/text-(slate-400|yellow-600|slate-600)/, 'text-green-600');
+        } else {
+          icon.innerHTML = '<span class="text-red-500 font-bold">&#10007;</span>';
+          bar.className = bar.className.replace(/bg-\w+-[45]00/, 'bg-red-500');
+          label.className = label.className.replace(/text-(slate-400|yellow-600|slate-600)/, 'text-red-600');
+        }
+      }
+    }
+
+    // Helper: update a progress bar by diagram-type without touching the label class chain
+    function _setBar(dt, pct, barColor, _labelColor, iconHtml, msg) {
+      const icon  = document.getElementById(`progIcon_${dt}`);
+      const bar   = document.getElementById(`progBar_${dt}`);
+      const label = document.getElementById(`progLabel_${dt}`);
+      if (!bar) return;
+      bar.className = `h-full ${barColor} rounded-full transition-all duration-500`;
+      bar.style.width = pct + '%';
+      if (icon && iconHtml) icon.innerHTML = iconHtml;
+      if (label && msg) { label.textContent = msg; label.title = msg; }
+    }
+
+    async function handleGenerationComplete(d) {
+      state.generationResult = d.result;
+      state.validationReport = d.validation_report;
+      const generationMode = d.generation_mode === 'generic_c' ? 'Generic C' : 'AUTOSAR';
+
+      // Fetch inline Mermaid diagrams
+      const mr = await fetch(`${API}/export/mermaid/inline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result: d.result }),
+      });
+      if (!mr.ok) throw new Error('Failed to get Mermaid diagrams');
+      const md = await mr.json();
+      state.diagrams = md.diagrams || {};
+
+      // ── Show generation errors & warnings prominently ────────────
+      const genErrContainer = document.getElementById('genErrors');
+      if (genErrContainer) genErrContainer.remove();
+
+      const genErrors = (d.result.errors || []);
+      const diagIssues = summarizeGenerationDiagnostics(d);
+      const diagErrors = diagIssues.filter(i => i.severity === 'error').map(i => i.message);
+
+      if (state.mudReview && diagIssues.length) {
+        state.mudReview = mergeGenerationIssuesIntoReview(state.mudReview, diagIssues);
+        if (state.reviewHistory.length > 0) {
+          state.reviewHistory[state.reviewHistory.length - 1].review = state.mudReview;
+        }
+        renderReviewResults(state.mudReview);
+        renderReviewHistory();
+      }
+
+      if (Object.keys(state.diagrams).length === 0 && genErrors.length === 0 && diagErrors.length === 0) {
+        toast('AI generated 0 diagrams - check model status and server logs', true);
+        setStatus('0 diagrams - try 1-pass mode or check Ollama is running');
+      }
+
+      renderAllDiagrams();
+      renderGenerationDiagnostics(d, diagIssues);
+      renderValidation(d.validation_report);
+      loadCoverage();
+      enableExportButtons();
+      document.getElementById('btnClear').disabled = false;
+      // Reveal tab bar if MUD spec was already generated (allows switching back)
+      _setActiveTab('flowcharts');
+
+      const pipelineMode = document.getElementById('pipelineMode').value;
+      const nDiags = d.result.diagrams?.length || 0;
+      const generationSummary = d.generation_summary || null;
+      const compactSummary = generationSummaryText(generationSummary);
+      const elabInfo = d.elaboration_info || null;
+      const activitySourceNote = state.lastActivitySourceUsed === 'mud_spec'
+        ? ' | Activity: MUD spec | Architecture: requirements'
+        : '';
+      const elabSuffix = elabInfo
+        ? ` | elaboration=${elabInfo.source || 'unknown'} (${elabInfo.elaborated_count || 0})`
+        : '';
+      if (elabInfo && elabInfo.status && elabInfo.status !== 'ok') {
+        toast(`Elaboration warning: status=${elabInfo.status}`, true);
+      }
+      if (d.pipeline_summary) {
+        const refined = Object.values(d.pipeline_summary.diagrams || {})
+          .filter(s => s.was_refined).length;
+        const modeLabel = modeLabels[d.pipeline_summary.mode] || d.pipeline_summary.mode;
+        const refinedNote = refined > 0 ? ` | ${refined} refined` : '';
+        const issueNote = generationSummary && generationSummary.quality_status !== 'pass'
+          ? ` | ${generationSummary.blocking_count || 0} blocker(s), ${generationSummary.warning_count || 0} quality item(s)`
+          : '';
+        setStatus(`${compactSummary || `Generated ${nDiags} diagram(s)`} via ${modeLabel} | ${generationMode}${refinedNote}${activitySourceNote}${elabSuffix}`);
+        toast(`${compactSummary || `Generated ${nDiags} diagrams`} (${modeLabel}, ${generationMode})${activitySourceNote}`);
+        addActivityLog(
+          `Generation complete: ${compactSummary || `${nDiags} diagram(s)`}${issueNote}`,
+          generationSummary?.quality_status === 'failed' ? 'err' : generationSummary?.quality_status === 'needs_fix' ? 'warn' : 'ok'
+        );
+        // Show stage badges
+        const ppEl = document.getElementById('pipelineProgress');
+        if (ppEl) {
+          Object.entries(d.pipeline_summary.diagrams || {}).forEach(([dt, info]) => {
+            info.stages?.forEach(s => {
+              if (s.skipped) return;
+              const cls = { draft: 'stage-draft', critique: 'stage-critique', refinement: 'stage-refine' }[s.stage] || '';
+              ppEl.insertAdjacentHTML('beforeend',
+                `<span class="pipeline-badge ${cls}" title="${s.model} | ${s.duration_ms}ms">${s.stage}: ${dt}</span>`);
+            });
+          });
+        }
+      } else {
+        setStatus(`${compactSummary || `Generated ${nDiags} diagram(s)`} | ${generationMode}${activitySourceNote}${elabSuffix}`);
+        toast(`${compactSummary || `Generated ${nDiags} diagrams`} (${generationMode})${activitySourceNote}`);
+        addActivityLog(
+          `Generation complete: ${compactSummary || `${nDiags} diagram(s)`}`,
+          generationSummary?.quality_status === 'failed' ? 'err' : generationSummary?.quality_status === 'needs_fix' ? 'warn' : 'ok'
+        );
+      }
+    }
+
     document.getElementById('btnGenerate').addEventListener('click', async () => {
       if (!state.requirements) return;
       setGenerating(true);
       const pipelineMode = document.getElementById('pipelineMode').value;
-      const modeLabels = {
-        single_pass: '1-pass',
-        multi_pass: 'self-review',
-        two_model_fast: 'dual AI (fast)',
-        two_model: 'dual AI (best)',
-      };
-      setStatus(`Generating diagrams via ${modeLabels[pipelineMode] || pipelineMode}…`);
-      document.getElementById('emptyState').classList.remove('hidden');
-      document.getElementById('diagramTabs').innerHTML =
-        `<p class="py-2 text-slate-400 text-xs animate-pulse">AI is generating diagrams…</p>`;
-      // Reset pipeline progress chips
+      setStatus(`Generating ${describeSelectedGeneration()} via ${modeLabels[pipelineMode] || pipelineMode}...`);
+
       const ppEl = document.getElementById('pipelineProgress');
       if (ppEl) ppEl.innerHTML = '';
+      resetProgressLogCache();
 
-      const selectedTypes = [...document.querySelectorAll('.diag-type:checked')]
-        .map(cb => cb.value);
+      const selectedTypes = getSelectedDiagramTypes();
+      if (!selectedTypes.length) {
+        toast('Select a diagram to generate first.', true);
+        setGenerating(false);
+        return;
+      }
+      const autosarCompliant = document.getElementById('autosarCompliant').checked;
+      const usesMudForActivity = selectedTypes.includes('activity');
+
+      if (usesMudForActivity && !state.mudSpec) {
+        toast('Generate a MUD spec for the selected module before requesting Activity diagrams.', true);
+        setGenerating(false);
+        return;
+      }
+
+      // Show progress bar instead of empty spinner
+      const tabsEl = document.getElementById('diagramTabs');
+      tabsEl.innerHTML = buildProgressHTML(selectedTypes);
+      if (usesMudForActivity) {
+        addActivityLog(`Started MUD activity generation for ${state.selectedModule?.swc_name || 'selected module'}`, 'info');
+        setStatus(`Generating activity from MUD spec via ${modeLabels[pipelineMode] || pipelineMode}...`);
+      } else if (selectedTypes.length) {
+        addActivityLog(`Started architecture generation for ${selectedTypes[0].replace(/_/g, ' ')} diagram`, 'info');
+      }
+
+      // If a module was selected via the enhanced workflow, focus generation on it
+      const moduleCtx = state.selectedModule ? state.selectedModule.swc_name : null;
 
       const body = {
         requirements: state.requirements,
         diagram_types: selectedTypes,
-        apply_autosar_mapping: true,
+        apply_autosar_mapping: autosarCompliant,
+        autosar_compliant: autosarCompliant,
         pipeline_mode: pipelineMode,
+        module_context: moduleCtx,
+        mud_spec_markdown: usesMudForActivity ? state.mudSpec : null,
+        activity_source: usesMudForActivity ? 'mud_spec' : 'requirements',
       };
+      state.lastActivitySourceUsed = body.activity_source;
 
       try {
-        const r = await fetch(`${API}/generate`, {
+        // Use SSE streaming for real-time progress
+        const response = await fetch(`${API}/generate/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!r.ok) throw new Error(await r.text());
-        const d = await r.json();
-        state.generationResult = d.result;
-        state.validationReport = d.validation_report;
+        if (!response.ok) throw new Error(await response.text());
 
-        // Fetch inline Mermaid diagrams
-        const mr = await fetch(`${API}/export/mermaid/inline`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ result: d.result }),
-        });
-        if (!mr.ok) throw new Error('Failed to get Mermaid diagrams');
-        const md = await mr.json();
-        state.diagrams = md.diagrams || {};
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalData = null;
 
-        // ── Show generation errors & warnings prominently ────────────
-        const genErrContainer = document.getElementById('genErrors');
-        if (genErrContainer) genErrContainer.remove();   // clear previous
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        const genErrors  = (d.result.errors   || []);
-        const genWarnings = (d.result.warnings || []);
-        if (genErrors.length > 0 || genWarnings.length > 0) {
-          let bannerHtml = '';
-          genErrors.forEach(e => {
-            bannerHtml += `<div class="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-xs mb-2">
-              <span class="font-semibold">&#x26D4; Generation Error:</span> ${escapeHtml(e)}
-            </div>`;
-          });
-          genWarnings.forEach(w => {
-            bannerHtml += `<div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-yellow-700 text-xs mb-2">
-              <span class="font-semibold">&#x26A0; Warning:</span> ${escapeHtml(w)}
-            </div>`;
-          });
-          const canvas = document.getElementById('diagramCanvas');
-          canvas.insertAdjacentHTML('afterbegin',
-            `<div id="genErrors" class="px-4 pt-4">${bannerHtml}</div>`);
-        }
+          // Parse SSE events from buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';  // keep incomplete line
 
-        // Warn visibly when AI returned 0 diagrams (model timeout, malformed JSON, etc.)
-        if (Object.keys(state.diagrams).length === 0 && genErrors.length === 0) {
-          toast('AI generated 0 diagrams — check model status and server logs', true);
-          setStatus('0 diagrams — try 1-pass mode or check Ollama is running');
-        }
-
-        renderAllDiagrams();
-        renderValidation(d.validation_report);
-        loadCoverage();
-        enableExportButtons();
-        document.getElementById('btnClear').disabled = false;
-
-        // Show pipeline summary in status bar
-        if (d.pipeline_summary) {
-          const refined = Object.values(d.pipeline_summary.diagrams || {})
-            .filter(s => s.was_refined).length;
-          const modeLabel = modeLabels[d.pipeline_summary.mode] || d.pipeline_summary.mode;
-          const refinedNote = refined > 0 ? ` · ${refined} diagram(s) refined` : '';
-          setStatus(`Generated ${d.result.diagrams.length} diagram(s) via ${modeLabel}${refinedNote}`);
-          toast(`Generated ${d.result.diagrams.length} diagrams (${modeLabel})${refinedNote}`);
-          // Show stage badges
-          if (ppEl) {
-            Object.entries(d.pipeline_summary.diagrams || {}).forEach(([dt, info]) => {
-              info.stages?.forEach(s => {
-                if (s.skipped) return;
-                const cls = { draft: 'stage-draft', critique: 'stage-critique', refinement: 'stage-refine' }[s.stage] || '';
-                ppEl.insertAdjacentHTML('beforeend',
-                  `<span class="pipeline-badge ${cls}" title="${s.model} · ${s.duration_ms}ms">${s.stage}: ${dt}</span>`);
-              });
-            });
+          let eventType = 'progress';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (eventType === 'complete') {
+                  finalData = data;
+                } else if (eventType === 'error') {
+                  throw new Error(data.message || 'Generation failed');
+                } else {
+                  updateProgress(data);
+                  setStatus(data.message || `${data.stage}...`);
+                }
+              } catch (parseErr) {
+                if (eventType === 'complete') {
+                  const snippet = line.slice(6, 246);
+                  throw new Error(`Invalid complete-event JSON: ${parseErr.message}. Payload starts with: ${snippet}`);
+                }
+                if (eventType === 'error') {
+                  throw new Error(`Invalid error-event JSON: ${parseErr.message}`);
+                }
+                if (parseErr.message && !parseErr.message.includes('JSON'))
+                  throw parseErr;
+              }
+              eventType = 'progress';
+            }
           }
-        } else {
-          setStatus(`Generated ${d.result.diagrams.length} diagram(s)`);
-          toast(`Generated ${d.result.diagrams.length} diagrams successfully`);
         }
+
+        if (!finalData) throw new Error('Generation stream ended without result');
+        await handleGenerationComplete(finalData);
       } catch (e) {
         toast('Generation failed: ' + e.message, true);
-        setStatus('Generation failed — check API key in .env');
-        document.getElementById('diagramTabs').innerHTML =
-          '<p class="py-2 text-red-400 text-xs px-4">Generation failed</p>';
+        setStatus('Generation failed - check Ollama is running');
+        addActivityLog(`Generation failed: ${e.message}`, 'err');
+        tabsEl.innerHTML =
+          `<div class="py-3 px-4 text-red-500 text-xs">
+            <p class="font-semibold mb-1">Generation Failed</p>
+            <p>${escapeHtml(e.message)}</p>
+            <p class="mt-2 text-slate-400">Try: 1-pass mode, check Ollama is running (ollama serve), or check server logs</p>
+          </div>`;
       } finally {
         setGenerating(false);
       }
@@ -1104,10 +2378,17 @@
         <div class="diagram-card-header">
           <span class="type-badge ${typeBadgeClass(key)}">${diagTypeName(key)}</span>
           <span class="diagram-card-name" title="${diagDisplayName(key)}">${diagDisplayName(key)}${childBadge}</span>
+          <span class="preview-status hidden" id="status_${safeId}"></span>
+          <button class="card-src-btn"
+                  onclick="event.stopPropagation();openDiagramModal('${key}')">Open</button>
+          <button class="card-src-btn"
+                  title="View draw.io image"
+                  onclick="event.stopPropagation();showDrawioImageModal('${key}')">Image</button>
           <button class="card-src-btn"
                   onclick="event.stopPropagation();toggleCardSource('${key}')">⟨/⟩</button>
         </div>
-        <div class="diagram-card-body" style="min-height:${minH}px">
+        <div class="diagram-card-body" style="min-height:${minH}px"
+             onclick="event.stopPropagation();focusCard('${key}');openDiagramModal('${key}')">
           <div class="mermaid" id="${safeId}">${escapeHtml(mmdText)}</div>
         </div>
         <pre class="mmd-source" id="src_${safeId}"
@@ -1141,20 +2422,271 @@
         const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
         const el = document.getElementById(safeId);
         if (!el) return;
-        mermaid.run({ nodes: [el] }).catch(e => {
-          el.innerHTML =
-            `<div class="mmd-render-error">⚠ Render error: ${e.message}<br>
-           <span style="color:#64748b">Source is valid</span></div>
-         <pre style="margin-top:8px;font-size:11px;background:#0f172a;color:#86efac;
-                     padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap"
-              >${escapeHtml(mmdText)}</pre>`;
-        });
+        renderMermaidIntoElement(el, mmdText, { key });
       });
 
       if (entries.length) {
         state.activeTab = entries[0][0];
         document.getElementById('mmdSource').textContent = entries[0][1];
       }
+
+      // Attach click handlers to SVG nodes for interactive detail panel
+      attachNodeClickHandlers();
+    }
+
+    function setDiagramRenderMeta(key, meta) {
+      if (!key) return;
+      state.diagramRenderMeta[key] = meta;
+      const safeId = 'r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+      const badge = document.getElementById(`status_${safeId}`);
+      if (!badge) return;
+      badge.className = 'preview-status hidden';
+      badge.textContent = '';
+      if (meta.status === 'ok') {
+        return;
+      }
+      badge.classList.remove('hidden');
+      if (meta.status === 'suspicious_but_rendered') {
+        badge.classList.add('suspicious');
+        badge.textContent = 'Preview odd';
+        badge.title = meta.reason || 'Rendered with unusual bounds';
+        return;
+      }
+      if (meta.status === 'render_error') {
+        badge.classList.add('error');
+        badge.textContent = 'Render error';
+        badge.title = meta.reason || 'Mermaid render error';
+        return;
+      }
+      badge.classList.add('fallback');
+      badge.textContent = 'Preview fallback';
+      badge.title = meta.reason || 'Fallback source view';
+    }
+
+    function renderMermaidIntoElement(el, mmdText, opts = {}) {
+      if (!el) return Promise.resolve({ status: 'render_error', rendered: false, fallback: true, reason: 'no target element' });
+      const useServerFallback = reason => fetchServerRenderedMermaidSvg(mmdText)
+        .then(svgText => {
+          renderServerSvgIntoElement(el, svgText, { reason });
+          return {
+            status: 'fallback_server_svg',
+            rendered: true,
+            fallback: true,
+            reason,
+          };
+        })
+        .catch(serverError => {
+          const fallbackReason = `${reason}; server fallback failed: ${serverError.message}`;
+          showMermaidFallback(el, mmdText, fallbackReason);
+          return {
+            status: 'render_error',
+            rendered: false,
+            fallback: true,
+            reason: fallbackReason,
+          };
+        });
+      const attemptRender = (attempt = 0) => mermaid.run({ nodes: [el] })
+        .then(() => {
+          const svg = el.querySelector('svg');
+          const inspection = inspectMermaidSvg(svg);
+          if (inspection.status === 'fallback_source') {
+            if (opts.retryOnBlank && attempt === 0) {
+              el.textContent = mmdText;
+              return attemptRender(1);
+            }
+            const reason = `Blank-looking diagram: ${inspection.reason}`;
+            return useServerFallback(reason).then(meta => {
+              if (opts.key) {
+                setDiagramRenderMeta(opts.key, meta);
+              }
+              return meta;
+            });
+          }
+          if (inspection.status === 'suspicious_but_rendered' && opts.key) {
+            setDiagramRenderMeta(opts.key, inspection);
+          } else if (opts.key) {
+            setDiagramRenderMeta(opts.key, inspection);
+          }
+          addZoomPanToElement(el);
+          return inspection;
+        })
+        .catch(e => {
+          const reason = `Render error: ${e.message}`;
+          return useServerFallback(reason).then(meta => {
+            if (opts.key) {
+              setDiagramRenderMeta(opts.key, meta);
+            }
+            return meta;
+          });
+        });
+      return attemptRender(0);
+    }
+
+    async function fetchServerRenderedMermaidSvg(mmdText) {
+      const response = await fetch(`${API}/render/mermaid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ diagram_source: mmdText }),
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || `HTTP ${response.status}`);
+      }
+      return response.text();
+    }
+
+    function renderServerSvgIntoElement(el, svgText, opts = {}) {
+      const reason = opts.reason ? escapeHtml(opts.reason) : 'Client-side preview unavailable';
+      el.innerHTML =
+        `<div class="mmd-render-error" title="${reason}">Preview unavailable in browser. Showing server-rendered diagram.</div>
+         <div style="margin-top:8px;overflow:hidden;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+           ${svgText}
+         </div>`;
+      const svg = el.querySelector('svg');
+      if (svg) svg.setAttribute('width', '100%');
+      addZoomPanToElement(el);
+    }
+
+    function inspectMermaidSvg(svg) {
+      if (!svg) {
+        return { status: 'fallback_source', rendered: false, fallback: true, reason: 'no SVG was produced' };
+      }
+
+      const viewBox = (svg.getAttribute('viewBox') || '').trim();
+      if (viewBox) {
+        const parts = viewBox.split(/\s+/).map(Number);
+        if (parts.length === 4) {
+          const vbWidth = parts[2];
+          const vbHeight = parts[3];
+          if (!(vbWidth > 1) || !(vbHeight > 1)) {
+            return { status: 'fallback_source', rendered: false, fallback: true, reason: `invalid viewBox ${viewBox}` };
+          }
+        }
+      }
+
+      const graphGroup = svg.querySelector('g.output, g.root, g.nodes, g[class*="output"]') || svg;
+      const renderedNodes = svg.querySelectorAll('.node, .cluster, .edgePath, .edgeLabel, .label').length;
+      const basicShapes = graphGroup.querySelectorAll('path, rect, polygon, ellipse, circle, line, text, tspan').length;
+      if (renderedNodes === 0 && basicShapes <= 2) {
+        return { status: 'fallback_source', rendered: false, fallback: true, reason: 'SVG contains no rendered nodes or edges' };
+      }
+
+      try {
+        const box = typeof graphGroup.getBBox === 'function' ? graphGroup.getBBox() : null;
+        if (!box) {
+          return { status: 'ok', rendered: true, fallback: false, reason: null };
+        }
+        if (!(box.width > 4) || !(box.height > 4)) {
+          return {
+            status: 'fallback_source',
+            rendered: false,
+            fallback: true,
+            reason: `content bounds too small (${Math.round(box.width)}x${Math.round(box.height)})`,
+          };
+        }
+        if (!Number.isFinite(box.x) || !Number.isFinite(box.y)) {
+          return { status: 'fallback_source', rendered: false, fallback: true, reason: 'content bounds are non-finite' };
+        }
+        if (Math.abs(box.x) > 5000 || Math.abs(box.y) > 5000) {
+          return {
+            status: 'suspicious_but_rendered',
+            rendered: true,
+            fallback: false,
+            reason: `Rendered with unusual bounds (${Math.round(box.x)}, ${Math.round(box.y)})`,
+          };
+        }
+      } catch (e) {
+        return { status: 'fallback_source', rendered: false, fallback: true, reason: `unable to inspect SVG bounds: ${e.message}` };
+      }
+
+      return { status: 'ok', rendered: true, fallback: false, reason: null };
+    }
+
+    function showMermaidFallback(el, mmdText, reason) {
+      el.innerHTML =
+        `<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;border-radius:8px;background:#f8fafc;"
+              title="${escapeHtml(reason)}">
+           <div style="font-size:28px;margin-bottom:8px">Diagram</div>
+           <div style="font-weight:500;margin-bottom:4px">Diagram preview unavailable</div>
+           <a href="#" onclick="copyMermaidSource('${optsKeyForElement(el)}');return false"
+              style="color:#3b82f6;font-size:11px">Copy Mermaid source</a>
+         </div>`;
+    }
+
+    function optsKeyForElement(el) {
+      const card = el?.closest?.('.diagram-card');
+      return card?.getAttribute('data-key') || state.diagramModalKey || state.activeTab || '';
+    }
+
+    function copyMermaidSource(key) {
+      const source = state.diagrams[key] || state.diagrams[state.activeTab] || '';
+      if (!source) return;
+      navigator.clipboard?.writeText(source).then(() => toast('Mermaid source copied'));
+    }
+
+    function addZoomPanToElement(container) {
+      const svg = container?.querySelector?.('svg');
+      if (!svg || svg.dataset.zoomPanAttached === '1') return;
+      svg.dataset.zoomPanAttached = '1';
+      svg.style.transformOrigin = '0 0';
+      svg.style.cursor = 'grab';
+      svg.style.transition = 'transform 0.05s';
+      let scale = Number(svg.dataset.zoomScale || 1);
+      let tx = Number(svg.dataset.zoomTx || 0);
+      let ty = Number(svg.dataset.zoomTy || 0);
+      let dragging = false;
+      let ox = 0;
+      let oy = 0;
+      const applyTransform = () => {
+        svg.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+        svg.dataset.zoomScale = String(scale);
+        svg.dataset.zoomTx = String(tx);
+        svg.dataset.zoomTy = String(ty);
+        const label = document.getElementById('diagramModalZoomLabel');
+        if (container.closest?.('#diagramModal') && label) label.textContent = `${Math.round(scale * 100)}%`;
+      };
+      container.addEventListener('wheel', e => {
+        e.preventDefault();
+        scale = Math.max(0.2, Math.min(8, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+        applyTransform();
+      }, { passive: false });
+      svg.addEventListener('mousedown', e => {
+        dragging = true;
+        ox = e.clientX - tx;
+        oy = e.clientY - ty;
+        svg.style.cursor = 'grabbing';
+      });
+      window.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        tx = e.clientX - ox;
+        ty = e.clientY - oy;
+        applyTransform();
+      });
+      window.addEventListener('mouseup', () => {
+        dragging = false;
+        svg.style.cursor = 'grab';
+      });
+      let lastDist = 0;
+      container.addEventListener('touchstart', e => {
+        if (e.touches.length === 2) {
+          lastDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY,
+          );
+        }
+      });
+      container.addEventListener('touchmove', e => {
+        if (e.touches.length !== 2 || !lastDist) return;
+        e.preventDefault();
+        const d = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY,
+        );
+        scale = Math.max(0.2, Math.min(8, scale * (d / lastDist)));
+        lastDist = d;
+        applyTransform();
+      }, { passive: false });
+      applyTransform();
     }
 
     // Click a card → highlight it + update source panel
@@ -1174,8 +2706,221 @@
       src.style.display = src.style.display === 'none' ? 'block' : 'none';
     }
 
+    async function showDrawioImageModal(key) {
+      if (!state.generationResult) {
+        toast('No generation result available', true);
+        return;
+      }
+      try {
+        const r1 = await fetch(`${API}/export/drawio/inline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result: state.generationResult, diagram_keys: [key] }),
+        });
+        if (!r1.ok) throw new Error(await r1.text());
+        const { diagrams } = await r1.json();
+        const xml = diagrams?.[key];
+        if (!xml) throw new Error('Export unavailable');
+
+        const r2 = await fetch(`${API}/render/drawio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ diagram_source: xml }),
+        });
+        if (!r2.ok) throw new Error(await r2.text());
+        openSvgZoomModal(await r2.text(), `${diagDisplayName(key)} (draw.io image)`);
+      } catch (e) {
+        toast(`Draw.io preview failed: ${e.message}`, true);
+      }
+    }
+
+    function openSvgZoomModal(svgText, title) {
+      state.diagramModalKey = null;
+      state.diagramModalZoom = 1;
+      const modal = document.getElementById('diagramModal');
+      const canvas = document.getElementById('diagramModalCanvas');
+      document.getElementById('diagramModalTitle').textContent = title;
+      canvas.innerHTML = `<div style="overflow:hidden;width:100%;height:70vh;background:#f8fafc;border-radius:6px;position:relative">${svgText}</div>`;
+      canvas.style.transform = '';
+      const svg = canvas.querySelector('svg');
+      if (svg) svg.setAttribute('width', '100%');
+      modal.classList.remove('hidden');
+      addZoomPanToElement(canvas.firstElementChild);
+      updateDiagramModalZoomUi();
+    }
+
+    function updateDiagramModalZoomUi() {
+      const label = document.getElementById('diagramModalZoomLabel');
+      const canvas = document.getElementById('diagramModalCanvas');
+      if (label) label.textContent = `${Math.round(state.diagramModalZoom * 100)}%`;
+      if (canvas && !canvas.querySelector('svg')) canvas.style.transform = `scale(${state.diagramModalZoom})`;
+    }
+
+    function adjustDiagramZoom(delta) {
+      const svg = document.querySelector('#diagramModalCanvas svg');
+      if (svg) {
+        const current = Number(svg.dataset.zoomScale || 1);
+        const next = Math.max(0.2, Math.min(8, current + delta));
+        const tx = Number(svg.dataset.zoomTx || 0);
+        const ty = Number(svg.dataset.zoomTy || 0);
+        svg.dataset.zoomScale = String(next);
+        svg.style.transform = `translate(${tx}px,${ty}px) scale(${next})`;
+        const label = document.getElementById('diagramModalZoomLabel');
+        if (label) label.textContent = `${Math.round(next * 100)}%`;
+        return;
+      }
+      state.diagramModalZoom = Math.max(0.4, Math.min(2.5, state.diagramModalZoom + delta));
+      updateDiagramModalZoomUi();
+    }
+
+    function resetDiagramZoom() {
+      const svg = document.querySelector('#diagramModalCanvas svg');
+      if (svg) {
+        svg.dataset.zoomScale = '1';
+        svg.dataset.zoomTx = '0';
+        svg.dataset.zoomTy = '0';
+        svg.style.transform = 'translate(0px,0px) scale(1)';
+      }
+      state.diagramModalZoom = 1;
+      updateDiagramModalZoomUi();
+    }
+
+    function closeDiagramModal() {
+      document.getElementById('diagramModal').classList.add('hidden');
+      document.getElementById('diagramModalCanvas').innerHTML = '';
+      state.diagramModalKey = null;
+      resetDiagramZoom();
+    }
+
+    function closeDiagramModalIfBackdrop(e) {
+      if (e.target === document.getElementById('diagramModal')) closeDiagramModal();
+    }
+
+    function openDiagramModal(key) {
+      const mmdText = state.diagrams[key];
+      if (!mmdText) return;
+      state.diagramModalKey = key;
+      state.diagramModalZoom = 1;
+      document.getElementById('diagramModalTitle').textContent = diagDisplayName(key);
+      const modal = document.getElementById('diagramModal');
+      const canvas = document.getElementById('diagramModalCanvas');
+      const safeId = 'modal_r_' + key.replace(/[^a-zA-Z0-9]/g, '_');
+      canvas.innerHTML = `<div class="mermaid" id="${safeId}">${escapeHtml(mmdText)}</div>`;
+      canvas.style.transform = '';
+      updateDiagramModalZoomUi();
+      modal.classList.remove('hidden');
+      const el = document.getElementById(safeId);
+      renderMermaidIntoElement(el, mmdText, { retryOnBlank: true }).then(() => attachNodeClickHandlers());
+    }
+
+    // ── Interactive Node Details ─────────────────────────────
+    function attachNodeClickHandlers() {
+      // After Mermaid renders, add click handlers to SVG nodes
+      setTimeout(() => {
+        document.querySelectorAll('.diagram-card-body .mermaid svg .node, #diagramModalCanvas .mermaid svg .node').forEach(svgNode => {
+          svgNode.style.cursor = 'pointer';
+          svgNode.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Extract node ID from SVG element id (Mermaid uses the flowchart node ID)
+            const svgId = svgNode.id || '';
+            // Mermaid prefixes node IDs with "flowchart-" and appends a number
+            const match = svgId.match(/flowchart-(N_\w+)-/i) || svgId.match(/(N_\w+)/i);
+            const nodeId = match ? match[1] : svgId;
+            showNodeDetail(nodeId);
+          });
+        });
+      }, 500); // Wait for Mermaid to finish rendering
+    }
+
+    function showNodeDetail(nodeId) {
+      if (!state.generationResult) return;
+      const panel = document.getElementById('nodeDetailPanel');
+      const body = document.getElementById('nodeDetailBody');
+      const title = document.getElementById('nodeDetailTitle');
+
+      // Search all activity diagrams for this node
+      let found = null;
+      for (const diag of (state.generationResult.diagrams || [])) {
+        if (diag.diagram_type !== 'activity') continue;
+        for (const node of (diag.nodes || [])) {
+          if (node.id === nodeId || node.id.replace(/-/g, '_') === nodeId) {
+            found = { node, diagram: diag };
+            break;
+          }
+        }
+        if (found) break;
+        // Check sub_diagrams
+        for (const sub of (diag.sub_diagrams || [])) {
+          for (const node of (sub.nodes || [])) {
+            if (node.id === nodeId || node.id.replace(/-/g, '_') === nodeId) {
+              found = { node, diagram: sub };
+              break;
+            }
+          }
+          if (found) break;
+        }
+        if (found) break;
+      }
+
+      if (!found) {
+        title.textContent = nodeId;
+        body.innerHTML = '<p class="text-slate-400">Node not found in activity diagrams</p>';
+        panel.classList.remove('hidden');
+        return;
+      }
+
+      const n = found.node;
+      title.textContent = `${n.node_type.toUpperCase()}: ${n.id}`;
+      let html = `<div><strong>Name:</strong> <code class="text-xs bg-slate-100 px-1 rounded">${n.name || '—'}</code></div>`;
+      if (n.description) html += `<div><strong>Description:</strong> ${n.description}</div>`;
+      html += `<div><strong>Type:</strong> ${n.node_type}</div>`;
+      if (n.trace_reqs && n.trace_reqs.length) {
+        html += `<div><strong>Requirements:</strong> ${n.trace_reqs.map(r => `<span class="bg-blue-100 text-blue-700 px-1 rounded">${r}</span>`).join(' ')}</div>`;
+      }
+      if (n.confidence != null) html += `<div><strong>Confidence:</strong> ${(n.confidence * 100).toFixed(0)}%</div>`;
+      if (n.rte_call) html += `<div><strong>RTE Call:</strong> ${n.rte_call}</div>`;
+      if (n.port) html += `<div><strong>Port:</strong> ${n.port}</div>`;
+      if (n.element) html += `<div><strong>Element:</strong> ${n.element}</div>`;
+      if (n.callee) html += `<div><strong>Callee:</strong> ${n.callee} <span class="text-slate-400">(see sub-diagram)</span></div>`;
+      html += `<div class="text-slate-400 mt-1"><strong>Diagram:</strong> ${found.diagram.name || '—'}</div>`;
+
+      body.innerHTML = html;
+      panel.classList.remove('hidden');
+    }
+
     function escapeHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ── Info Panel (top fixed panel) ────────────────────────
+    function openInfoTab(tab) {
+      state.infoActiveTab = tab;
+      // Update tab buttons
+      document.querySelectorAll('.info-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+      });
+      // Show/hide tab content divs
+      ['requirements', 'actlog', 'aistream'].forEach(t => {
+        const el = document.getElementById('infoTab_' + t);
+        if (el) el.classList.toggle('hidden', t !== tab);
+      });
+    }
+
+    function appendAiStream(text) {
+      state.aiStreamBuffer += text;
+      const el = document.getElementById('aiStreamContent');
+      if (el) {
+        el.textContent = state.aiStreamBuffer;
+        const parent = el.parentElement;
+        if (parent) parent.scrollTop = parent.scrollHeight;
+      }
+      openInfoTab('aistream');
+    }
+
+    function clearAiStream(label) {
+      state.aiStreamBuffer = '';
+      const el = document.getElementById('aiStreamContent');
+      if (el) el.textContent = label || 'Waiting for AI response…';
     }
 
     // ── Toggle Mermaid Source ────────────────────────────────
@@ -1256,7 +3001,7 @@
     // ── Export ───────────────────────────────────────────────
     function enableExportButtons() {
       ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml',
-        'btnExportXmi', 'btnExportSvg'].forEach(id => {
+        'btnExportXmi', 'btnExportSvg', 'btnExportCSkeleton'].forEach(id => {
           document.getElementById(id).disabled = false;
         });
     }
@@ -1297,7 +3042,7 @@
       if (ppEl) ppEl.innerHTML = '';
 
       // Disable export buttons
-      ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml', 'btnExportXmi', 'btnExportSvg']
+      ['btnExportMermaid', 'btnExportDrawio', 'btnExportPlantuml', 'btnExportXmi', 'btnExportSvg', 'btnExportCSkeleton']
         .forEach(id => { document.getElementById(id).disabled = true; });
 
       // Source panel
@@ -1306,6 +3051,7 @@
       // Status bar + disable clear button itself
       setStatus('Ready');
       document.getElementById('btnClear').disabled = true;
+      addActivityLog('Cleared all generated diagrams and state', 'ok');
     }
 
     document.getElementById('btnClear').addEventListener('click', clearResults);
@@ -1320,6 +3066,7 @@
         format: format,
       };
       setStatus(`Exporting as ${format}…`);
+      addActivityLog(`Exporting diagrams as ${format}...`, 'ok');
       try {
         const r = await fetch(`${API}/export`, {
           method: 'POST',
@@ -1331,9 +3078,11 @@
         const count = d.paths?.length || (d.path ? 1 : 0);
         toast(`Exported ${count} file(s) to ${dir}/`);
         setStatus(`Exported to ${dir}/`);
+        addActivityLog(`Exported ${count} file(s) to ${dir}/`, 'ok');
       } catch (e) {
         toast('Export failed: ' + e.message, true);
         setStatus('Export failed');
+        addActivityLog(`Export failed: ${e.message}`, 'err');
       }
     }
 
@@ -1345,6 +3094,7 @@
       if (!state.generationResult) return;
       const dir = document.getElementById('exportDir').value || 'output/web';
       setStatus('Rendering SVGs via Kroki.io…');
+      addActivityLog('Rendering SVGs via Kroki.io...', 'ok');
       try {
         const r = await fetch(`${API}/render`, {
           method: 'POST',
@@ -1355,15 +3105,1076 @@
         const d = await r.json();
         toast(`Rendered ${d.paths?.length || 0} SVG(s) to ${dir}/`);
         setStatus(`SVGs rendered to ${dir}/`);
+        addActivityLog(`Rendered ${d.paths?.length || 0} SVG(s) to ${dir}/`, 'ok');
       } catch (e) {
         toast('SVG render failed: ' + e.message, true);
         setStatus('SVG render failed');
+        addActivityLog(`SVG render failed: ${e.message}`, 'err');
       }
     });
+
+    document.getElementById('btnExportCSkeleton').addEventListener('click', async () => {
+      if (!state.generationResult) return;
+      setStatus('Generating C skeleton...');
+      addActivityLog('Generating C skeleton from activity diagrams...', 'ok');
+      try {
+        const r = await fetch(`${API}/export/c-skeleton`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ result: state.generationResult }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        const files = d.files || {};
+        const names = Object.keys(files);
+        if (names.length === 0) {
+          toast('No ActivityDiagram found for C export', true);
+          addActivityLog('C skeleton export skipped: No ActivityDiagram found', 'warn');
+          return;
+        }
+        // Download each file as .c
+        for (const [name, code] of Object.entries(files)) {
+          const blob = new Blob([code], { type: 'text/x-c' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${name}.c`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        toast(`Downloaded ${names.length} C skeleton file(s)`);
+        setStatus(`C skeleton exported: ${names.join(', ')}`);
+        addActivityLog(`Downloaded ${names.length} C skeleton file(s)`, 'ok');
+      } catch (e) {
+        toast('C skeleton export failed: ' + e.message, true);
+        setStatus('C skeleton export failed');
+        addActivityLog(`C skeleton export failed: ${e.message}`, 'err');
+      }
+    });
+
+    // ── Elaborate ──────────────────────────────────────────────
+    let elaboratedData = null;
+
+    function setElaborating(active) {
+      const btn = document.getElementById('btnElaborate');
+      const lbl = document.getElementById('elabLabel');
+      const spinner = document.getElementById('elabSpinner');
+      btn.disabled = active || !state.requirements;
+      lbl.textContent = active ? 'Elaborating...' : 'Elaborate';
+      spinner.classList.toggle('active', active);
+    }
+
+    document.getElementById('btnElaborate').addEventListener('click', async () => {
+      if (!state.requirements) return;
+      setElaborating(true);
+      setStatus('AI is reasoning about requirements...');
+      const statusEl = document.getElementById('elabStatus');
+      statusEl.classList.remove('hidden');
+      statusEl.className = 'text-xs mt-1 text-blue-500';
+      statusEl.textContent = 'Thinking step-by-step about each requirement...';
+      addActivityLog('Started AI elaboration of requirements...', 'ok');
+
+      try {
+        const r = await fetch(`${API}/elaborate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirements: state.requirements }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        elaboratedData = data;
+        renderElaborationResults(data);
+        statusEl.className = 'text-xs mt-1 text-green-600';
+        statusEl.textContent = `Done - ${(data.elaborated || []).length} requirements elaborated`;
+        setStatus('Elaboration complete - ready to generate with enriched context');
+        toast(`Elaborated ${(data.elaborated || []).length} requirements with AI reasoning`);
+        addActivityLog(`Elaboration complete: ${(data.elaborated || []).length} requirements enriched`, 'ok');
+      } catch (e) {
+        statusEl.className = 'text-xs mt-1 text-red-500';
+        statusEl.textContent = 'Failed: ' + e.message;
+        toast('Elaboration failed: ' + e.message, true);
+        setStatus('Elaboration failed');
+        addActivityLog(`Elaboration failed: ${e.message}`, 'err');
+      } finally {
+        setElaborating(false);
+      }
+    });
+
+    function renderElaborationResults(data) {
+      // Render architecture summary if present
+      const summaryEl = document.getElementById('elabSummary');
+      if (data.architecture_summary) {
+        if (!summaryEl) {
+          const container = document.getElementById('elabStatus').parentElement;
+          container.insertAdjacentHTML('beforeend', `
+            <div id="elabSummary" class="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+              <div class="font-bold mb-1">Architecture Analysis Summary</div>
+              <div id="elabSummaryText"></div>
+            </div>
+          `);
+        }
+        document.getElementById('elabSummaryText').textContent = data.architecture_summary;
+        document.getElementById('elabSummary').classList.remove('hidden');
+      } else if (summaryEl) {
+        summaryEl.classList.add('hidden');
+      }
+
+      // Render thinking steps
+      const thinking = data.thinking || [];
+      const reasoningList = document.getElementById('reasoningList');
+      const reasoningCount = document.getElementById('reasoningCount');
+
+      if (thinking.length) {
+        reasoningCount.textContent = thinking.length;
+        reasoningCount.classList.remove('hidden');
+        reasoningList.innerHTML = thinking.map(t =>
+          `<div class="thinking-step bg-slate-50 border-l-2 border-slate-300 pl-3 py-1 mb-2 italic">
+            ${escapeHtml(t)}
+          </div>`
+        ).join('');
+        // Auto-open the details
+        document.getElementById('reasoningDetails').open = true;
+      } else {
+        reasoningList.innerHTML = '<p class="text-slate-400 text-xs italic">No reasoning steps returned</p>';
+      }
+
+      // Render extracted entities
+      const elaborated = data.elaborated || [];
+      const entitiesDiv = document.getElementById('elabEntities');
+      const entitiesList = document.getElementById('elabEntitiesList');
+
+      if (elaborated.length) {
+        const entities = new Set();
+        elaborated.forEach(e => {
+          const ent = e.entities || {};
+          if (ent.swc) entities.add('SWC:' + ent.swc);
+          (ent.runnables || []).forEach(r => entities.add('RE:' + r));
+          (ent.ports || []).forEach(p => entities.add('Port:' + p));
+          (ent.interfaces || []).forEach(i => entities.add('IF:' + i));
+        });
+        if (entities.size) {
+          entitiesDiv.classList.remove('hidden');
+          entitiesList.innerHTML = [...entities].sort().map(e => {
+            const [type, name] = e.split(':');
+            let cls = 'bg-slate-100 text-slate-600';
+            if (type === 'SWC') cls = 'bg-indigo-100 text-indigo-700 font-semibold';
+            if (type === 'RE') cls = 'bg-emerald-100 text-emerald-700';
+            if (type === 'Port') cls = 'bg-amber-100 text-amber-700';
+            return `<span class="elab-entity px-2 py-0.5 rounded text-[10px] ${cls}">${escapeHtml(e)}</span>`;
+          }).join('');
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  MODULE PLANNER  (Stage 1.75)
+    // ════════════════════════════════════════════════════════
+
+    // Panel switcher helpers
+    const _TAB_ACTIVE   = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-500 text-blue-600 -mb-px';
+    const _TAB_INACTIVE = 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors -mb-px';
+
+    function _setActiveTab(name) {
+      const tabsBar = document.getElementById('mainContentTabs');
+      if (!tabsBar) return;
+      // Only show tab bar if both spec AND diagrams have content
+      const hasDiagrams = Object.keys(state.diagrams || {}).length > 0;
+      const hasSpec = !!(state.mudSpec);
+      if (hasDiagrams && hasSpec) tabsBar.classList.remove('hidden');
+      const btnSpec       = document.getElementById('tabBtnSpec');
+      const btnFlowcharts = document.getElementById('tabBtnFlowcharts');
+      if (btnSpec)       btnSpec.className       = name === 'spec'       ? _TAB_ACTIVE : _TAB_INACTIVE;
+      if (btnFlowcharts) btnFlowcharts.className  = name === 'flowcharts' ? _TAB_ACTIVE : _TAB_INACTIVE;
+    }
+
+    function showDiagramPanel() {
+      document.getElementById('modulePickerPanel').classList.add('hidden');
+      document.getElementById('mudSpecPanel').classList.add('hidden');
+      document.getElementById('diagramCanvas').classList.remove('hidden');
+      document.getElementById('diagramTabs').classList.remove('hidden');
+      _setActiveTab('flowcharts');
+    }
+    function showModulePickerPanel() {
+      document.getElementById('diagramCanvas').classList.add('hidden');
+      document.getElementById('mudSpecPanel').classList.add('hidden');
+      document.getElementById('modulePickerPanel').classList.remove('hidden');
+      document.getElementById('diagramTabs').classList.add('hidden');
+      document.getElementById('mainContentTabs').classList.add('hidden');
+    }
+    function showMudSpecPanel() {
+      document.getElementById('diagramCanvas').classList.add('hidden');
+      document.getElementById('modulePickerPanel').classList.add('hidden');
+      document.getElementById('mudSpecPanel').classList.remove('hidden');
+      document.getElementById('diagramTabs').classList.add('hidden');
+      _setActiveTab('spec');
+    }
+
+    function getRequirementsText() {
+      if (!state.requirements) return '';
+      return (state.requirements.requirements || [])
+        .map(r => `[${r.id}] (${r.type || 'functional'}) ${r.title || ''}\n  Description: ${r.description || ''}`)
+        .join('\n');
+    }
+
+    // ASIL badge colour helper
+    function asilClass(asil) {
+      const a = (asil || 'QM').toUpperCase();
+      if (a === 'ASIL-D') return 'asil-d';
+      if (a === 'ASIL-C') return 'asil-c';
+      if (a === 'ASIL-B') return 'asil-b';
+      if (a === 'ASIL-A') return 'asil-a';
+      return 'asil-qm';
+    }
+
+    // Plan Modules button handler
+    document.getElementById('btnPlanModules').addEventListener('click', async () => {
+      if (!state.requirements) { toast('Import requirements first', true); return; }
+
+      const btn = document.getElementById('btnPlanModules');
+      const lbl = document.getElementById('planLabel');
+      const spinner = document.getElementById('planSpinner');
+      const statusEl = document.getElementById('planStatus');
+
+      btn.disabled = true;
+      lbl.textContent = 'Analysing…';
+      spinner.classList.add('active');
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = 'AI is detecting SWC modules…';
+      setStatus('Planning modules…');
+      addActivityLog('Analysing modules from requirements…', 'info');
+
+      try {
+        const r = await fetch(`${API}/modules/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requirements_text: getRequirementsText(),
+            temperature: 0.2,
+          }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+
+        state.modules = data.modules || [];
+        statusEl.textContent = `Found ${state.modules.length} module(s)`;
+        setStatus(`Module analysis complete — ${state.modules.length} SWC modules found`);
+        toast(`Found ${state.modules.length} modules — choose one to build its MUD spec`);
+        addActivityLog(`Found ${state.modules.length} SWC modules`, 'ok');
+
+        renderModulePicker(data);
+        showModulePickerPanel();
+      } catch (e) {
+        statusEl.textContent = 'Failed: ' + e.message;
+        toast('Module planning failed: ' + e.message, true);
+        setStatus('Module planning failed');
+        addActivityLog(`Module planning failed: ${e.message}`, 'err');
+      } finally {
+        btn.disabled = false;
+        lbl.textContent = 'Plan Modules';
+        spinner.classList.remove('active');
+      }
+    });
+
+    function renderModulePicker(data) {
+      const modules = data.modules || [];
+
+      // Count badge
+      document.getElementById('modulePlanCount').textContent = `${modules.length} module${modules.length !== 1 ? 's' : ''}`;
+
+      // Architecture summary
+      if (data.architecture_summary) {
+        document.getElementById('archSummaryText').textContent = data.architecture_summary;
+        document.getElementById('archSummaryBox').classList.remove('hidden');
+      } else {
+        document.getElementById('archSummaryBox').classList.add('hidden');
+      }
+
+      // Populate sidebar module selector
+      const sel = document.getElementById('moduleSelect');
+      sel.innerHTML = '<option value="">— select a module —</option>';
+      modules.forEach((m, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${m.swc_name} (${m.asil})`;
+        sel.appendChild(opt);
+      });
+      sel.disabled = modules.length === 0;
+
+      // Module cards
+      const grid = document.getElementById('moduleCardsGrid');
+      grid.innerHTML = '';
+      modules.forEach((m, i) => {
+        const complexClass = `complexity-${(m.complexity || 'medium').toLowerCase()}`;
+        const card = document.createElement('div');
+        card.className = 'module-card';
+        card.dataset.idx = i;
+        card.innerHTML = `
+          <div class="flex items-start gap-2 mb-2">
+            <span class="text-sm font-bold text-slate-800 flex-1">${escapeHtml(m.swc_name)}</span>
+            <span class="asil-badge ${asilClass(m.asil)}">${escapeHtml(m.asil || 'QM')}</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-2">${escapeHtml(m.description || '')}</p>
+          <div class="flex flex-wrap gap-1 mb-2">
+            ${(m.runnables || []).map(r => `<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700 font-mono">${escapeHtml(r)}</span>`).join('')}
+          </div>
+          <div class="flex items-center gap-3 text-[11px] text-slate-500">
+            <span title="Ports">⬡ ${m.port_count || 0} ports</span>
+            <span title="CalPrm">⚙ ${m.calprm_count || 0} CalPrm</span>
+            <span class="${complexClass} font-semibold" title="Complexity">${(m.complexity || 'medium').toUpperCase()}</span>
+            <span class="ml-auto text-[10px] text-slate-400">${(m.req_ids || []).length} reqs</span>
+          </div>`;
+        card.addEventListener('click', () => selectModule(i));
+        grid.appendChild(card);
+      });
+
+      // Confirm button
+      document.getElementById('btnConfirmModule').disabled = true;
+    }
+
+    function selectModule(idx) {
+      const nextModule = state.modules[idx] || null;
+      const switchedModule = state.selectedModule && nextModule
+        && state.selectedModule.swc_name !== nextModule.swc_name;
+      state.selectedModule = nextModule;
+      if (!state.selectedModule) return;
+
+      if (switchedModule) {
+        state.mudSpec = null;
+        state.mudReview = null;
+        state.mudIteration = 0;
+        state.reviewHistory = [];
+        document.getElementById('reviewPanel').classList.add('hidden');
+        document.getElementById('iterHistoryBox').classList.add('hidden');
+        document.getElementById('btnReviewMudSpec').disabled = true;
+      }
+
+      // Update card selection
+      document.querySelectorAll('.module-card').forEach(c => {
+        c.classList.toggle('selected', parseInt(c.dataset.idx) === idx);
+      });
+
+      // Update sidebar select
+      document.getElementById('moduleSelect').value = idx;
+
+      // Enable confirm + MUD spec buttons
+      document.getElementById('btnConfirmModule').disabled = false;
+      document.getElementById('btnGenerateMudSpec').disabled = false;
+      document.getElementById('btnReviewMudSpec').disabled = true; // review only after spec
+      syncActivityGenerationAvailability();
+    }
+
+    // Module selector in sidebar
+    document.getElementById('moduleSelect').addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value);
+      if (!isNaN(idx) && idx >= 0 && idx < state.modules.length) {
+        selectModule(idx);
+      }
+    });
+
+    // Confirm module button (in picker panel)
+    document.getElementById('btnConfirmModule').addEventListener('click', () => {
+      if (!state.selectedModule) return;
+      startMudSpecGeneration();
+    });
+
+    // ════════════════════════════════════════════════════════
+    //  MUD SPEC GENERATOR  (Stage 2)
+    // ════════════════════════════════════════════════════════
+
+    async function startMudSpecGeneration() {
+      if (!state.selectedModule) { toast('Select a module first', true); return; }
+      showMudSpecPanel();
+      await generateMudSpec();
+    }
+
+    // Sidebar Generate MUD Spec button
+    document.getElementById('btnGenerateMudSpec').addEventListener('click', async () => {
+      if (!state.selectedModule) { toast('Select a module first', true); return; }
+      showMudSpecPanel();
+      await generateMudSpec();
+    });
+
+    function setMudSpecGenerating(active) {
+      const btn = document.getElementById('btnGenerateMudSpec');
+      const lbl = document.getElementById('mudSpecLabel');
+      const spinner = document.getElementById('mudSpecSpinner');
+      btn.disabled = active;
+      lbl.textContent = active ? 'Generating…' : 'Generate MUD Spec';
+      spinner.classList.toggle('active', active);
+      document.getElementById('mudSpecLoading').classList.toggle('hidden', !active);
+      if (active) document.getElementById('mudSpecContent').innerHTML = '';
+      document.getElementById('reviewBanner')?.classList.add('hidden');
+    }
+
+    async function generateMudSpec() {
+      const m = state.selectedModule;
+      if (!m) return;
+
+      setMudSpecGenerating(true);
+      clearAiStream(`Generating MUD spec for ${m.swc_name}…`);
+      addActivityLog(`Starting MUD spec generation for ${m.swc_name}`, 'info');
+      document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name}`;
+      document.getElementById('mudSpecStatus').classList.remove('hidden');
+      document.getElementById('mudSpecStatus').textContent = 'Generating…';
+      setStatus(`Generating MUD spec for ${m.swc_name}…`);
+
+      const loadingMsg = document.getElementById('mudSpecLoadingMsg');
+
+      try {
+        const resp = await fetch(`${API}/modules/mud-spec`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            swc_name: m.swc_name,
+            description: m.description || '',
+            asil: m.asil || 'QM',
+            runnables: m.runnables || [],
+            req_ids: m.req_ids || [],
+            requirements_text: getRequirementsText(),
+            temperature: 0.25,
+            spec_pipeline: document.getElementById('specPipelineMode')?.value || 'single_pass',
+          }),
+        });
+
+        if (!resp.ok) throw new Error(await resp.text());
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let specMd = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const ev = JSON.parse(line.slice(6));
+                if (ev._final) {
+                  specMd = ev.mud_spec_markdown || '';
+                } else if (ev._error) {
+                  throw new Error(ev.detail || 'Generation error');
+                } else {
+                  if (ev.partial_content) {
+                    // Show live token stream in AI Live Stream tab
+                    const el = document.getElementById('aiStreamContent');
+                    if (el) el.textContent = ev.partial_content;
+                    state.aiStreamBuffer = ev.partial_content;
+                    const parent = el?.parentElement;
+                    if (parent) parent.scrollTop = parent.scrollHeight;
+                    openInfoTab('aistream');
+                  }
+                  if (ev.message) {
+                    loadingMsg.textContent = ev.message;
+                    addActivityLog(ev.message, ev.debug_heartbeat !== undefined ? 'warn' : 'info');
+                    setStatus(ev.message);
+                  }
+                }
+              } catch (parseErr) {
+                // Only re-throw non-JSON errors (i.e. real generation errors)
+                if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
+              }
+            }
+          }
+        }
+        // Flush any remaining bytes in the buffer
+        if (buffer.startsWith('data: ')) {
+          try {
+            const ev = JSON.parse(buffer.slice(6));
+            if (ev._final) specMd = ev.mud_spec_markdown || '';
+          } catch (_) {}
+        }
+
+        if (!specMd) throw new Error('No spec content received from server');
+
+        // Advance iteration counter; reset history on fresh generation
+        state.mudIteration = 1;
+        state.mudReview = null;
+        state.reviewHistory = [];
+        state.mudSpec = specMd;
+        state.activitySource = 'mud_spec';
+
+        addActivityLog(`MUD spec complete for ${m.swc_name} — ${specMd.length.toLocaleString()} chars`, 'ok');
+        renderMudSpec(specMd, m.swc_name);
+        document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name} (iteration 1)`;
+        document.getElementById('mudSpecStatus').textContent = `Iteration 1 — ${specMd.length} chars`;
+        document.getElementById('reviewPanel').classList.add('hidden');
+        document.getElementById('iterHistoryBox').classList.add('hidden');
+        document.getElementById('btnReviewMudSpec').disabled = false;
+        document.getElementById('btnExportMudSpecFile').disabled = false;
+        syncActivityGenerationAvailability();
+        setStatus(`MUD spec for ${m.swc_name} ready — run AI Review to check quality`);
+        toast(`MUD spec generated for ${m.swc_name} (iteration 1)`);
+
+      } catch (e) {
+        addActivityLog(`MUD spec generation failed: ${e.message}`, 'err');
+        document.getElementById('mudSpecStatus').textContent = 'Failed: ' + e.message;
+        document.getElementById('mudSpecContent').innerHTML =
+          `<p class="text-red-500 p-4">Generation failed: ${escapeHtml(e.message)}</p>`;
+        toast('MUD spec generation failed: ' + e.message, true);
+        setStatus('MUD spec generation failed');
+      } finally {
+        setMudSpecGenerating(false);
+      }
+    }
+
+    function renderMudSpec(markdown, swcName) {
+      // Markdown → HTML renderer. Order matters — fenced blocks first.
+      let html = escapeHtml(markdown);
+
+      // ── 1. Fenced code blocks ```lang\n...\n``` ───────────────────────────
+      // Must run BEFORE inline-code pass so inner backticks are untouched.
+      html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const badge = lang
+          ? `<span style="position:absolute;top:8px;right:12px;font-size:10px;` +
+            `color:#475569;font-family:sans-serif;font-weight:700;letter-spacing:.5px">${lang.toUpperCase()}</span>`
+          : '';
+        return `<div style="position:relative;margin:10px 0">` +
+          `<pre style="background:#f8fafc;color:#0f172a;border:1px solid #cbd5e1;padding:16px 18px;` +
+          `border-radius:8px;overflow-x:auto;font-family:'Consolas','Monaco','Courier New',monospace;` +
+          `font-size:12.5px;line-height:1.75;white-space:pre-wrap;word-break:normal;tab-size:4;-moz-tab-size:4">` +
+          `${badge}<code>${code}</code></pre></div>`;
+      });
+
+      // ── 2. Tables ──────────────────────────────────────────────────────────
+      html = html.replace(/^\|(.+)\|$/gm, (_, inner) => {
+        const cells = inner.split('|').map(c => `<td style="border:1px solid #e2e8f0;padding:5px 10px">${c.trim()}</td>`).join('');
+        return `<tr>${cells}</tr>`;
+      });
+      html = html.replace(/(<tr>[\s\S]*?<\/tr>\n?)+/g, m => {
+        const rows = m.trim().split('\n').filter(r => !r.match(/^<tr>\s*(<td>\s*[-:]+\s*<\/td>)+\s*<\/tr>$/));
+        if (!rows.length) return m;
+        const header = rows[0].replace(/<td/g, '<th style="background:#f8fafc;font-weight:600;border:1px solid #e2e8f0;padding:6px 10px"').replace(/<\/td>/g, '</th>');
+        const body = rows.slice(1).join('\n');
+        return `<table style="border-collapse:collapse;width:100%;margin:10px 0;font-size:13px">${header}${body}</table>`;
+      });
+
+      // ── 3. Headers ────────────────────────────────────────────────────────
+      html = html.replace(/^#### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;color:#334155;margin:14px 0 4px">$1</h4>');
+      html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;color:#1e293b;margin:16px 0 6px;border-bottom:1px solid #f1f5f9;padding-bottom:3px">$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:16px;font-weight:700;color:#0f172a;margin:20px 0 8px">$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:18px;font-weight:800;color:#0f172a;margin:0 0 12px">$1</h1>');
+
+      // ── 4. Unordered lists (- item lines grouped into <ul>) ───────────────
+      html = html.replace(/((?:^- .+(?:\n|$))+)/gm, block => {
+        const items = block.trim().split('\n')
+          .map(l => `<li style="margin:3px 0">${l.replace(/^- /, '').trim()}</li>`)
+          .join('');
+        return `<ul style="list-style:disc;padding-left:22px;margin:8px 0">${items}</ul>\n`;
+      });
+
+      // ── 5. Horizontal rules ───────────────────────────────────────────────
+      html = html.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">');
+
+      // ── 6. Bold / italic ──────────────────────────────────────────────────
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+      // ── 7. Inline code (after fenced blocks) ─────────────────────────────
+      html = html.replace(/`([^`\n]+)`/g,
+        '<code style="background:#f1f5f9;color:#0f172a;padding:1px 5px;border-radius:4px;' +
+        'font-family:monospace;font-size:12px">$1</code>');
+
+      // ── 8. Blank lines → paragraph breaks; single \n → <br> ──────────────
+      // Split on blank lines to create paragraphs, preserve single newlines inside.
+      const blocks = html.split(/\n{2,}/);
+      html = blocks.map(b => {
+        b = b.trim();
+        if (!b) return '';
+        // Don't wrap block-level elements in <p>
+        if (/^<(h[1-6]|ul|ol|li|table|pre|div|hr)/.test(b)) return b;
+        // Turn single newlines into <br> within text paragraphs
+        return `<p style="margin:6px 0;line-height:1.7">${b.replace(/\n/g, '<br>')}</p>`;
+      }).join('\n');
+
+      document.getElementById('mudSpecContent').innerHTML = html;
+      // Update tab bar so user can switch back to flowcharts
+      _setActiveTab('spec');
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  AI REVIEW REPORT  (Stage 2b)
+    // ════════════════════════════════════════════════════════
+
+    document.getElementById('btnReviewMudSpec').addEventListener('click', async () => {
+      await reviewMudSpec();
+    });
+
+    async function reviewMudSpec() {
+      const m = state.selectedModule;
+      if (!m || !state.mudSpec) { toast('Generate MUD spec first', true); return; }
+
+      const btn = document.getElementById('btnReviewMudSpec');
+      btn.disabled = true;
+      btn.textContent = 'Reviewing…';
+      addActivityLog(`AI reviewing spec for ${m.swc_name} (iteration ${state.mudIteration})…`, 'info');
+      setStatus(`AI reviewing MUD spec for ${m.swc_name} (iteration ${state.mudIteration})…`);
+
+      try {
+        const r = await fetch(`${API}/modules/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            swc_name: m.swc_name,
+            asil: m.asil || 'QM',
+            req_ids: m.req_ids || [],
+            requirements_text: getRequirementsText(),
+            mud_spec_markdown: state.mudSpec,
+            temperature: 0.1,
+            iteration: state.mudIteration,
+          }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const review = await r.json();
+
+        // Persist in state
+        state.mudReview = review;
+        const reviewOutcome = review.approved
+          ? `APPROVED (${review.coverage_pct || 0}% coverage)`
+          : `Needs revision — ${review.error_count || 0} error(s), ${review.warning_count || 0} warning(s), ${review.coverage_pct || 0}% coverage`;
+        addActivityLog(`Review done — ${reviewOutcome}`, review.approved ? 'ok' : 'warn');
+
+        // Save snapshot to history
+        state.reviewHistory.push({
+          iteration: state.mudIteration,
+          review: review,
+          spec_snapshot: state.mudSpec,
+          timestamp: new Date().toLocaleTimeString(),
+        });
+
+        renderReviewResults(review);
+        renderReviewHistory();
+
+        const statusMsg = review.approved
+          ? `Approved (${review.coverage_pct}% coverage)`
+          : `Needs revision — ${review.error_count || 0} error(s), ${review.warning_count || 0} warning(s)`;
+        setStatus(`Review complete — ${statusMsg}`);
+        toast(review.approved
+          ? `Spec approved at iteration ${state.mudIteration} (${review.coverage_pct}% coverage)`
+          : `Revision needed — ${(review.issues || []).length} issue(s) found`
+        );
+      } catch (e) {
+        toast('Review failed: ' + e.message, true);
+        setStatus('Review failed');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'AI Review Spec';
+      }
+    }
+
+    function renderReviewResults(review) {
+      const panel = document.getElementById('reviewPanel');
+      panel.classList.remove('hidden');
+
+      const errors   = review.error_count   || (review.issues || []).filter(i => i.severity === 'error').length;
+      const warnings = review.warning_count || (review.issues || []).filter(i => i.severity === 'warning').length;
+      const infos    = review.info_count    || (review.issues || []).filter(i => i.severity === 'info').length;
+      const uncoveredCount = (review.uncovered_req_ids || []).length;
+      // Client-side approval rule (mirrors backend _enforce_approval_rules):
+      // approved=true ONLY if coverage >= 80, zero errors, AND zero uncovered requirements.
+      const approved = !!review.approved
+        && (review.coverage_pct || 0) >= 80
+        && errors === 0
+        && uncoveredCount === 0;
+      const iter     = review.iteration || state.mudIteration;
+
+      // Summary bar
+      const bar = document.getElementById('reviewSummaryBar');
+      bar.className = `flex items-center gap-2 mb-3 p-3 rounded-xl border ${
+        approved ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+      }`;
+
+      document.getElementById('reviewApprovedBadge').textContent = approved ? '✓ APPROVED' : '⚠ NEEDS REVISION';
+      document.getElementById('reviewApprovedBadge').className =
+        `badge font-semibold px-3 py-1 text-xs ${approved ? 'bg-green-200 text-green-800' : 'bg-amber-200 text-amber-800'}`;
+
+      document.getElementById('reviewCoverage').textContent = `${review.coverage_pct || 0}% requirement coverage`;
+      document.getElementById('reviewIterBadge').textContent = `Iteration ${iter}`;
+      document.getElementById('reviewIssueCount').textContent =
+        `${(review.issues || []).length} issue${(review.issues || []).length !== 1 ? 's' : ''}`;
+
+      // Stat boxes
+      document.getElementById('reviewErrorCount').textContent = errors;
+      document.getElementById('reviewWarnCount').textContent  = warnings;
+      document.getElementById('reviewInfoCount').textContent  = infos;
+      document.getElementById('reviewCoverageNum').textContent = `${review.coverage_pct || 0}%`;
+
+      // Full issue list — grouped by severity
+      const issues = review.issues || [];
+      const byGroup = { error: [], warning: [], info: [] };
+      issues.forEach(i => (byGroup[i.severity] || byGroup.info).push(i));
+
+      const issueHtml = ['error', 'warning', 'info'].map(sev => {
+        const group = byGroup[sev];
+        if (!group.length) return '';
+        const colors = {
+          error:   'text-red-600',
+          warning: 'text-amber-600',
+          info:    'text-blue-600',
+        };
+        return `<div class="review-section-header ${colors[sev]}">${sev.toUpperCase()} (${group.length})</div>` +
+          group.map(issue => `
+            <div class="review-${sev}">
+              <div class="flex items-center gap-1 mb-0.5">
+                <span class="font-semibold text-[10px] uppercase ${colors[sev]}">${escapeHtml(sev)}</span>
+                <span class="text-slate-400 text-[10px]">§ ${escapeHtml(issue.section || '?')}</span>
+              </div>
+              <div class="text-[12px] text-slate-700">${escapeHtml(issue.message || '')}</div>
+            </div>`).join('');
+      }).join('');
+
+      document.getElementById('reviewFullIssueList').innerHTML =
+        issueHtml || '<p class="text-slate-400 text-xs p-2">No issues found</p>';
+
+      // Suggestions
+      const suggestions = review.suggestions || [];
+      const sugDet = document.getElementById('reviewSuggestionsDetails');
+      if (suggestions.length) {
+        sugDet.classList.remove('hidden');
+        document.getElementById('reviewSuggestions').innerHTML =
+          '<ul class="list-disc pl-4 space-y-1">' +
+          suggestions.map(s => `<li>${escapeHtml(s)}</li>`).join('') +
+          '</ul>';
+      } else {
+        sugDet.classList.add('hidden');
+      }
+
+      // Coverage gaps — which requirement IDs are uncovered and why
+      const uncoveredIds = review.uncovered_req_ids || [];
+      const coverageGaps = review.coverage_gaps || [];
+      const covGapBlock = document.getElementById('reviewCoverageGaps');
+      if (covGapBlock) {
+        if (uncoveredIds.length > 0) {
+          covGapBlock.classList.remove('hidden');
+          document.getElementById('reviewUncoveredBadges').innerHTML =
+            uncoveredIds.map(id =>
+              `<span style="display:inline-block;margin:1px 2px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:10px;font-family:monospace">${escapeHtml(id)}</span>`
+            ).join('');
+          document.getElementById('reviewGapsList').innerHTML =
+            coverageGaps.length
+              ? '<ul class="list-disc pl-4 space-y-0.5">' +
+                coverageGaps.map(g => `<li class="text-xs text-slate-600">${escapeHtml(g)}</li>`).join('') +
+                '</ul>'
+              : '';
+        } else {
+          covGapBlock.classList.add('hidden');
+        }
+      }
+
+      // Regenerate button — enable when there is anything to fix:
+      //   errors, warnings, or uncovered requirements (coverage gaps)
+      const canRegen = !approved && (errors + warnings + uncoveredCount) > 0;
+      const regenBtn = document.getElementById('btnRegenMudSpec');
+      regenBtn.disabled = !canRegen;
+      regenBtn.classList.toggle('ready', canRegen);
+      regenBtn.setAttribute('aria-disabled', String(!canRegen));
+      regenBtn.title = canRegen
+        ? 'Regenerate the MUD spec by applying the review fixes'
+        : approved
+          ? 'Spec is approved'
+          : 'No review fixes available yet';
+      const fixParts = [];
+      if (errors > 0)         fixParts.push(`${errors} error(s)`);
+      if (warnings > 0)       fixParts.push(`${warnings} warning(s)`);
+      if (uncoveredCount > 0) fixParts.push(`${uncoveredCount} uncovered requirement(s)`);
+      if (suggestions.length) fixParts.push(`${suggestions.length} suggestion(s)`);
+      document.getElementById('regenDescription').textContent = canRegen
+        ? `AI will fix ${fixParts.join(', ')}.`
+        : approved
+          ? 'Spec is approved — no regeneration needed.'
+          : 'No issues to fix.';
+    }
+
+    function renderReviewHistory() {
+      const history = state.reviewHistory;
+      if (!history.length) return;
+
+      document.getElementById('iterHistoryBox').classList.remove('hidden');
+      document.getElementById('iterHistoryCount').textContent = history.length;
+
+      const list = document.getElementById('reviewHistoryList');
+      list.innerHTML = [...history].reverse().map((entry, revIdx) => {
+        const isLatest = revIdx === 0;
+        const r = entry.review;
+        const errors   = r.error_count   || 0;
+        const warnings = r.warning_count || 0;
+        const approved = r.approved;
+        return `
+          <div class="history-item ${isLatest ? 'current-iter' : ''}">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="iter-badge ${isLatest ? 'current' : ''}">Iteration ${entry.iteration}</span>
+              <span class="text-[10px] font-semibold ${approved ? 'text-green-600' : 'text-amber-600'}">
+                ${approved ? '✓ Approved' : '⚠ Needs revision'}
+              </span>
+              <span class="ml-auto text-[10px] text-slate-400">${entry.timestamp}</span>
+            </div>
+            <div class="flex gap-3 text-[11px]">
+              <span class="text-red-500">${errors} err</span>
+              <span class="text-amber-500">${warnings} warn</span>
+              <span class="text-green-600">${r.coverage_pct || 0}% cov</span>
+              <button class="ml-auto text-blue-500 hover:underline text-[11px]"
+                onclick="restoreSpecSnapshot(${history.length - 1 - revIdx})">
+                View spec
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Restore a previous spec snapshot from history
+    function restoreSpecSnapshot(historyIdx) {
+      const entry = state.reviewHistory[historyIdx];
+      if (!entry) return;
+      renderMudSpec(entry.spec_snapshot, state.selectedModule?.swc_name || '');
+      toast(`Viewing spec from iteration ${entry.iteration}`);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  AI-DRIVEN REGENERATION  (Stage 2c)
+    // ════════════════════════════════════════════════════════
+
+    document.getElementById('btnRegenMudSpec').addEventListener('click', async () => {
+      await regenerateMudSpec();
+    });
+
+    function setRegenerating(active) {
+      const btn = document.getElementById('btnRegenMudSpec');
+      const lbl = document.getElementById('regenLabel');
+      const sp  = document.getElementById('regenSpinner');
+      btn.disabled = active;
+      lbl.textContent = active ? 'Regenerating…' : 'Regenerate Spec';
+      sp.classList.toggle('active', active);
+      document.getElementById('regenStatus').classList.toggle('hidden', !active);
+    }
+
+    async function regenerateMudSpec() {
+      const m = state.selectedModule;
+      if (!m || !state.mudSpec || !state.mudReview) {
+        toast('Run AI review first', true);
+        return;
+      }
+
+      setRegenerating(true);
+      document.getElementById('regenStatus').textContent =
+        `Fixing ${state.mudReview.error_count || 0} error(s) and ${state.mudReview.warning_count || 0} warning(s)…`;
+      setMudSpecGenerating(true);
+      clearAiStream(`Regenerating MUD spec for ${m.swc_name} (iteration ${state.mudIteration + 1})…`);
+      addActivityLog(`Regenerating spec for ${m.swc_name} (iteration ${state.mudIteration + 1})…`, 'info');
+      document.getElementById('mudSpecLoadingMsg').textContent =
+        `Regenerating MUD spec (iteration ${state.mudIteration + 1}) — applying AI review fixes…`;
+      setStatus(`Regenerating MUD spec for ${m.swc_name} (iteration ${state.mudIteration + 1})…`);
+
+      try {
+        const resp = await fetch(`${API}/modules/mud-spec/regenerate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            swc_name: m.swc_name,
+            asil: m.asil || 'QM',
+            requirements_text: getRequirementsText(),
+            current_spec_markdown: state.mudSpec,
+            review: state.mudReview,
+            temperature: 0.2,
+          }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let improvedMd = null;
+        let newIteration = state.mudIteration + 1;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const ev = JSON.parse(line.slice(6));
+                if (ev._final) {
+                  improvedMd = ev.mud_spec_markdown || '';
+                  newIteration = ev.iteration || newIteration;
+                } else if (ev._error) {
+                  throw new Error(ev.detail || 'Regeneration error');
+                } else {
+                  if (ev.partial_content) {
+                    const el = document.getElementById('aiStreamContent');
+                    if (el) el.textContent = ev.partial_content;
+                    state.aiStreamBuffer = ev.partial_content;
+                    const parent = el?.parentElement;
+                    if (parent) parent.scrollTop = parent.scrollHeight;
+                    openInfoTab('aistream');
+                  }
+                  if (ev.message) {
+                    document.getElementById('mudSpecLoadingMsg').textContent = ev.message;
+                    addActivityLog(ev.message, 'info');
+                  }
+                }
+              } catch (parseErr) {
+                if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
+              }
+            }
+          }
+        }
+        if (buffer.startsWith('data: ')) {
+          try {
+            const ev = JSON.parse(buffer.slice(6));
+            if (ev._final) { improvedMd = ev.mud_spec_markdown || ''; newIteration = ev.iteration || newIteration; }
+          } catch (_) {}
+        }
+
+        if (!improvedMd) throw new Error('No improved spec received from server');
+
+        // Advance iteration
+        const _prevSpec = state.mudSpec;
+        state.mudIteration = newIteration;
+        state.mudSpec = improvedMd;
+        state.activitySource = 'mud_spec';
+        state.mudReview = null; // clear stale review — user must re-review
+
+        addActivityLog(`Regeneration complete — iteration ${newIteration} (${improvedMd.length.toLocaleString()} chars)`, 'ok');
+
+        renderMudSpec(improvedMd, m.swc_name);
+        document.getElementById('mudSpecTitle').textContent =
+          `MUD Spec: ${m.swc_name} (iteration ${state.mudIteration})`;
+
+        // Hide review panel — it's stale until user runs review again
+        document.getElementById('reviewPanel').classList.add('hidden');
+        document.getElementById('btnReviewMudSpec').disabled = false;
+        document.getElementById('btnRegenMudSpec').disabled = true;
+        syncActivityGenerationAvailability();
+        document.getElementById('mudSpecStatus').textContent =
+          `Regenerated — iteration ${state.mudIteration} ready`;
+
+        setStatus(`Iteration ${state.mudIteration} ready — run AI Review to check improvements`);
+        toast(`Spec improved — iteration ${state.mudIteration} generated. Run AI Review to verify.`);
+
+      } catch (e) {
+        document.getElementById('regenStatus').textContent = 'Failed: ' + e.message;
+        toast('Regeneration failed: ' + e.message, true);
+        setStatus('Regeneration failed');
+      } finally {
+        setRegenerating(false);
+        setMudSpecGenerating(false);
+      }
+    }
+
+    // ── Use MUD Spec for Diagrams ────────────────────────────
+    document.getElementById('btnUseMudSpecForDiagrams').addEventListener('click', () => {
+      if (!state.mudSpec || !state.selectedModule) return;
+      state.activitySource = 'mud_spec';
+      document.getElementById('generationScopeMud').checked = true;
+      syncActivityGenerationAvailability();
+      showDiagramPanel();
+      toast(`Activity diagrams will now use ${state.selectedModule.swc_name} MUD spec as the flow source`);
+      setStatus(`Ready to generate activity from the MUD spec for ${state.selectedModule.swc_name}`);
+    });
+
+    // ── Download MUD Spec ────────────────────────────────────
+    document.getElementById('btnDownloadMudSpec').addEventListener('click', () => {
+      if (!state.mudSpec) return;
+      const name = state.selectedModule ? state.selectedModule.swc_name : 'mud_spec';
+      const blob = new Blob([state.mudSpec], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name}_MUD_Spec.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Sidebar export MUD Spec button
+    document.getElementById('btnExportMudSpecFile').addEventListener('click', () => {
+      document.getElementById('btnDownloadMudSpec').click();
+    });
+
+    // ── Guidelines status ────────────────────────────────────
+    async function initGuidelinesStatus() {
+      const statusEl = document.getElementById('guidelinesStatus');
+      const badge = document.getElementById('guidelinesBadge');
+      const filesEl = document.getElementById('guidelinesFiles');
+      try {
+        const r = await fetch(`${API}/guidelines/status`);
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        if (!d.enabled) {
+          statusEl.textContent = 'Disabled (MUD_GUIDELINES_ENABLED=false)';
+          statusEl.className = 'text-xs text-slate-400 mb-2';
+          return;
+        }
+        if (d.doc_count === 0) {
+          statusEl.textContent = 'No documents found in guidelines/';
+          statusEl.className = 'text-xs text-slate-400 mb-2';
+          badge.classList.add('hidden');
+        } else {
+          const mode = d.embedded ? ' · vector' : ' · keyword';
+          statusEl.textContent = `${d.doc_count} doc(s), ${d.chunk_count} chunks${mode}`;
+          statusEl.className = 'text-xs text-sky-600 mb-2';
+          badge.textContent = d.doc_count;
+          badge.classList.remove('hidden');
+          if (d.files && d.files.length > 0) {
+            filesEl.innerHTML = d.files.map(f =>
+              `<div class="truncate text-slate-500">${f}</div>`
+            ).join('');
+            filesEl.classList.remove('hidden');
+          }
+        }
+      } catch (e) {
+        statusEl.textContent = 'Status unavailable';
+        statusEl.className = 'text-xs text-slate-400 mb-2';
+      }
+    }
+
+    document.getElementById('btnClearGuidelinesCache').addEventListener('click', async () => {
+      const btn = document.getElementById('btnClearGuidelinesCache');
+      btn.disabled = true;
+      btn.textContent = 'Clearing...';
+      try {
+        const r = await fetch(`${API}/guidelines/clear-cache`, { method: 'POST' });
+        const d = await r.json();
+        toast(d.message || `Cleared ${d.deleted_count} cache file(s)`);
+        await initGuidelinesStatus();
+      } catch (e) {
+        toast('Clear failed: ' + e.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Clear Cache';
+      }
+    });
+
+    // ════════════════════════════════════════════════════════
+    //  ACTIVITY BAR
+    // ════════════════════════════════════════════════════════
+
+    function addActivityLog(msg, type = 'info') {
+      const list = document.getElementById('actLogList');
+      if (!list) return;
+      // Remove placeholder paragraph on first real entry
+      const ph = list.querySelector('p');
+      if (ph) ph.remove();
+      const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const div = document.createElement('div');
+      div.className = 'alog-entry';
+      div.innerHTML = `<span class="alog-time">${now}</span><span class="alog-msg alog-${type}">${escapeHtml(msg)}</span>`;
+      list.appendChild(div);
+      list.scrollTop = list.scrollHeight;
+      // Auto-switch to activity log unless user is watching AI stream
+      if (state.infoActiveTab !== 'aistream') openInfoTab('actlog');
+    }
 
     // ── Init ─────────────────────────────────────────────────
     checkHealth();
     setInterval(checkHealth, 30000);
+    initGuidelinesStatus();
 
     // ════════════════════════════════════════════════════════
     //  SETTINGS MODAL
@@ -1464,6 +4275,11 @@
         }
         if (d.confidence_threshold) document.getElementById('cfgConfidence').value = d.confidence_threshold;
         if (d.max_retries) document.getElementById('cfgRetries').value = d.max_retries;
+        // Initialise spec pipeline dropdown from server default
+        if (d.mud_spec_pipeline) {
+          const sel = document.getElementById('specPipelineMode');
+          if (sel) sel.value = d.mud_spec_pipeline;
+        }
       } catch { /* show defaults */ }
     }
 
@@ -1507,9 +4323,10 @@
       btn.disabled = true;
       btn.textContent = '⏳ Testing…';
       result.textContent = '';
+      addActivityLog(`Testing AI backend connection...`, 'ok');
 
       const ok = await _applyConfig(true);
-      if (!ok) { btn.disabled = false; btn.textContent = '🔌 Test Connection'; return; }
+      if (!ok) { btn.disabled = false; btn.textContent = 'Test Connection'; return; }
 
       try {
         const r = await fetch(`${API}/config/test`, { method: 'POST' });
@@ -1517,16 +4334,19 @@
         if (d.ok) {
           result.textContent = `✓ Connected! ${d.latency_ms}ms`;
           result.className = 'text-xs test-ok';
+          addActivityLog(`Testing AI backend connection... ✓ Connected in ${d.latency_ms}ms`, 'ok');
         } else {
           result.textContent = `✗ ${d.error || 'No response'}`;
           result.className = 'text-xs test-fail';
+          addActivityLog(`Testing AI backend connection... ✗ ${d.error || 'No response'}`, 'err');
         }
       } catch (e) {
         result.textContent = `✗ ${e.message}`;
         result.className = 'text-xs test-fail';
+        addActivityLog(`Testing AI backend connection... ✗ ${e.message}`, 'err');
       } finally {
         btn.disabled = false;
-        btn.textContent = '🔌 Test Connection';
+        btn.textContent = 'Test Connection';
       }
     }
 
@@ -1535,6 +4355,7 @@
       if (ok) {
         closeSettings();
         await checkHealth();
+        addActivityLog(`AI backend switched to ${activeBackend}`, 'ok');
         toast('AI backend switched successfully!');
       }
     }
@@ -1577,3 +4398,5 @@
 </body>
 
 </html>
+
+

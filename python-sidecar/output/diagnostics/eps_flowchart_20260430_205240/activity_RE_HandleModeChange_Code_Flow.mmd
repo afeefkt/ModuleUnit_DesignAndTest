@@ -1,0 +1,31 @@
+flowchart TD
+
+    N_01(["Start"])
+    N_02[/"Rte_Read_RP_IgnitionStatus(&l_u8Ignition)"/]
+    N_03{"l_u8Ignition == 1"}
+    N_04{{"Dem_SetEventStatus(...)"}}
+    N_05[["Watchdog update"]]
+    click N_05 navigateToSubDiagram "WdgM_UpdateAliveCounter"
+    N_06(["End"])
+
+    N_01 --> N_02
+    N_02 --> N_03
+    N_03 -->|Yes| N_04
+    N_03 -->|No| N_05
+    N_04 --> N_06
+    N_05 --> N_06
+
+    %% Node type styling
+    classDef rteCall fill:#d4e6f1,stroke:#2980b9,color:#000
+    classDef decision fill:#fdebd0,stroke:#e67e22,color:#000
+    classDef exception fill:#f5b7b1,stroke:#e74c3c,color:#000
+    classDef funcCall fill:#d5f5e3,stroke:#27ae60,color:#000
+    classDef initial fill:#d5dbdb,stroke:#566573,color:#000
+    classDef final fill:#566573,stroke:#2c3e50,color:#fff
+    classDef action fill:#ebf5fb,stroke:#3498db,color:#000
+    class N_01 initial
+    class N_02 rteCall
+    class N_03 decision
+    class N_04 exception
+    class N_05 funcCall
+    class N_06 final

@@ -1,0 +1,189 @@
+{
+  "thinking": [
+    "Stage 1: Identified 2 SWCs from 3 requirements: SWC_ElectricPowerSteering, SWC_TorqueSensorCrossCheck",
+    "Stage 2 SWC_ElectricPowerSteering: 3 port(s) → RP_TorqueSensor, RP_VehicleSpeed, PP_MotorCurrent",
+    "Stage 3 SWC_ElectricPowerSteering: 1 runnable(s) → RE_ControlTorque",
+    "Stage 2 SWC_TorqueSensorCrossCheck: 3 port(s) → RP_TorqueSensor, RP_TorqueSensorRedundant, RE_ControlTorque",
+    "Stage 3 SWC_TorqueSensorCrossCheck: 1 runnable(s) → RE_TorqueSensorCrossCheck"
+  ],
+  "architecture_summary": "System decomposed into 2 SWC(s): SWC_ElectricPowerSteering, SWC_TorqueSensorCrossCheck.",
+  "elaborated": [
+    {
+      "req_id": "REQ-EPS-002",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_ControlTorque"
+        ],
+        "ports": [
+          "RP_TorqueSensor",
+          "RP_VehicleSpeed",
+          "PP_MotorCurrent"
+        ],
+        "interfaces": [
+          "IF_SR_TorqueSensor",
+          "IF_SR_MotorControl",
+          "IF_SR_VehicleSpeed"
+        ]
+      },
+      "logic_flow": "Read driver torque from RP_TorqueSensor → Read vehicle speed from RP_VehicleSpeed → Compute speed-dependent assist torque → Calculate final motor current",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_ControlTorque"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-010",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_ControlTorque"
+        ],
+        "ports": [
+          "RP_TorqueSensor",
+          "RP_VehicleSpeed",
+          "PP_MotorCurrent"
+        ],
+        "interfaces": [
+          "IF_SR_TorqueSensor",
+          "IF_SR_MotorControl",
+          "IF_SR_VehicleSpeed"
+        ]
+      },
+      "logic_flow": "Read driver torque from RP_TorqueSensor → Read vehicle speed from RP_VehicleSpeed → Compute speed-dependent assist torque → Calculate final motor current",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_ControlTorque"
+      },
+      "safety_level": "not_safety_relevant"
+    },
+    {
+      "req_id": "REQ-EPS-041",
+      "entities": {
+        "swc": "SWC_TorqueSensorCrossCheck",
+        "runnables": [
+          "RE_TorqueSensorCrossCheck"
+        ],
+        "ports": [
+          "RP_TorqueSensor",
+          "RP_TorqueSensorRedundant",
+          "RE_ControlTorque"
+        ],
+        "interfaces": [
+          "IF_SR_TorqueSensor",
+          "IF_SR_ControlTorque"
+        ]
+      },
+      "logic_flow": "Read RP_TorqueSensor value → Read RP_TorqueSensorRedundant value → Calculate delta = |RP_TorqueSensor - RP_TorqueSensorRedundant| → If delta > SENSOR_DELTA_LIMIT_NM (2.0 Nm)",
+      "diagram_hints": {
+        "swc": "SWC_TorqueSensorCrossCheck",
+        "primary_runnable": "RE_TorqueSensorCrossCheck"
+      },
+      "safety_level": "ASIL-D"
+    }
+  ],
+  "swc_list": [
+    {
+      "name": "SWC_ElectricPowerSteering",
+      "req_ids": [
+        "REQ-EPS-002",
+        "REQ-EPS-010"
+      ],
+      "purpose": "Handles control torque computation and cyclic execution."
+    },
+    {
+      "name": "SWC_TorqueSensorCrossCheck",
+      "req_ids": [
+        "REQ-EPS-041"
+      ],
+      "purpose": "Checks the plausibility of the torque sensor readings."
+    }
+  ],
+  "swc_ports": {
+    "SWC_ElectricPowerSteering": [
+      {
+        "port": "RP_TorqueSensor",
+        "direction": "required",
+        "interface": "IF_SR_TorqueSensor",
+        "data_type": "int16",
+        "description": "Driver torque input from sensor"
+      },
+      {
+        "port": "RP_VehicleSpeed",
+        "direction": "required",
+        "interface": "IF_SR_VehicleSpeed",
+        "data_type": "uint16",
+        "description": "Vehicle speed input from sensor"
+      },
+      {
+        "port": "PP_MotorCurrent",
+        "direction": "provided",
+        "interface": "IF_SR_MotorControl",
+        "data_type": "int16",
+        "description": "Computed assist torque to be applied to the motor"
+      }
+    ],
+    "SWC_TorqueSensorCrossCheck": [
+      {
+        "port": "RP_TorqueSensor",
+        "direction": "required",
+        "interface": "IF_SR_TorqueSensor",
+        "data_type": "float32",
+        "description": "Torque sensor value"
+      },
+      {
+        "port": "RP_TorqueSensorRedundant",
+        "direction": "required",
+        "interface": "IF_SR_TorqueSensor",
+        "data_type": "float32",
+        "description": "Redundant torque sensor value"
+      },
+      {
+        "port": "RE_ControlTorque",
+        "direction": "provided",
+        "interface": "IF_SR_ControlTorque",
+        "data_type": "float32",
+        "description": "Control torque value"
+      }
+    ]
+  },
+  "swc_runnables": {
+    "SWC_ElectricPowerSteering": [
+      {
+        "runnable": "RE_ControlTorque",
+        "trigger": "cyclic",
+        "period_ms": 5,
+        "pseudocode": [
+          "Read driver torque from RP_TorqueSensor",
+          "Read vehicle speed from RP_VehicleSpeed",
+          "Compute speed-dependent assist torque",
+          "Calculate final motor current",
+          "Write final motor current to PP_MotorCurrent"
+        ]
+      }
+    ],
+    "SWC_TorqueSensorCrossCheck": [
+      {
+        "runnable": "RE_TorqueSensorCrossCheck",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read RP_TorqueSensor value",
+          "Read RP_TorqueSensorRedundant value",
+          "Calculate delta = |RP_TorqueSensor - RP_TorqueSensorRedundant|",
+          "If delta > SENSOR_DELTA_LIMIT_NM (2.0 Nm)",
+          "    Call Dem_SetEventStatus(DTC_TORQUE_SENSOR_PLAUSIBILITY, FAILED)",
+          "    Set l_f32AssistTorque = 0.0F"
+        ]
+      }
+    ]
+  },
+  "req_hash": "f6139129c12393d0",
+  "parse_ok": true,
+  "status": "ok",
+  "source": "chunked_generation",
+  "created_at": "2026-04-26T09:20:50.564020+00:00",
+  "elaborated_count": 3,
+  "quality_score": 1.0
+}

@@ -1,0 +1,201 @@
+name: Generic C Activity / Code-Flow Generator
+version: "2.0"
+diagram_type: "activity"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software engineer generating activity/code-flow diagrams for generic C projects.
+  Produce pseudo-code level control flow from requirements — one diagram per major function.
+
+  Activity label style: {{ activity_label_style | default("pseudocode") }}.
+
+  NODE TYPES AND REQUIRED NAME FORMAT:
+
+    "initial"       — name = "Start" or "Start (<trigger>)". Always first node.
+    "final"         — name = "End" or "Return <expr>". Always last node.
+
+    "action"        — C assignment or operation.
+                      When style is "pseudocode":   name = short English step (3-6 words).
+                      When style is "c_pseudocode": name = C expression, e.g. "output = gain * input".
+                      Set description = brief explanation (3-8 words).
+
+    "call"          — External function, API, or HAL call.
+                      name = call signature, e.g. "HAL_ADC_Read(&val)" or "UART_Send(buf, len)".
+                      Set description = brief English explanation.
+
+    "function_call" — Call to another function in the same module.
+                      name = C call with return, e.g. "result = CalcOutput(a, b)".
+                      Set callee = "FunctionName" (no parentheses).
+                      MANDATORY: provide a matching sub_diagram for every function_call node.
+
+    "decision"      — Boolean condition. Diamond shape.
+                      name = C boolean expression, e.g. "val > MAX_LIMIT".
+                      Must have >=2 outgoing edges, each with a "guard" field, e.g. "[val > MAX_LIMIT]".
+
+    "merge"         — name = "merge". Converges decision branches.
+    "exception"     — Error or fault path. name = error label or handler call.
+    "fork"          — Parallel split. name = "fork".
+    "join"          — Parallel join. name = "join".
+
+  JSON FIELD RULES (the parser is strict):
+    - Nodes: use "node_type" (NOT "type", NOT "nodeType")
+    - ALL nodes need: id, name, node_type, trace_reqs (>=1 req ID), confidence, description
+    - function_call nodes also need: callee (function name only, no parentheses)
+    - decision nodes: >=2 outgoing edges each with a "guard" field
+    - Node IDs: N_01, N_02 ... (two-digit, zero-padded)
+    - Edge IDs: E_01, E_02 ... or E_03a/E_03b for decision branches
+
+  MULTIPLE FUNCTIONS — ONE CHART EACH:
+    Each function is its own separate flowchart. A function calling a helper produces:
+      - Parent diagram for the calling function
+      - sub_diagram inside parent.sub_diagrams[] for each helper function
+    Nested helpers produce their own sub_diagram inside the helper's sub_diagrams[].
+    EVERY function_call node MUST have a matching sub_diagram — no exceptions.
+    Keep each chart 5–15 nodes; nest further for complex logic.
+
+  STANDARD FLOW ORDER: initial → call(read inputs) → decision(validate) → action/function_call(compute) → call(write/output) → final
+
+  OUTPUT: Return ONE JSON object. Output ONLY JSON — no markdown, no explanation.
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagrams": [{
+      "diagram_type": "activity",
+      "name": "FunctionName Flow",
+      "source_requirements": ["REQ-001"],
+      "nodes": [
+        {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point"},
+        {"id":"N_02","name":"val > MAX_LIMIT","node_type":"decision","trace_reqs":["REQ-001"],"confidence":0.90,"description":"Validate input range"},
+        {"id":"N_03","name":"output = val * GAIN","node_type":"action","trace_reqs":["REQ-001"],"confidence":0.85,"description":"Scale value by gain"},
+        {"id":"N_04","name":"output = 0","node_type":"action","trace_reqs":["REQ-001"],"confidence":0.85,"description":"Safe default on out-of-range"},
+        {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Exit"}
+      ],
+      "edges": [
+        {"id":"E_01","source":"N_01","target":"N_02"},
+        {"id":"E_02a","source":"N_02","target":"N_04","guard":"[val > MAX_LIMIT]"},
+        {"id":"E_02b","source":"N_02","target":"N_03","guard":"[val <= MAX_LIMIT]"},
+        {"id":"E_03","source":"N_03","target":"N_05"},
+        {"id":"E_04","source":"N_04","target":"N_05"}
+      ],
+      "sub_diagrams": [],
+      "provenance": {"version":"2.0","confidence":0.90}
+    }],
+    "analyzed_requirements": ["REQ-001"]
+  }
+
+user_prompt: |
+  Generate activity flowcharts for {{ module_context or "the module" }}.
+
+  Style: {{ activity_label_style | default("pseudocode") }}.
+  For EACH major function, produce one parent flowchart.
+  For EACH called helper function, produce a sub_diagram nested inside the caller's sub_diagrams[].
+
+  REQUIREMENTS ({{ requirement_count }} total):
+  {{ requirements }}
+
+  Output ONE JSON object only. No text before or after.
+
+few_shot_examples:
+  # ── Example 1: Validate → compute → return ─────────────────────────────────
+  - input: |
+      REQ-001: Module SensorFilter shall implement FilterSensor(raw_val) that reads a raw
+               sensor value, validates the range [0.0, 100.0], applies a low-pass filter
+               with coefficient ALPHA (static state), and returns the filtered value.
+               On out-of-range input, return the previous filtered value unchanged.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "FilterSensor Flow",
+          "source_requirements": ["REQ-001"],
+          "nodes": [
+            {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point"},
+            {"id":"N_02","name":"raw_val < 0.0 OR raw_val > 100.0","node_type":"decision","trace_reqs":["REQ-001"],"confidence":0.90,"description":"Validate sensor input range"},
+            {"id":"N_03","name":"return prev_filtered","node_type":"action","trace_reqs":["REQ-001"],"confidence":0.85,"description":"Return safe previous value on bad input"},
+            {"id":"N_04","name":"filtered = ALPHA * raw_val + (1.0 - ALPHA) * prev_filtered","node_type":"action","trace_reqs":["REQ-001"],"confidence":0.88,"description":"Apply low-pass filter"},
+            {"id":"N_05","name":"prev_filtered = filtered","node_type":"action","trace_reqs":["REQ-001"],"confidence":0.85,"description":"Update state for next cycle"},
+            {"id":"N_06","name":"End","node_type":"final","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Return filtered value"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02a","source":"N_02","target":"N_03","guard":"[raw_val < 0.0 OR raw_val > 100.0]"},
+            {"id":"E_02b","source":"N_02","target":"N_04","guard":"[raw_val in [0.0, 100.0]]"},
+            {"id":"E_03","source":"N_03","target":"N_06"},
+            {"id":"E_04","source":"N_04","target":"N_05"},
+            {"id":"E_05","source":"N_05","target":"N_06"}
+          ],
+          "sub_diagrams": [],
+          "provenance": {"version":"2.0","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-001"]
+      }
+
+  # ── Example 2: Caller + helper → nested sub_diagram ───────────────────────
+  - input: |
+      REQ-020: MotorCtrl shall implement MotorCtrl_Run(setpoint) that reads actual speed
+               via HAL_Speed_Read, calls MotorCtrl_CalcPWM(setpoint, actual) for the duty
+               cycle, then writes it via HAL_PWM_Set(duty).
+      REQ-021: MotorCtrl_CalcPWM: error = setpoint - actual. integral += error * DT.
+               output = KP * error + KI * integral. Clamp output to [0.0, 100.0].
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "MotorCtrl_Run Flow",
+          "source_requirements": ["REQ-020","REQ-021"],
+          "nodes": [
+            {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Entry point"},
+            {"id":"N_02","name":"HAL_Speed_Read(&actual)","node_type":"call","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Read actual motor speed from hardware"},
+            {"id":"N_03","name":"duty = MotorCtrl_CalcPWM(setpoint, actual)","node_type":"function_call","callee":"MotorCtrl_CalcPWM","trace_reqs":["REQ-020","REQ-021"],"confidence":0.90,"description":"Compute PWM duty cycle via PID helper"},
+            {"id":"N_04","name":"HAL_PWM_Set(duty)","node_type":"call","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Write PWM duty cycle to hardware"},
+            {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-020"],"confidence":0.95,"description":"Exit"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03","source":"N_03","target":"N_04"},
+            {"id":"E_04","source":"N_04","target":"N_05"}
+          ],
+          "sub_diagrams": [{
+            "diagram_type": "activity",
+            "name": "MotorCtrl_CalcPWM Flow",
+            "function_name": "MotorCtrl_CalcPWM",
+            "parent_diagram": "MotorCtrl_Run Flow",
+            "source_requirements": ["REQ-021"],
+            "nodes": [
+              {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-021"],"confidence":0.95,"description":"Entry point"},
+              {"id":"N_02","name":"error = setpoint - actual","node_type":"action","trace_reqs":["REQ-021"],"confidence":0.90,"description":"Compute PID error term"},
+              {"id":"N_03","name":"integral += error * DT","node_type":"action","trace_reqs":["REQ-021"],"confidence":0.85,"description":"Accumulate integral term"},
+              {"id":"N_04","name":"output = KP * error + KI * integral","node_type":"action","trace_reqs":["REQ-021"],"confidence":0.85,"description":"Compute PID output"},
+              {"id":"N_05","name":"output > 100.0","node_type":"decision","trace_reqs":["REQ-021"],"confidence":0.88,"description":"Check upper clamp bound"},
+              {"id":"N_06","name":"output = 100.0","node_type":"action","trace_reqs":["REQ-021"],"confidence":0.85,"description":"Clamp to maximum duty"},
+              {"id":"N_07","name":"output < 0.0","node_type":"decision","trace_reqs":["REQ-021"],"confidence":0.88,"description":"Check lower clamp bound"},
+              {"id":"N_08","name":"output = 0.0","node_type":"action","trace_reqs":["REQ-021"],"confidence":0.85,"description":"Clamp to minimum duty"},
+              {"id":"N_09","name":"merge","node_type":"merge","trace_reqs":["REQ-021"],"confidence":0.85,"description":"Rejoin after clamping"},
+              {"id":"N_10","name":"End","node_type":"final","trace_reqs":["REQ-021"],"confidence":0.95,"description":"Return clamped output"}
+            ],
+            "edges": [
+              {"id":"E_01","source":"N_01","target":"N_02"},
+              {"id":"E_02","source":"N_02","target":"N_03"},
+              {"id":"E_03","source":"N_03","target":"N_04"},
+              {"id":"E_04","source":"N_04","target":"N_05"},
+              {"id":"E_05a","source":"N_05","target":"N_06","guard":"[output > 100.0]"},
+              {"id":"E_05b","source":"N_05","target":"N_07","guard":"[output <= 100.0]"},
+              {"id":"E_06","source":"N_06","target":"N_09"},
+              {"id":"E_07a","source":"N_07","target":"N_08","guard":"[output < 0.0]"},
+              {"id":"E_07b","source":"N_07","target":"N_09","guard":"[output >= 0.0]"},
+              {"id":"E_08","source":"N_08","target":"N_09"},
+              {"id":"E_09","source":"N_09","target":"N_10"}
+            ],
+            "sub_diagrams": [],
+            "provenance": {"version":"2.0","confidence":0.88}
+          }],
+          "provenance": {"version":"2.0","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-020","REQ-021"]
+      }

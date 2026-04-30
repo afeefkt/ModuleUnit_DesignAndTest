@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class DiagramType(str, Enum):
@@ -306,14 +306,110 @@ class ActivityNode(BaseModel):
     trace_reqs: list[str]   = Field(default_factory=list)
     confidence: float        = Field(0.8, ge=0.0, le=1.0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_fields(cls, data: dict) -> dict:
+        """Accept LLM variants: 'type'/'nodeType' → 'node_type', strip suffixes."""
+        if not isinstance(data, dict):
+            return data
+
+        # Map type / nodeType → node_type if node_type is missing
+        if "node_type" not in data:
+            for alt_key in ("nodeType", "type"):
+                if alt_key in data:
+                    data["node_type"] = data.pop(alt_key)
+                    break
+
+        # Normalize node_type value: strip suffixes, lowercase, apply aliases
+        raw = data.get("node_type")
+        if isinstance(raw, str):
+            norm = raw.strip().lower().replace("-", "_").replace(" ", "_")
+            # Strip trailing _node / node suffix (e.g. InitialNode → initial)
+            if norm.endswith("_node"):
+                norm = norm[:-5]
+            elif norm.endswith("node"):
+                norm = norm[:-4]
+            _ALIASES = {
+                "activity": "action", "process": "action",
+                "operation": "action", "step": "action",
+                "functioncall": "function_call", "function": "function_call",
+                "branch": "decision", "condition": "decision",
+                "error": "exception", "fault": "exception",
+                "start": "initial", "begin": "initial",
+                "end": "final", "stop": "final", "terminate": "final",
+            }
+            norm = _ALIASES.get(norm, norm)
+            data["node_type"] = norm
+
+        # Derive name from label/title/description if missing
+        if not data.get("name"):
+            for alt in ("label", "title"):
+                if data.get(alt):
+                    data["name"] = data[alt]
+                    break
+            else:
+                data.setdefault("name", data.get("description", "Node"))
+
+        # Coerce qualitative confidence strings ("high"/"medium"/"low" etc.)
+        # — small local models often emit these instead of a float in [0,1].
+        conf = data.get("confidence")
+        if isinstance(conf, str):
+            key = conf.strip().lower().rstrip("%")
+            _CONF_WORDS = {
+                "very high": 0.95, "high": 0.90, "good": 0.85,
+                "medium": 0.75, "med": 0.75, "moderate": 0.70,
+                "fair": 0.65, "low": 0.55, "very low": 0.40,
+                "unknown": 0.50, "n/a": 0.50, "": 0.70,
+            }
+            if key in _CONF_WORDS:
+                data["confidence"] = _CONF_WORDS[key]
+            else:
+                # Try to parse numeric string ("0.9", "90", "90%")
+                try:
+                    val = float(key)
+                    if val > 1.0:    # treat 90 / 90% as percentage
+                        val = val / 100.0
+                    data["confidence"] = max(0.0, min(1.0, val))
+                except ValueError:
+                    data["confidence"] = 0.70  # safe default
+
+        return data
+
+
+_edge_counter = 0  # module-level counter for auto-generating edge IDs
+
+
+def _next_edge_id() -> str:
+    global _edge_counter
+    _edge_counter += 1
+    return f"E_{_edge_counter:02d}"
+
 
 class ActivityEdge(BaseModel):
     """A directed edge between two activity nodes."""
-    id: str = Field(..., description="Unique edge ID, e.g. E_01")
+    id: str = Field(default_factory=_next_edge_id, description="Unique edge ID, e.g. E_01")
     source: str = Field(..., description="Source ActivityNode.id")
     target: str = Field(..., description="Target ActivityNode.id")
     guard: Optional[str] = Field(None, description="Guard condition shown on arrow, e.g. [speed > 40]")
     label: Optional[str] = Field(None, description="Alternative edge label when no guard")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_fields(cls, data: dict) -> dict:
+        """Accept LLM variants: 'from'→'source', 'to'→'target', 'source_id'→'source'."""
+        if not isinstance(data, dict):
+            return data
+        if "source" not in data:
+            for alt in ("from", "source_id", "src"):
+                if alt in data:
+                    data["source"] = data.pop(alt)
+                    break
+        if "target" not in data:
+            for alt in ("to", "target_id", "dst", "dest"):
+                if alt in data:
+                    data["target"] = data.pop(alt)
+                    break
+        return data
 
 
 class ActivityDiagram(BaseModel):
