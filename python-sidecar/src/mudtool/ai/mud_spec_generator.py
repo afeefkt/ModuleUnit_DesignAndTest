@@ -24,7 +24,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from mudtool.ai.section7_normalizer import (
     Section7NormalizationResult,
@@ -269,27 +269,37 @@ YOUR JOB — STRICT RULES:
 3. If YES → output the corrected version of that line/block, applying ONLY the listed fix.
 4. For UNCOVERED REQUIREMENTS: ADD a new numbered step to Section 7 of the most relevant
    runnable's pseudo-code (do NOT delete or modify existing steps; do NOT add new runnables).
-5. NEVER add sections, ports, or runnables that are not explicitly requested by the FIX LIST.
-6. NEVER rephrase, "improve clarity", or "polish" lines that have no listed issue.
-7. The OUTPUT line count MUST be ≥ 95% of the CURRENT SPEC line count (you only ADD missing
+5. WARNINGS are mandatory quality fixes. Treat warning items exactly like errors.
+6. Section 7 pseudo-code fixes are highest priority because they directly affect activity diagrams.
+7. NEVER add sections, ports, or runnables that are not explicitly requested by the FIX LIST.
+8. NEVER rephrase, "improve clarity", or "polish" lines that have no listed issue.
+9. The OUTPUT line count MUST be >= 95% of the CURRENT SPEC line count (you only ADD missing
    logic for uncovered reqs; you do NOT delete or shrink anything).
-8. Output ONLY the complete patched Markdown — no JSON, no code fences, no commentary.
+10. Output ONLY the complete patched Markdown — no JSON, no code fences, no commentary.
 
 VERIFICATION CHECK (do this in your head before responding):
   - Did I copy every line not in the FIX LIST verbatim? If no → start over.
-  - Did I add a step for every UNCOVERED requirement? If no → start over.
+  - Did I satisfy every FIX MANIFEST acceptance check? If no → start over.
   - Did I keep the same 7 top-level sections? If no → start over.
 """
 
 _REGEN_USER_PROMPT_TMPL = """You are patching a MUD specification. Apply ONLY the fixes listed below.
 Copy all unchanged sections VERBATIM from the current spec.
 
-FIX LIST for {swc_name} (iteration {iteration}, current coverage {coverage_pct}%):
+══════════════════════════════════════════════════════════
+MANDATORY FIX CHECKLIST for {swc_name} (iteration {iteration}):
+You MUST address EVERY item below — none may be skipped.
+WARNINGS are mandatory quality fixes — treat them identically to errors.
+══════════════════════════════════════════════════════════
+{mandatory_checklist}
+══════════════════════════════════════════════════════════
+
+FIX LIST — full detail (current coverage: {coverage_pct}%):
 
 ERRORS ({error_count}):
 {errors_text}
 
-WARNINGS ({warning_count}):
+WARNINGS ({warning_count}) — ALL MANDATORY, SAME PRIORITY AS ERRORS:
 {warnings_text}
 
 SUGGESTIONS ({suggestion_count}):
@@ -300,6 +310,9 @@ UNCOVERED REQUIREMENTS — must add logic for these to Section 7 ({uncovered_cou
 
 COVERAGE GAPS:
 {coverage_gaps_text}
+
+STRICT FIX MANIFEST — every item below is required:
+{fix_manifest_text}
 
 REQUIREMENTS (context only — do not introduce content beyond the FIX LIST above):
 {requirements_text}
@@ -386,6 +399,206 @@ class SpecReviewResult:
 
 
 # ── Generator class ───────────────────────────────────────────────────────────
+
+def _stable_slug(text: str, *, limit: int = 36) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    return (slug[:limit].strip("-") or "item")
+
+
+def review_issue_fingerprint(item: ReviewIssue | dict | str, *, prefix: str = "issue") -> str:
+    """Stable key for matching repeated review findings across iterations."""
+    if isinstance(item, ReviewIssue):
+        severity = item.severity
+        section = item.section
+        message = item.message
+    elif isinstance(item, dict):
+        severity = str(item.get("severity", prefix))
+        section = str(item.get("section", ""))
+        message = str(item.get("message", item.get("text", "")))
+    else:
+        severity = prefix
+        section = ""
+        message = str(item)
+    normalized = " ".join(f"{severity} {section} {message}".lower().split())
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+    return f"{prefix}:{normalized}"
+
+
+def build_fix_manifest(review: SpecReviewResult) -> list[dict[str, str]]:
+    """Convert review output into required, actionable regeneration fixes."""
+    items: list[dict[str, str]] = []
+
+    for idx, issue in enumerate(review.issues, start=1):
+        severity = (issue.severity or "info").lower()
+        required = severity in {"error", "warning"}
+        fix_id = f"{severity.upper()}-{idx:03d}-{_stable_slug(issue.section or issue.message)}"
+        action = (
+            f"Fix {severity} in section {issue.section or '?'}: {issue.message}"
+            if required else
+            f"Apply information item in section {issue.section or '?'} if it improves traceability: {issue.message}"
+        )
+        items.append({
+            "id": fix_id,
+            "kind": "issue",
+            "severity": severity,
+            "section": issue.section or "?",
+            "message": issue.message,
+            "required_action": action,
+            "acceptance_check": f"Reviewer no longer reports: {issue.message}",
+            "fingerprint": review_issue_fingerprint(issue, prefix="issue"),
+            "required": "yes" if required else "no",
+        })
+
+    for idx, suggestion in enumerate(review.suggestions, start=1):
+        fix_id = f"SUG-{idx:03d}-{_stable_slug(suggestion)}"
+        items.append({
+            "id": fix_id,
+            "kind": "suggestion",
+            "severity": "warning",
+            "section": "review",
+            "message": suggestion,
+            "required_action": suggestion,
+            "acceptance_check": "The suggested change is visible in the relevant MUD spec section.",
+            "fingerprint": review_issue_fingerprint(suggestion, prefix="suggestion"),
+            "required": "yes",
+        })
+
+    for idx, req_id in enumerate(review.uncovered_req_ids, start=1):
+        gap = review.coverage_gaps[idx - 1] if idx - 1 < len(review.coverage_gaps) else ""
+        fix_id = f"COV-{idx:03d}-{_stable_slug(req_id, limit=24)}"
+        items.append({
+            "id": fix_id,
+            "kind": "coverage_gap",
+            "severity": "warning",
+            "section": "7",
+            "message": f"{req_id}: {gap}".strip(),
+            "required_action": (
+                f"Add or update Section 7 pseudo-code so requirement {req_id} is explicitly covered. {gap}".strip()
+            ),
+            "acceptance_check": f"Requirement {req_id} is absent from uncovered_req_ids in the next review.",
+            "fingerprint": review_issue_fingerprint(
+                {"severity": "coverage", "section": req_id, "message": gap},
+                prefix="coverage",
+            ),
+            "required": "yes",
+        })
+
+    return items
+
+
+def format_fix_manifest(manifest: list[dict[str, str]]) -> str:
+    if not manifest:
+        return "  (none)"
+    _sev_prefix = {
+        "error":    "❌ REQUIRED",
+        "warning":  "⚠ MANDATORY",
+        "coverage": "⚠ MANDATORY",
+        "info":     "💡 OPTIONAL",
+    }
+    lines: list[str] = []
+    for item in manifest:
+        prefix = _sev_prefix.get(item.get("severity", "info"), "⚠ MANDATORY")
+        lines.append(
+            f"- {item['id']} {prefix} | section: {item['section']} | required={item['required']}"
+        )
+        lines.append(f"  Problem:         {item['message']}")
+        lines.append(f"  Required action: {item['required_action']}")
+        lines.append(f"  Done when:       {item['acceptance_check']}")
+    return "\n".join(lines)
+
+
+def review_fix_fingerprints(review: SpecReviewResult) -> set[str]:
+    fingerprints: set[str] = set()
+    for issue in review.issues:
+        if (issue.severity or "").lower() in {"error", "warning"}:
+            fingerprints.add(review_issue_fingerprint(issue, prefix="issue"))
+    for idx, req_id in enumerate(review.uncovered_req_ids):
+        gap = review.coverage_gaps[idx] if idx < len(review.coverage_gaps) else ""
+        fingerprints.add(
+            review_issue_fingerprint(
+                {"severity": "coverage", "section": req_id, "message": gap},
+                prefix="coverage",
+            )
+        )
+    return fingerprints
+
+
+def compare_review_results(before: SpecReviewResult, after: SpecReviewResult) -> dict[str, Any]:
+    before_keys = review_fix_fingerprints(before)
+    after_keys = review_fix_fingerprints(after)
+    remaining = sorted(before_keys & after_keys)
+    resolved = sorted(before_keys - after_keys)
+    return {
+        "initial_fix_count": len(before_keys),
+        "resolved_issue_count": len(resolved),
+        "repeated_issue_count": len(remaining),
+        "remaining_fingerprints": remaining,
+        "resolved_fingerprints": resolved,
+        "post_issue_count": after.error_count + after.warning_count + len(after.uncovered_req_ids),
+        "quality_status": "pass" if after.approved and after.warning_count == 0 else "needs_fix",
+    }
+
+
+def build_unresolved_review(
+    comparison: dict,
+    post_review: SpecReviewResult,
+) -> SpecReviewResult:
+    """Return a SpecReviewResult containing ONLY the issues that were NOT fixed.
+
+    Uses ``comparison["remaining_fingerprints"]`` from ``compare_review_results()``
+    to filter ``post_review.issues`` to just the stuck items so that the repair
+    retry can focus exclusively on them rather than re-processing all issues.
+
+    If nothing is repeated the original ``post_review`` is returned unchanged.
+    """
+    remaining_fps = set(comparison.get("remaining_fingerprints", []))
+    if not remaining_fps:
+        return post_review
+
+    filtered_issues = [
+        issue for issue in post_review.issues
+        if review_issue_fingerprint(issue, prefix="issue") in remaining_fps
+    ]
+    filtered_uncovered: list[str] = []
+    filtered_gaps: list[str] = []
+    for idx, req_id in enumerate(post_review.uncovered_req_ids):
+        gap = post_review.coverage_gaps[idx] if idx < len(post_review.coverage_gaps) else ""
+        fp = review_issue_fingerprint(
+            {"severity": "coverage", "section": req_id, "message": gap},
+            prefix="coverage",
+        )
+        if fp in remaining_fps:
+            filtered_uncovered.append(req_id)
+            filtered_gaps.append(gap)
+
+    return SpecReviewResult(
+        approved=post_review.approved,
+        coverage_pct=post_review.coverage_pct,
+        issues=filtered_issues,
+        suggestions=[],           # don't repeat suggestions on repair attempt
+        uncovered_req_ids=filtered_uncovered,
+        coverage_gaps=filtered_gaps,
+        iteration=post_review.iteration,
+    )
+
+
+def strip_fix_coverage_block(markdown: str) -> str:
+    """Remove accidental model-emitted fix coverage notes from user-visible spec."""
+    text = markdown or ""
+    text = re.sub(
+        r"\n{0,2}<!--\s*FIX COVERAGE[\s\S]*?-->\s*",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\n{0,2}#{1,4}\s*Fix Coverage[\s\S]*?(?=\n#{1,4}\s+\S|\Z)",
+        "\n",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text.strip()
+
 
 class MudSpecGenerator:
     """Generates a Module Unit Design spec Markdown for a single SWC.
@@ -678,10 +891,11 @@ class MudSpecGenerator:
         Returns:
             SpecReviewResult with approved flag, coverage%, full issue list, and counts.
         """
-        # Truncate inputs so the reviewer prompt stays within 7b model context limits.
-        # The reviewer only needs enough to assess coverage + identify structural issues.
-        _MAX_REQ_CHARS = 3000
-        _MAX_SPEC_CHARS = 4000
+        # Truncate inputs so the reviewer prompt stays within model context limits.
+        # Limits raised: real AUTOSAR specs are 8k-15k chars; truncating at 4k causes
+        # the reviewer to miss issues in the tail and produce incomplete coverage reports.
+        _MAX_REQ_CHARS = 6000
+        _MAX_SPEC_CHARS = 10000
         req_text_trimmed = (
             requirements_text[:_MAX_REQ_CHARS] + "\n…[truncated]"
             if len(requirements_text) > _MAX_REQ_CHARS else requirements_text
@@ -729,6 +943,7 @@ class MudSpecGenerator:
         review: SpecReviewResult,
         temperature: float = 0.0,
         progress_callback=None,
+        repair_attempt: bool = False,
     ) -> str:
         """Regenerate an improved MUD spec by fixing all issues from the review report.
 
@@ -747,6 +962,8 @@ class MudSpecGenerator:
             review:                 SpecReviewResult from review_spec() on current spec
             temperature:            AI sampling temperature
             progress_callback:      Optional callable(dict) for SSE progress events
+            repair_attempt:         True when this is a retry targeting only unresolved
+                                    issues — adds escalation header to system prompt.
 
         Returns:
             Improved MUD spec as a Markdown string.
@@ -764,6 +981,7 @@ class MudSpecGenerator:
 
         # Build human-readable issue blocks
         by_sev = review.issues_by_severity()
+        fix_manifest = build_fix_manifest(review)
 
         def _fmt_issues(issues: list[ReviewIssue]) -> str:
             if not issues:
@@ -787,6 +1005,29 @@ class MudSpecGenerator:
             if review.coverage_gaps else "  (none)"
         )
 
+        # Build the compact numbered mandatory checklist shown at the very top of
+        # the prompt so small models encounter the highest-priority items first.
+        mandatory_items: list[str] = []
+        for issue in by_sev.get("error", []):
+            sev_tag = "❌ ERROR"
+            mandatory_items.append(
+                f"  [{len(mandatory_items)+1}] {sev_tag} — [{issue.section}]: {issue.message}"
+            )
+        for issue in by_sev.get("warning", []):
+            sev_tag = "⚠ WARNING"
+            mandatory_items.append(
+                f"  [{len(mandatory_items)+1}] {sev_tag} — [{issue.section}]: {issue.message}"
+            )
+        for req_id in review.uncovered_req_ids:
+            mandatory_items.append(
+                f"  [{len(mandatory_items)+1}] ⚠ COVERAGE GAP — Add Section 7 pseudo-code for: {req_id}"
+            )
+        mandatory_checklist = (
+            "\n".join(mandatory_items)
+            if mandatory_items
+            else "  (all requirements met — no mandatory fixes)"
+        )
+
         user_prompt = _REGEN_USER_PROMPT_TMPL.format(
             swc_name=swc_name,
             asil=asil,
@@ -796,15 +1037,30 @@ class MudSpecGenerator:
             error_count=review.error_count,
             warning_count=review.warning_count,
             suggestion_count=len(review.suggestions),
+            mandatory_checklist=mandatory_checklist,
             errors_text=errors_text,
             warnings_text=warnings_text,
             suggestions_text=suggestions_text,
             uncovered_count=len(review.uncovered_req_ids),
             uncovered_req_ids_text=uncovered_req_ids_text,
             coverage_gaps_text=coverage_gaps_text,
+            fix_manifest_text=format_fix_manifest(fix_manifest),
             requirements_text=requirements_text,
             mud_spec_markdown=current_spec_markdown,
         )
+
+        # When this is a targeted repair retry, escalate the system prompt so the
+        # AI knows these specific items were NOT fixed in the previous pass.
+        system_prompt = _REGEN_SYSTEM_PROMPT
+        if repair_attempt:
+            system_prompt = _REGEN_SYSTEM_PROMPT + (
+                "\n\n\U0001f6a8 REPAIR ATTEMPT — PREVIOUS REGENERATION DID NOT FIX THESE ITEMS.\n"
+                "The items in the MANDATORY FIX CHECKLIST were identified in the previous pass "
+                "and are STILL PRESENT in the spec.\n"
+                "You MUST address each one specifically. If you output the same text as before "
+                "for those sections, the spec will be REJECTED.\n"
+                "Focus ONLY on the listed items. Do not introduce any other changes.\n"
+            )
 
         backend = self._orchestrator._get_backend()
 
@@ -815,9 +1071,12 @@ class MudSpecGenerator:
         last_progress_chars = 0
 
         try:
-            logger.info("regenerate_spec: starting for %s (asil=%s, iter=%s)", swc_name, asil, regen_iter)
+            logger.info(
+                "regenerate_spec: starting for %s (asil=%s, iter=%s, repair=%s)",
+                swc_name, asil, regen_iter, repair_attempt,
+            )
             async for chunk in backend.generate_stream(
-                system_prompt=_REGEN_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 max_tokens=7168,
@@ -852,7 +1111,7 @@ class MudSpecGenerator:
                 })
             logger.warning("regenerate_spec: streaming failed for %s — fallback to blocking generate(). Reason: %s", swc_name, exc)
             response = await backend.generate(
-                system_prompt=_REGEN_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 max_tokens=7168,
@@ -873,6 +1132,7 @@ class MudSpecGenerator:
         if spec_md.startswith("```"):
             spec_md = re.sub(r"^```[a-z]*\n?", "", spec_md)
             spec_md = re.sub(r"\n?```$", "", spec_md)
+        spec_md = strip_fix_coverage_block(spec_md)
 
         # ── Convergence verification ─────────────────────────────────────────
         # Small models often ignore PATCH MODE and rewrite from scratch. Detect

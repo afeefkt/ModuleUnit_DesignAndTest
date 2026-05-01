@@ -67,6 +67,27 @@ logger = logging.getLogger(__name__)
 
 _CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "elaborated"
 
+
+def _purge_stale_cache(keep: Path) -> None:
+    """Delete all elaboration cache files except *keep*.
+
+    Mirrors the function in elaborator.py — both elaborators share the same
+    cache directory so cleanup from either one clears both single-shot and
+    chunked stale files at once.
+    """
+    deleted = 0
+    for old in _CACHE_DIR.glob("*.json"):
+        if old == keep:
+            continue
+        try:
+            old.unlink()
+            deleted += 1
+        except Exception as exc:
+            logger.warning("Could not remove stale elaboration cache %s: %s", old.name, exc)
+    if deleted:
+        logger.info("Purged %d stale elaboration cache file(s) from %s", deleted, _CACHE_DIR)
+
+
 # Maximum number of SWCs to process — caps AI call count on large requirement sets
 _MAX_SWCS = 8
 # Hard cap on output tokens per stage call — keeps small models in their reliable range
@@ -278,6 +299,8 @@ class ChunkedElaborator:
         path = self.get_cache_path(data.get("req_hash", "unknown"))
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         logger.info(f"Saved chunked elaboration cache: {path}")
+        # Purge stale files from previous imports so old data can't pollute future runs
+        _purge_stale_cache(keep=path)
 
     # ── Stage runners ──────────────────────────────────────────────────────────
 

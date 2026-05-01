@@ -19,6 +19,12 @@
       max-width: 260px;
     }
 
+    .sidebar-actions {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
     .mermaid svg {
       max-width: 100%;
       height: auto;
@@ -926,44 +932,30 @@
       </div>
 
       <!-- ② Actions (fixed at bottom) -->
-      <div class="border-t border-slate-100 flex-shrink-0 overflow-y-auto" style="max-height:320px">
+      <div class="sidebar-actions border-t border-slate-100">
 
-        <!-- Elaborate -->
+        <!-- Analyse & Plan (combined) -->
         <div class="p-3 border-b border-slate-50">
           <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">② Elaborate</span>
-            <span class="text-xs text-slate-400">AI pre-analysis</span>
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">② Plan</span>
+            <span class="text-xs text-slate-400">Elaborate + detect SWCs</span>
           </div>
-          <button class="secondary w-full text-xs" id="btnElaborate" disabled>
-            <span id="elabLabel">Elaborate</span>
-            <svg id="elabSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-            </svg>
-          </button>
-          <div id="elabStatus" class="text-xs mt-1 hidden"></div>
-        </div>
-
-        <!-- Analyse Modules -->
-        <div class="p-3 border-b border-slate-50">
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">③ Modules</span>
-            <span class="text-xs text-slate-400">Detect SWCs</span>
-          </div>
-          <button class="secondary w-full text-xs" id="btnPlanModules" disabled>
-            <span id="planLabel">Plan Modules</span>
+          <button class="secondary w-full text-xs" id="btnPlan" disabled>
+            <span id="planLabel">Plan Module</span>
             <svg id="planSpinner" class="spinner spin w-4 h-4 inline ml-1" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
             </svg>
           </button>
           <div id="planStatus" class="text-xs mt-1 text-slate-500 hidden"></div>
+          <!-- Hidden elements kept for renderElaborationResults() compatibility -->
+          <div id="elabStatus" class="hidden"></div>
         </div>
 
         <!-- MUD Spec -->
         <div class="p-3 border-b border-slate-50" id="mudSpecSection">
           <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">④ MUD Spec</span>
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">③ MUD Spec</span>
           </div>
           <select id="moduleSelect" class="w-full text-xs mb-2" disabled>
             <option value="">— plan modules first —</option>
@@ -1109,6 +1101,11 @@
               <p class="text-xs text-slate-500 mt-0.5">AI detected the following SWC modules — select one to generate its MUD spec</p>
             </div>
             <span id="modulePlanCount" class="ml-auto badge bg-indigo-100 text-indigo-700 font-semibold">0 modules</span>
+            <button id="btnReanalyze" title="Force fresh elaboration (ignores cache)"
+              onclick="runPlanWithRefresh()"
+              class="text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded px-2 py-1 ml-2 flex items-center gap-1">
+              🔄 Re-analyze
+            </button>
           </div>
 
           <!-- Architecture summary -->
@@ -1718,8 +1715,7 @@
         renderReqList(d.requirement_set.requirements);
         console.log("[DEBUG] renderReqList completed successfully.");
         syncGenerationSectionState();
-        document.getElementById('btnElaborate').disabled = false;
-        document.getElementById('btnPlanModules').disabled = false;
+        document.getElementById('btnPlan').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
         addActivityLog(`Imported ${d.requirement_set.requirements.length} requirements successfully`, 'ok');
@@ -1765,8 +1761,7 @@
         renderReqList(d.requirement_set.requirements);
         console.log("[DEBUG] renderReqList completed successfully.");
         syncGenerationSectionState();
-        document.getElementById('btnElaborate').disabled = false;
-        document.getElementById('btnPlanModules').disabled = false;
+        document.getElementById('btnPlan').disabled = false;
         toast(`Imported ${d.requirement_set.requirements.length} requirements`);
         setStatus(`${d.requirement_set.requirements.length} requirements loaded`);
         addActivityLog(`Imported ${d.requirement_set.requirements.length} requirements successfully`, 'ok');
@@ -2271,16 +2266,9 @@
             if (line.startsWith('event: ')) {
               eventType = line.slice(7).trim();
             } else if (line.startsWith('data: ')) {
+              let data;
               try {
-                const data = JSON.parse(line.slice(6));
-                if (eventType === 'complete') {
-                  finalData = data;
-                } else if (eventType === 'error') {
-                  throw new Error(data.message || 'Generation failed');
-                } else {
-                  updateProgress(data);
-                  setStatus(data.message || `${data.stage}...`);
-                }
+                data = JSON.parse(line.slice(6));
               } catch (parseErr) {
                 if (eventType === 'complete') {
                   const snippet = line.slice(6, 246);
@@ -2291,6 +2279,18 @@
                 }
                 if (parseErr.message && !parseErr.message.includes('JSON'))
                   throw parseErr;
+              }
+              if (!data) {
+                eventType = 'progress';
+                continue;
+              }
+              if (eventType === 'complete') {
+                finalData = data;
+              } else if (eventType === 'error') {
+                throw new Error(data.message || 'Generation failed');
+              } else {
+                updateProgress(data);
+                setStatus(data.message || `${data.stage}...`);
               }
               eventType = 'progress';
             }
@@ -3152,51 +3152,91 @@
       }
     });
 
-    // ── Elaborate ──────────────────────────────────────────────
+    // ── Plan (Elaborate + Plan Modules — unified single button) ────────────────
     let elaboratedData = null;
 
-    function setElaborating(active) {
-      const btn = document.getElementById('btnElaborate');
-      const lbl = document.getElementById('elabLabel');
-      const spinner = document.getElementById('elabSpinner');
+    function _setPlanBusy(active, phase) {
+      const btn     = document.getElementById('btnPlan');
+      const lbl     = document.getElementById('planLabel');
+      const spinner = document.getElementById('planSpinner');
       btn.disabled = active || !state.requirements;
-      lbl.textContent = active ? 'Elaborating...' : 'Elaborate';
-      spinner.classList.toggle('active', active);
+      if (!active) {
+        lbl.textContent = 'Plan Module';
+        spinner.classList.remove('active');
+      } else {
+        lbl.textContent = phase || 'Working…';
+        spinner.classList.add('active');
+      }
     }
 
-    document.getElementById('btnElaborate').addEventListener('click', async () => {
-      if (!state.requirements) return;
-      setElaborating(true);
-      setStatus('AI is reasoning about requirements...');
-      const statusEl = document.getElementById('elabStatus');
+    document.getElementById('btnPlan').addEventListener('click', async () => {
+      if (!state.requirements) { toast('Import requirements first', true); return; }
+
+      const statusEl = document.getElementById('planStatus');
       statusEl.classList.remove('hidden');
+
+      // ── Step 1: Elaborate ─────────────────────────────────────────────────
+      _setPlanBusy(true, 'Elaborating…');
       statusEl.className = 'text-xs mt-1 text-blue-500';
-      statusEl.textContent = 'Thinking step-by-step about each requirement...';
-      addActivityLog('Started AI elaboration of requirements...', 'ok');
+      statusEl.textContent = 'Step 1/2 — AI reasoning about requirements…';
+      setStatus('AI is reasoning about requirements…');
+      addActivityLog('Started AI elaboration of requirements…', 'ok');
 
       try {
-        const r = await fetch(`${API}/elaborate`, {
+        const r1 = await fetch(`${API}/elaborate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ requirements: state.requirements }),
         });
-        if (!r.ok) throw new Error(await r.text());
-        const data = await r.json();
-        elaboratedData = data;
-        renderElaborationResults(data);
-        statusEl.className = 'text-xs mt-1 text-green-600';
-        statusEl.textContent = `Done - ${(data.elaborated || []).length} requirements elaborated`;
-        setStatus('Elaboration complete - ready to generate with enriched context');
-        toast(`Elaborated ${(data.elaborated || []).length} requirements with AI reasoning`);
-        addActivityLog(`Elaboration complete: ${(data.elaborated || []).length} requirements enriched`, 'ok');
+        if (!r1.ok) throw new Error(await r1.text());
+        const elabData = await r1.json();
+        elaboratedData = elabData;
+        renderElaborationResults(elabData);
+        const elabCount = (elabData.elaborated || []).length;
+        addActivityLog(`Elaboration complete: ${elabCount} requirements enriched`, 'ok');
       } catch (e) {
         statusEl.className = 'text-xs mt-1 text-red-500';
-        statusEl.textContent = 'Failed: ' + e.message;
+        statusEl.textContent = 'Elaboration failed: ' + e.message;
         toast('Elaboration failed: ' + e.message, true);
         setStatus('Elaboration failed');
         addActivityLog(`Elaboration failed: ${e.message}`, 'err');
+        _setPlanBusy(false);
+        return;
+      }
+
+      // ── Step 2: Plan Modules ──────────────────────────────────────────────
+      _setPlanBusy(true, 'Planning modules…');
+      statusEl.className = 'text-xs mt-1 text-blue-500';
+      statusEl.textContent = 'Step 2/2 — AI detecting SWC modules…';
+      setStatus('Planning modules…');
+      addActivityLog('Analysing modules from requirements…', 'info');
+
+      try {
+        const r2 = await fetch(`${API}/modules/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirements_text: getRequirementsText(), temperature: 0.2 }),
+        });
+        if (!r2.ok) throw new Error(await r2.text());
+        const planData = await r2.json();
+
+        state.modules = planData.modules || [];
+        statusEl.className = 'text-xs mt-1 text-green-600';
+        statusEl.textContent = `Done — ${state.modules.length} module(s) found`;
+        setStatus(`Plan complete — ${state.modules.length} SWC module(s) ready`);
+        toast(`Found ${state.modules.length} module(s) — pick one to build its MUD spec`);
+        addActivityLog(`Found ${state.modules.length} SWC modules`, 'ok');
+
+        renderModulePicker(planData);
+        showModulePickerPanel();
+      } catch (e) {
+        statusEl.className = 'text-xs mt-1 text-red-500';
+        statusEl.textContent = 'Module planning failed: ' + e.message;
+        toast('Module planning failed: ' + e.message, true);
+        setStatus('Module planning failed');
+        addActivityLog(`Module planning failed: ${e.message}`, 'err');
       } finally {
-        setElaborating(false);
+        _setPlanBusy(false);
       }
     });
 
@@ -3326,54 +3366,63 @@
       return 'asil-qm';
     }
 
-    // Plan Modules button handler
-    document.getElementById('btnPlanModules').addEventListener('click', async () => {
+    // (btnPlanModules removed — now merged into btnPlan above)
+
+    // Force-refresh: calls /elaborate/refresh (bypasses cache) then /modules/plan
+    async function runPlanWithRefresh() {
       if (!state.requirements) { toast('Import requirements first', true); return; }
 
-      const btn = document.getElementById('btnPlanModules');
-      const lbl = document.getElementById('planLabel');
-      const spinner = document.getElementById('planSpinner');
       const statusEl = document.getElementById('planStatus');
-
-      btn.disabled = true;
-      lbl.textContent = 'Analysing…';
-      spinner.classList.add('active');
       statusEl.classList.remove('hidden');
-      statusEl.textContent = 'AI is detecting SWC modules…';
-      setStatus('Planning modules…');
-      addActivityLog('Analysing modules from requirements…', 'info');
+      _setPlanBusy(true, 'Re-analyzing…');
+      statusEl.className = 'text-xs mt-1 text-blue-500';
+      statusEl.textContent = 'Step 1/2 — Force-refreshing elaboration (ignoring cache)…';
+      setStatus('Re-analyzing requirements…');
 
       try {
-        const r = await fetch(`${API}/modules/plan`, {
+        const r1 = await fetch(`${API}/elaborate/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            requirements_text: getRequirementsText(),
-            temperature: 0.2,
-          }),
+          body: JSON.stringify({ requirements: state.requirements }),
         });
-        if (!r.ok) throw new Error(await r.text());
-        const data = await r.json();
+        if (!r1.ok) throw new Error(await r1.text());
+        const elabData = await r1.json();
+        elaboratedData = elabData;
+        renderElaborationResults(elabData);
+        addActivityLog(`Re-elaboration complete: ${(elabData.elaborated || []).length} requirements enriched`, 'ok');
+      } catch (e) {
+        statusEl.className = 'text-xs mt-1 text-red-500';
+        statusEl.textContent = 'Re-elaboration failed: ' + e.message;
+        toast('Re-elaboration failed: ' + e.message, true);
+        _setPlanBusy(false);
+        return;
+      }
 
-        state.modules = data.modules || [];
-        statusEl.textContent = `Found ${state.modules.length} module(s)`;
-        setStatus(`Module analysis complete — ${state.modules.length} SWC modules found`);
-        toast(`Found ${state.modules.length} modules — choose one to build its MUD spec`);
-        addActivityLog(`Found ${state.modules.length} SWC modules`, 'ok');
-
-        renderModulePicker(data);
+      _setPlanBusy(true, 'Planning modules…');
+      statusEl.textContent = 'Step 2/2 — AI detecting SWC modules…';
+      try {
+        const r2 = await fetch(`${API}/modules/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requirements_text: getRequirementsText(), temperature: 0.2 }),
+        });
+        if (!r2.ok) throw new Error(await r2.text());
+        const planData = await r2.json();
+        state.modules = planData.modules || [];
+        statusEl.className = 'text-xs mt-1 text-green-600';
+        statusEl.textContent = `Done — ${state.modules.length} module(s) found`;
+        toast(`Re-analysis complete — ${state.modules.length} module(s) found`);
+        addActivityLog(`Re-analysis: ${state.modules.length} SWC modules`, 'ok');
+        renderModulePicker(planData);
         showModulePickerPanel();
       } catch (e) {
-        statusEl.textContent = 'Failed: ' + e.message;
+        statusEl.className = 'text-xs mt-1 text-red-500';
+        statusEl.textContent = 'Module planning failed: ' + e.message;
         toast('Module planning failed: ' + e.message, true);
-        setStatus('Module planning failed');
-        addActivityLog(`Module planning failed: ${e.message}`, 'err');
       } finally {
-        btn.disabled = false;
-        lbl.textContent = 'Plan Modules';
-        spinner.classList.remove('active');
+        _setPlanBusy(false);
       }
-    });
+    }
 
     function renderModulePicker(data) {
       const modules = data.modules || [];
@@ -3975,10 +4024,11 @@
           body: JSON.stringify({
             swc_name: m.swc_name,
             asil: m.asil || 'QM',
+            req_ids: m.req_ids || [],
             requirements_text: getRequirementsText(),
             current_spec_markdown: state.mudSpec,
             review: state.mudReview,
-            temperature: 0.2,
+            temperature: 0.0,
           }),
         });
         if (!resp.ok) throw new Error(await resp.text());
@@ -3988,6 +4038,11 @@
         let buffer = '';
         let improvedMd = null;
         let newIteration = state.mudIteration + 1;
+        let postReview = null;
+        let remainingIssueCount = 0;
+        let resolvedIssueCount = 0;
+        let retryCount = 0;
+        let regenQualityStatus = 'needs_fix';
 
         while (true) {
           const { done, value } = await reader.read();
@@ -4003,6 +4058,11 @@
                 if (ev._final) {
                   improvedMd = ev.mud_spec_markdown || '';
                   newIteration = ev.iteration || newIteration;
+                  postReview = ev.post_review || null;
+                  remainingIssueCount = ev.remaining_issue_count || 0;
+                  resolvedIssueCount = ev.resolved_issue_count || 0;
+                  retryCount = ev.retry_count || 0;
+                  regenQualityStatus = ev.quality_status || regenQualityStatus;
                 } else if (ev._error) {
                   throw new Error(ev.detail || 'Regeneration error');
                 } else {
@@ -4028,7 +4088,15 @@
         if (buffer.startsWith('data: ')) {
           try {
             const ev = JSON.parse(buffer.slice(6));
-            if (ev._final) { improvedMd = ev.mud_spec_markdown || ''; newIteration = ev.iteration || newIteration; }
+            if (ev._final) {
+              improvedMd = ev.mud_spec_markdown || '';
+              newIteration = ev.iteration || newIteration;
+              postReview = ev.post_review || null;
+              remainingIssueCount = ev.remaining_issue_count || 0;
+              resolvedIssueCount = ev.resolved_issue_count || 0;
+              retryCount = ev.retry_count || 0;
+              regenQualityStatus = ev.quality_status || regenQualityStatus;
+            }
           } catch (_) {}
         }
 
@@ -4039,24 +4107,38 @@
         state.mudIteration = newIteration;
         state.mudSpec = improvedMd;
         state.activitySource = 'mud_spec';
-        state.mudReview = null; // clear stale review — user must re-review
+        state.mudReview = postReview;
 
         addActivityLog(`Regeneration complete — iteration ${newIteration} (${improvedMd.length.toLocaleString()} chars)`, 'ok');
 
+        addActivityLog(
+          `Regeneration verified - resolved ${resolvedIssueCount}, remaining ${remainingIssueCount}`,
+          remainingIssueCount ? 'warn' : 'ok'
+        );
         renderMudSpec(improvedMd, m.swc_name);
         document.getElementById('mudSpecTitle').textContent =
           `MUD Spec: ${m.swc_name} (iteration ${state.mudIteration})`;
 
-        // Hide review panel — it's stale until user runs review again
-        document.getElementById('reviewPanel').classList.add('hidden');
         document.getElementById('btnReviewMudSpec').disabled = false;
-        document.getElementById('btnRegenMudSpec').disabled = true;
+        if (postReview) {
+          renderReviewResults(postReview);
+        } else {
+          document.getElementById('reviewPanel').classList.add('hidden');
+        }
+        document.getElementById('btnRegenMudSpec').disabled = remainingIssueCount === 0;
         syncActivityGenerationAvailability();
         document.getElementById('mudSpecStatus').textContent =
-          `Regenerated — iteration ${state.mudIteration} ready`;
-
-        setStatus(`Iteration ${state.mudIteration} ready — run AI Review to check improvements`);
-        toast(`Spec improved — iteration ${state.mudIteration} generated. Run AI Review to verify.`);
+          `Regenerated - resolved ${resolvedIssueCount}, remaining ${remainingIssueCount}${retryCount ? `, retry ${retryCount}` : ''}`;
+        setStatus(
+          remainingIssueCount
+            ? `Iteration ${state.mudIteration} needs fixes - resolved ${resolvedIssueCount}, remaining ${remainingIssueCount}`
+            : `Iteration ${state.mudIteration} ready - review passed after regeneration`
+        );
+        toast(
+          remainingIssueCount
+            ? `Spec regenerated but ${remainingIssueCount} issue(s) remain`
+            : `Spec regenerated and verified (${regenQualityStatus})`
+        );
 
       } catch (e) {
         document.getElementById('regenStatus').textContent = 'Failed: ' + e.message;

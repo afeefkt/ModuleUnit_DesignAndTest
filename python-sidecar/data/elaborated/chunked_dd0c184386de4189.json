@@ -1,0 +1,1531 @@
+{
+  "thinking": [
+    "Stage 1: Identified 1 SWCs from 55 requirements: SWC_ElectricPowerSteering",
+    "Stage 2 SWC_ElectricPowerSteering: 1 port(s) → PP_ElectricPowerSteeringOut",
+    "Stage 3 SWC_ElectricPowerSteering: 5 runnable(s) → RE_Initialize, RE_ControlTorque"
+  ],
+  "architecture_summary": "System decomposed into 1 SWC(s): SWC_ElectricPowerSteering.",
+  "elaborated": [
+    {
+      "req_id": "REQ-EPS-001",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-002",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-003",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-004",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-005",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-006",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-007",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-008",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-010",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-011",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-012",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-013",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-014",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-015",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-016",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-017",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-018",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-019",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-020",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-021",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-022",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-023",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-024",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-030",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-031",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-032",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-033",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-034",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-035",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-036",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-037",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-040",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-041",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-042",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-043",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-044",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-045",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-046",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-047",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-048",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-049",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-050",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-051",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-052",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-053",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-054",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-055",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-056",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-EPS-060",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-061",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-062",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "QM"
+    },
+    {
+      "req_id": "REQ-EPS-063",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-064",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-065",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-EPS-066",
+      "entities": {
+        "swc": "SWC_ElectricPowerSteering",
+        "runnables": [
+          "RE_Initialize",
+          "RE_ControlTorque",
+          "RE_MonitorSafety",
+          "RE_HandleModeChange",
+          "RE_DiagnosticUpdate"
+        ],
+        "ports": [
+          "PP_ElectricPowerSteeringOut"
+        ],
+        "interfaces": [
+          "IF_SR_ElectricPowerSteeringIf"
+        ]
+      },
+      "logic_flow": "Check sensor signals validity → Verify RAM checksum → Validate ROM CRC-32 → Set internal state to INIT",
+      "diagram_hints": {
+        "swc": "SWC_ElectricPowerSteering",
+        "primary_runnable": "RE_Initialize"
+      },
+      "safety_level": "ASIL-B"
+    }
+  ],
+  "swc_list": [
+    {
+      "name": "SWC_ElectricPowerSteering",
+      "req_ids": [
+        "REQ-EPS-001",
+        "REQ-EPS-002",
+        "REQ-EPS-003",
+        "REQ-EPS-004",
+        "REQ-EPS-005",
+        "REQ-EPS-006",
+        "REQ-EPS-007",
+        "REQ-EPS-008",
+        "REQ-EPS-010",
+        "REQ-EPS-011",
+        "REQ-EPS-012",
+        "REQ-EPS-013",
+        "REQ-EPS-014",
+        "REQ-EPS-015",
+        "REQ-EPS-016",
+        "REQ-EPS-017",
+        "REQ-EPS-018",
+        "REQ-EPS-019",
+        "REQ-EPS-020",
+        "REQ-EPS-021",
+        "REQ-EPS-022",
+        "REQ-EPS-023",
+        "REQ-EPS-024",
+        "REQ-EPS-030",
+        "REQ-EPS-031",
+        "REQ-EPS-032",
+        "REQ-EPS-033",
+        "REQ-EPS-034",
+        "REQ-EPS-035",
+        "REQ-EPS-036",
+        "REQ-EPS-037",
+        "REQ-EPS-040",
+        "REQ-EPS-041",
+        "REQ-EPS-042",
+        "REQ-EPS-043",
+        "REQ-EPS-044",
+        "REQ-EPS-045",
+        "REQ-EPS-046",
+        "REQ-EPS-047",
+        "REQ-EPS-048",
+        "REQ-EPS-049",
+        "REQ-EPS-050",
+        "REQ-EPS-051",
+        "REQ-EPS-052",
+        "REQ-EPS-053",
+        "REQ-EPS-054",
+        "REQ-EPS-055",
+        "REQ-EPS-056",
+        "REQ-EPS-060",
+        "REQ-EPS-061",
+        "REQ-EPS-062",
+        "REQ-EPS-063",
+        "REQ-EPS-064",
+        "REQ-EPS-065",
+        "REQ-EPS-066"
+      ],
+      "purpose": "Handles SWC_ElectricPowerSteering functionality"
+    }
+  ],
+  "swc_ports": {
+    "SWC_ElectricPowerSteering": [
+      {
+        "port": "PP_ElectricPowerSteeringOut",
+        "direction": "provided",
+        "interface": "IF_SR_ElectricPowerSteeringIf",
+        "data_type": "uint8",
+        "description": "Output data from SWC_ElectricPowerSteering"
+      }
+    ]
+  },
+  "swc_runnables": {
+    "SWC_ElectricPowerSteering": [
+      {
+        "runnable": "RE_Initialize",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Check sensor signals validity",
+          "Verify RAM checksum",
+          "Validate ROM CRC-32",
+          "Set internal state to INIT",
+          "Perform self-test",
+          "If any test fails, transition to FAIL_SAFE"
+        ]
+      },
+      {
+        "runnable": "RE_ControlTorque",
+        "trigger": "cyclic",
+        "period_ms": 5,
+        "pseudocode": [
+          "Read driver torque from sensor",
+          "Filter driver torque signal",
+          "Calculate assist torque demand",
+          "Apply speed-dependent gain reduction",
+          "Add friction compensation",
+          "Limit torque demand rate"
+        ]
+      },
+      {
+        "runnable": "RE_MonitorSafety",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check sensor plausibility",
+          "Monitor motor current limit",
+          "Detect thermal overheat",
+          "Monitor supply voltage",
+          "Trigger watchdog",
+          "Report DTCs and handle transitions"
+        ]
+      },
+      {
+        "runnable": "RE_HandleModeChange",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read IgnitionStatus_CAN signal",
+          "Determine new mode based on conditions",
+          "Transition to new mode",
+          "Set outputs for new mode",
+          "Report DTCs if necessary"
+        ]
+      },
+      {
+        "runnable": "RE_DiagnosticUpdate",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read DEM notification signal",
+          "Store active DTCs in NVM",
+          "Report healable DTCs"
+        ]
+      }
+    ]
+  },
+  "req_hash": "dd0c184386de4189",
+  "parse_ok": true,
+  "status": "ok",
+  "source": "chunked_generation",
+  "created_at": "2026-05-01T17:23:05.408484+00:00",
+  "elaborated_count": 55,
+  "quality_score": 1.0
+}

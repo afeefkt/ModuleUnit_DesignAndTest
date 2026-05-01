@@ -2070,10 +2070,11 @@ class RegenerateSpecRequest(BaseModel):
     """Request body for POST /modules/mud-spec/regenerate (SSE stream)."""
     swc_name: str
     asil: str = "QM"
+    req_ids: list[str] = []
     requirements_text: str
     current_spec_markdown: str = Field(..., description="MUD spec from the previous iteration")
     review: dict = Field(..., description="SpecReviewResult.to_dict() from the review pass")
-    temperature: float = Field(0.2, ge=0.0, le=1.0)
+    temperature: float = Field(0.0, ge=0.0, le=1.0)
 
 
 @router.post("/modules/mud-spec/regenerate")
@@ -2091,7 +2092,9 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
     logger.info("mud-spec regenerate request for %s (iter=%s)", request.swc_name, request.review.get("iteration"))
     
     from mudtool.api.dependencies import get_orchestrator
-    from mudtool.ai.mud_spec_generator import MudSpecGenerator, SpecReviewResult
+    from mudtool.ai.mud_spec_generator import (
+        MudSpecGenerator, SpecReviewResult, compare_review_results, build_unresolved_review,
+    )
 
     orchestrator = get_orchestrator()
     generator = MudSpecGenerator(orchestrator)
@@ -2109,22 +2112,94 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
 
     async def _run():
         try:
+            regen_temperature = min(request.temperature, 0.1)
             improved_md = await generator.regenerate_spec(
                 swc_name=request.swc_name,
                 asil=request.asil,
                 requirements_text=request.requirements_text,
                 current_spec_markdown=request.current_spec_markdown,
                 review=review,
-                temperature=request.temperature,
+                temperature=regen_temperature,
                 progress_callback=_progress,
             )
+
+            queue.put_nowait({
+                "stage": "mud_regen_verify",
+                "message": "Verifying regenerated MUD spec against reviewer comments...",
+                "progress": 96,
+                "iteration": review.iteration + 1,
+            })
+            post_review = await generator.review_spec(
+                swc_name=request.swc_name,
+                asil=request.asil,
+                req_ids=request.req_ids,
+                requirements_text=request.requirements_text,
+                mud_spec_markdown=improved_md,
+                temperature=0.0,
+                iteration=review.iteration + 1,
+            )
+            comparison = compare_review_results(review, post_review)
+            retry_count = 0
+
+            if comparison["repeated_issue_count"] > 0:
+                retry_count = 1
+                # Build a filtered review containing ONLY the unresolved issues so
+                # the repair attempt focuses exclusively on the stuck items rather
+                # than re-processing everything (which dilutes AI attention and may
+                # re-break freshly fixed sections).
+                unresolved_review = build_unresolved_review(comparison, post_review)
+                queue.put_nowait({
+                    "stage": "mud_regen_retry",
+                    "message": (
+                        f"{comparison['repeated_issue_count']} repeated issue(s) remain; "
+                        "running targeted repair retry..."
+                    ),
+                    "progress": 97,
+                    "iteration": review.iteration + 2,
+                    "remaining_issue_count": comparison["repeated_issue_count"],
+                })
+                improved_md = await generator.regenerate_spec(
+                    swc_name=request.swc_name,
+                    asil=request.asil,
+                    requirements_text=request.requirements_text,
+                    current_spec_markdown=improved_md,
+                    review=unresolved_review,   # only the stuck issues
+                    temperature=0.15,           # break deterministic cycle
+                    progress_callback=_progress,
+                    repair_attempt=True,        # escalation header in system prompt
+                )
+                queue.put_nowait({
+                    "stage": "mud_regen_verify",
+                    "message": "Verifying retry result...",
+                    "progress": 98,
+                    "iteration": review.iteration + 2,
+                })
+                post_review = await generator.review_spec(
+                    swc_name=request.swc_name,
+                    asil=request.asil,
+                    req_ids=request.req_ids,
+                    requirements_text=request.requirements_text,
+                    mud_spec_markdown=improved_md,
+                    temperature=0.0,
+                    iteration=review.iteration + 2,
+                )
+                comparison = compare_review_results(review, post_review)
+
+            remaining_issue_count = post_review.error_count + post_review.warning_count + len(post_review.uncovered_req_ids)
+            quality_status = "pass" if post_review.approved and post_review.warning_count == 0 else "needs_fix"
             queue.put_nowait({
                 "_final": True,
                 "mud_spec_markdown": improved_md,
                 "swc_name": request.swc_name,
-                "iteration": review.iteration + 1,
+                "iteration": review.iteration + 1 + retry_count,
                 "char_count": len(improved_md),
                 "section7_normalization": generator.last_normalization_result.to_dict(),
+                "post_review": post_review.to_dict(),
+                "remaining_issue_count": remaining_issue_count,
+                "resolved_issue_count": comparison["resolved_issue_count"],
+                "retry_count": retry_count,
+                "quality_status": quality_status,
+                "repeated_issue_count": comparison["repeated_issue_count"],
             })
         except Exception as exc:
             logger.exception("mud_spec regeneration failed for %s", request.swc_name)

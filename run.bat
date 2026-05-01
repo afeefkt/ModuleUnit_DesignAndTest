@@ -12,6 +12,15 @@ echo.
 cd /d "%~dp0python-sidecar"
 
 REM Activate virtual environment
+if exist ".venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%CD%\.venv\Scripts\python.exe"
+) else (
+    echo  ERROR: Virtual environment Python not found.
+    echo  Run setup.bat first!
+    pause
+    exit /b 1
+)
+
 if exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
 ) else (
@@ -36,4 +45,4 @@ echo   Health:    http://127.0.0.1:8042/api/v1/health
 echo  ------------------------------------------------
 echo.
 
-python -m mudtool.main
+"%PYTHON_EXE%" -m mudtool.main

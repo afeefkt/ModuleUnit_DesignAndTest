@@ -750,6 +750,13 @@ class TestModulePlanningRoutes:
 
 
 class TestMudSpecRoutes:
+    @staticmethod
+    def _complete_event_payload(response_text: str) -> dict:
+        for line in response_text.splitlines():
+            if line.startswith("data: ") and '"_final":true' in line.replace(" ", ""):
+                return json.loads(line[6:])
+        raise AssertionError(f"No complete payload found in SSE response:\n{response_text}")
+
     def test_mud_spec_stream_emits_section7_normalization_metadata(self, monkeypatch):
         spec_text = """
 # MUD Spec: SWC_Stream
@@ -802,6 +809,170 @@ class TestMudSpecRoutes:
         assert response.status_code == 200
         assert "event: complete" in response.text
         assert "section7_normalization" in response.text
+
+    def test_mud_spec_regenerate_verifies_post_review_without_retry(self, monkeypatch):
+        from mudtool.ai import mud_spec_generator as msg
+
+        class _FakeMudSpecGenerator:
+            def __init__(self, orchestrator):
+                self.last_normalization_result = SimpleNamespace(to_dict=lambda: {"changed": False})
+
+            async def regenerate_spec(self, **kwargs):
+                return kwargs["current_spec_markdown"] + "\n\n## 7. Functional Description\nfixed"
+
+            async def review_spec(self, **kwargs):
+                return msg.SpecReviewResult(approved=True, coverage_pct=100, iteration=kwargs["iteration"])
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(msg, "MudSpecGenerator", _FakeMudSpecGenerator)
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/modules/mud-spec/regenerate",
+                json={
+                    "swc_name": "SWC_Test",
+                    "asil": "ASIL-B",
+                    "req_ids": ["REQ-1"],
+                    "requirements_text": "REQ-1 do control",
+                    "current_spec_markdown": "# MUD Spec: SWC_Test",
+                    "review": {
+                        "approved": False,
+                        "coverage_pct": 80,
+                        "issues": [
+                            {"severity": "warning", "section": "7", "message": "Missing DEM event"}
+                        ],
+                        "suggestions": [],
+                        "uncovered_req_ids": [],
+                        "coverage_gaps": [],
+                        "iteration": 1,
+                    },
+                },
+            )
+
+        assert response.status_code == 200
+        payload = self._complete_event_payload(response.text)
+        assert payload["retry_count"] == 0
+        assert payload["remaining_issue_count"] == 0
+        assert payload["resolved_issue_count"] == 1
+        assert payload["quality_status"] == "pass"
+        assert payload["post_review"]["approved"] is True
+
+    def test_mud_spec_regenerate_retries_once_for_repeated_issue(self, monkeypatch):
+        from mudtool.ai import mud_spec_generator as msg
+
+        calls = {"regen": 0, "review": 0}
+
+        class _FakeMudSpecGenerator:
+            def __init__(self, orchestrator):
+                self.last_normalization_result = SimpleNamespace(to_dict=lambda: {"changed": False})
+
+            async def regenerate_spec(self, **kwargs):
+                calls["regen"] += 1
+                return kwargs["current_spec_markdown"] + f"\nretry-pass-{calls['regen']}"
+
+            async def review_spec(self, **kwargs):
+                calls["review"] += 1
+                if calls["review"] == 1:
+                    return msg.SpecReviewResult(
+                        approved=False,
+                        coverage_pct=80,
+                        issues=[msg.ReviewIssue("warning", "7", "Missing DEM event")],
+                        iteration=kwargs["iteration"],
+                    )
+                return msg.SpecReviewResult(approved=True, coverage_pct=100, iteration=kwargs["iteration"])
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(msg, "MudSpecGenerator", _FakeMudSpecGenerator)
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/modules/mud-spec/regenerate",
+                json={
+                    "swc_name": "SWC_Test",
+                    "asil": "ASIL-B",
+                    "req_ids": ["REQ-1"],
+                    "requirements_text": "REQ-1 do control",
+                    "current_spec_markdown": "# MUD Spec: SWC_Test",
+                    "review": {
+                        "approved": False,
+                        "coverage_pct": 80,
+                        "issues": [
+                            {"severity": "warning", "section": "7", "message": "Missing DEM event"}
+                        ],
+                        "suggestions": [],
+                        "uncovered_req_ids": [],
+                        "coverage_gaps": [],
+                        "iteration": 1,
+                    },
+                },
+            )
+
+        assert response.status_code == 200
+        payload = self._complete_event_payload(response.text)
+        assert calls == {"regen": 2, "review": 2}
+        assert payload["retry_count"] == 1
+        assert payload["remaining_issue_count"] == 0
+        assert payload["resolved_issue_count"] == 1
+        assert payload["quality_status"] == "pass"
+
+    def test_mud_spec_regenerate_stops_after_one_failed_retry(self, monkeypatch):
+        from mudtool.ai import mud_spec_generator as msg
+
+        calls = {"regen": 0, "review": 0}
+
+        class _FakeMudSpecGenerator:
+            def __init__(self, orchestrator):
+                self.last_normalization_result = SimpleNamespace(to_dict=lambda: {"changed": False})
+
+            async def regenerate_spec(self, **kwargs):
+                calls["regen"] += 1
+                return kwargs["current_spec_markdown"] + f"\nfailed-pass-{calls['regen']}"
+
+            async def review_spec(self, **kwargs):
+                calls["review"] += 1
+                return msg.SpecReviewResult(
+                    approved=False,
+                    coverage_pct=80,
+                    issues=[msg.ReviewIssue("warning", "7", "Missing DEM event")],
+                    iteration=kwargs["iteration"],
+                )
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(msg, "MudSpecGenerator", _FakeMudSpecGenerator)
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/modules/mud-spec/regenerate",
+                json={
+                    "swc_name": "SWC_Test",
+                    "asil": "ASIL-B",
+                    "req_ids": ["REQ-1"],
+                    "requirements_text": "REQ-1 do control",
+                    "current_spec_markdown": "# MUD Spec: SWC_Test",
+                    "review": {
+                        "approved": False,
+                        "coverage_pct": 80,
+                        "issues": [
+                            {"severity": "warning", "section": "7", "message": "Missing DEM event"}
+                        ],
+                        "suggestions": [],
+                        "uncovered_req_ids": [],
+                        "coverage_gaps": [],
+                        "iteration": 1,
+                    },
+                },
+            )
+
+        assert response.status_code == 200
+        payload = self._complete_event_payload(response.text)
+        assert calls == {"regen": 2, "review": 2}
+        assert payload["retry_count"] == 1
+        assert payload["remaining_issue_count"] == 1
+        assert payload["repeated_issue_count"] == 1
+        assert payload["quality_status"] == "needs_fix"
 
 
 class TestExportRoutes:

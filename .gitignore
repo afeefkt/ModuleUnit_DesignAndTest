@@ -26,6 +26,7 @@ pip-delete-this-directory.txt
 .venv/
 venv/
 ENV/
+python-sidecar/output/diagnostics/*
 
 # Java
 *.class

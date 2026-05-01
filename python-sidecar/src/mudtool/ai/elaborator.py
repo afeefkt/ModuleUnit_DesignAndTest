@@ -26,6 +26,25 @@ _PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts"
 _CACHE_DIR = Path(__file__).parent.parent.parent.parent / "data" / "elaborated"
 
 
+def _purge_stale_cache(keep: Path) -> None:
+    """Delete all elaboration cache files except *keep*.
+
+    Called after writing a fresh elaboration so that requirements from
+    previous imports can never be accidentally reused and confuse the AI.
+    """
+    deleted = 0
+    for old in _CACHE_DIR.glob("*.json"):
+        if old == keep:
+            continue
+        try:
+            old.unlink()
+            deleted += 1
+        except Exception as exc:
+            logger.warning("Could not remove stale elaboration cache %s: %s", old.name, exc)
+    if deleted:
+        logger.info("Purged %d stale elaboration cache file(s) from %s", deleted, _CACHE_DIR)
+
+
 class RequirementElaborator:
     """Elaborates terse requirements into structured AUTOSAR JSON.
 
@@ -285,6 +304,10 @@ class RequirementElaborator:
             encoding="utf-8",
         )
         logger.info(f"Saved elaboration cache: {cache_path} (quality={quality:.2f})")
+
+        # Remove every OTHER elaboration file so stale data from previous imports
+        # can never be accidentally reused. Keep only the file we just wrote.
+        _purge_stale_cache(keep=cache_path)
 
     def _compute_quality(self, data: dict, requirements: list[Requirement]) -> float:
         """Compute a lightweight quality score for elaboration output."""

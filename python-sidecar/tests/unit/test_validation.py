@@ -108,7 +108,7 @@ class TestStructuralValidator:
 
 
 class TestStructuralPreCheck:
-    def test_sequence_requires_two_swcs_and_blocks_generation(self):
+    def test_sequence_with_one_swc_warns_without_blocking_generation(self):
         requirements = [
             Requirement(
                 req_id="REQ-ARCH-1001",
@@ -134,8 +134,9 @@ class TestStructuralPreCheck:
 
         result = StructuralPreCheck().check(requirements, DiagramType.SEQUENCE)
 
-        assert result.blocked is True
-        assert any("at least 2 lifelines" in gap for gap in result.gaps)
+        assert result.blocked is False
+        assert not result.gaps
+        assert any("at least 2 lifelines" in warning for warning in result.warnings)
 
     def test_activity_repair_recurses_into_sub_diagrams(self):
         orchestrator = AIOrchestrator.__new__(AIOrchestrator)

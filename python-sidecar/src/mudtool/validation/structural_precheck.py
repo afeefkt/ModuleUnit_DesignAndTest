@@ -215,12 +215,15 @@ class StructuralPreCheck:
 
         swc_names = list(set(_SWC_PATTERN.findall(all_text)))
         if len(swc_names) < 2:
-            result.gaps.append(
+            result.warnings.append(
                 f"Only {len(swc_names)} distinct SWC_* component(s) found - "
-                "sequence diagrams need at least 2 lifelines. "
-                "Add requirements referencing a second SWC."
+                "a cross-component sequence diagram needs at least 2 lifelines. "
+                "Generation will infer runnable, port, or external actors where needed."
             )
-            result.blocked = True
+            result.suggestions.append(
+                "Add requirements referencing another SWC, ECU, sensor, actuator, or "
+                "external actor if you need a cross-component interaction sequence."
+            )
 
         if not _PORT_PATTERN.search(all_text):
             result.warnings.append(
