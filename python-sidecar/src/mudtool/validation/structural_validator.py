@@ -10,6 +10,7 @@ UML metamodel conformance checks:
 from __future__ import annotations
 
 import logging
+import re
 
 from mudtool.models.json_uml import (
     ActivityDiagram,
@@ -467,3 +468,98 @@ class StructuralValidator:
                             f"\"nodes\":[...], \"edges\":[...]}}"
                         ),
                     ))
+
+        # ── STR-025/026/027: Pseudo-code purity rules ─────────────────────────
+        # These rules enforce that flowchart labels read as C code, not English.
+        # The CFG scaffold already produces good labels — these checks catch
+        # cases where AI enrichment regressed quality.
+
+        _C_GUARD_OPS = (">", "<", "==", "!=", ">=", "<=", "&&", "||", "!")
+        _ENGLISH_PROSE_WORDS = {
+            "check", "verify", "validate", "is", "are", "when", "whether",
+            "should", "would", "can", "must", "valid", "invalid", "ok",
+            "the", "then", "true", "false", "yes", "no",
+        }
+        _CALL_NODE_PREFIXES = (
+            "Rte_", "Dem_", "Det_", "SchM_", "Sch_", "Com_", "NvM_", "Os_",
+            "CanSM_", "LinSM_", "EthSM_", "BswM_", "Dcm_", "WdgM_",
+        )
+
+        def _looks_like_c_expression(text: str) -> bool:
+            """True if text appears to be a C boolean expression, not English prose."""
+            t = (text or "").strip().strip("[]")
+            if not t:
+                return False
+            has_op = any(op in t for op in _C_GUARD_OPS)
+            has_var = bool(re.search(r"[A-Za-z_]\w*", t))
+            tokens = set(re.findall(r"\b[a-z]+\b", t.lower()))
+            has_english = bool(tokens & _ENGLISH_PROSE_WORDS)
+            return has_op and has_var and not has_english
+
+        _ALLOWED_GENERIC_GUARDS = {
+            "[true]", "[false]", "[else]", "[loop]", "[done]",
+            "[default]", "[break]", "[continue]", "[error]",
+        }
+
+        # STR-025: Decision node names must be C boolean expressions, not English
+        for node in diagram.nodes:
+            if node.node_type != ActivityNodeType.DECISION:
+                continue
+            name = (node.name or "").strip()
+            # Allow bare variable names (e.g. "isReady", "errorFlag")
+            if re.fullmatch(r"[A-Za-z_]\w{0,30}", name):
+                continue
+            if not _looks_like_c_expression(name):
+                report.add_issue(ValidationIssue(
+                    rule_id="STR-025",
+                    severity=ValidationSeverity.WARNING,
+                    category="Structural",
+                    message=(
+                        f"Decision node '{node.id}' name is not a C boolean expression: "
+                        f"{name!r}. Use C syntax (e.g. 'l_f32Speed > LIMIT') instead "
+                        f"of English prose."
+                    ),
+                    element_id=node.id,
+                    diagram_name=diagram.name,
+                    suggestion="Rewrite as a C boolean expression using local variables.",
+                ))
+
+        # STR-026: Call nodes should invoke a recognized AUTOSAR service
+        for node in diagram.nodes:
+            if node.node_type != ActivityNodeType.CALL:
+                continue
+            name = (node.name or "").strip()
+            if not name:
+                continue
+            if not name.startswith(_CALL_NODE_PREFIXES):
+                report.add_issue(ValidationIssue(
+                    rule_id="STR-026",
+                    severity=ValidationSeverity.WARNING,
+                    category="Structural",
+                    message=(
+                        f"Call node '{node.id}' does not use a recognized service "
+                        f"prefix: {name!r}. Expected Rte_/Dem_/Sch_/... signature."
+                    ),
+                    element_id=node.id,
+                    diagram_name=diagram.name,
+                    suggestion="Use Rte_Read_RP_*(&l_var) / Rte_Write_PP_*(l_var) form.",
+                ))
+
+        # STR-027: Edge guards must be C expressions (or one of the generic forms)
+        for edge in diagram.edges:
+            guard = (edge.guard or "").strip()
+            if not guard or guard.lower() in _ALLOWED_GENERIC_GUARDS:
+                continue
+            if not _looks_like_c_expression(guard):
+                report.add_issue(ValidationIssue(
+                    rule_id="STR-027",
+                    severity=ValidationSeverity.WARNING,
+                    category="Structural",
+                    message=(
+                        f"Edge '{edge.id}' guard is not a C expression: "
+                        f"{guard!r}. Use C boolean syntax."
+                    ),
+                    element_id=edge.id,
+                    diagram_name=diagram.name,
+                    suggestion="Example: '[l_f32Speed > 100]', not '[if speed exceeds limit]'.",
+                ))

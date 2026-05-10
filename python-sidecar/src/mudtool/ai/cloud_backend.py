@@ -36,7 +36,29 @@ class CloudBackend(BaseAIBackend):
     def is_available(self) -> bool:
         if self.settings.cloud_provider == CloudProvider.ANTHROPIC:
             return bool(self.settings.anthropic_api_key)
+        if self.settings.cloud_provider == CloudProvider.DEEPSEEK:
+            return bool(self.settings.deepseek_api_key)
         return bool(self.settings.openai_api_key)
+
+    def _active_openai_base_url(self) -> str:
+        """Effective base URL for the OpenAI-compatible code path.
+
+        DeepSeek shares the OpenAI client code but with its own host + key, so
+        these helpers centralize the resolution.
+        """
+        if self.settings.cloud_provider == CloudProvider.DEEPSEEK:
+            return self.settings.deepseek_base_url
+        return self.settings.openai_base_url or "https://api.openai.com/v1"
+
+    def _active_openai_api_key(self) -> Optional[str]:
+        if self.settings.cloud_provider == CloudProvider.DEEPSEEK:
+            return self.settings.deepseek_api_key
+        return self.settings.openai_api_key
+
+    def _active_openai_model(self) -> str:
+        if self.settings.cloud_provider == CloudProvider.DEEPSEEK:
+            return self.settings.deepseek_model
+        return self.settings.openai_model
 
     def _get_anthropic_client(self):
         """Lazy-initialize Anthropic client."""
@@ -53,14 +75,18 @@ class CloudBackend(BaseAIBackend):
         return self._anthropic_client
 
     def _get_openai_client(self):
-        """Lazy-initialize OpenAI-compatible client."""
+        """Lazy-initialize OpenAI-compatible client.
+
+        Used for both OpenAI-compatible providers (including local Ollama)
+        and DeepSeek (which exposes an OpenAI-compatible API at api.deepseek.com).
+        """
         if self._openai_client is None:
             try:
                 import httpx
                 self._openai_client = httpx.AsyncClient(
-                    base_url=self.settings.openai_base_url or "https://api.openai.com/v1",
+                    base_url=self._active_openai_base_url(),
                     headers={
-                        "Authorization": f"Bearer {self.settings.openai_api_key}",
+                        "Authorization": f"Bearer {self._active_openai_api_key() or ''}",
                         "Content-Type": "application/json",
                     },
                     timeout=600.0,
@@ -197,7 +223,7 @@ class CloudBackend(BaseAIBackend):
         client = self._get_openai_client()
 
         payload = {
-            "model": self.settings.openai_model,
+            "model": self._active_openai_model(),
             "max_tokens": max_tokens,
             "temperature": temperature,
             "messages": [
@@ -226,7 +252,7 @@ class CloudBackend(BaseAIBackend):
             payload["stop"] = stop_sequences
 
         logger.info(
-            f"OpenAI-compatible API call: model={self.settings.openai_model} "
+            f"OpenAI-compatible API call: model={self._active_openai_model()} "
             f"response_format={response_format}"
         )
 
@@ -255,7 +281,7 @@ class CloudBackend(BaseAIBackend):
 
         return AIResponse(
             content=content,
-            model=data.get("model", self.settings.openai_model),
+            model=data.get("model", self._active_openai_model()),
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
             finish_reason=choice.get("finish_reason"),
@@ -325,7 +351,7 @@ class CloudBackend(BaseAIBackend):
         client = self._get_openai_client()
 
         payload = {
-            "model": self.settings.openai_model,
+            "model": self._active_openai_model(),
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
@@ -346,7 +372,7 @@ class CloudBackend(BaseAIBackend):
         # and would corrupt Markdown output.
 
         logger.info(
-            f"OpenAI-compatible STREAM: model={self.settings.openai_model}"
+            f"OpenAI-compatible STREAM: model={self._active_openai_model()}"
         )
 
         try:
@@ -417,6 +443,6 @@ class CloudBackend(BaseAIBackend):
         base["model"] = (
             self.settings.anthropic_model
             if self.settings.cloud_provider == CloudProvider.ANTHROPIC
-            else self.settings.openai_model
+            else self._active_openai_model()
         )
         return base

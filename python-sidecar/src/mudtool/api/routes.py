@@ -1685,12 +1685,66 @@ async def accept_element(request: AcceptElementRequest):
 async def get_config():
     """Get current configuration (non-sensitive fields only)."""
     settings = get_settings()
+
+    # Per-stage model overrides — surfaced to the UI as a "Pipeline AI Map"
+    # so users see exactly which model runs at each stage and can change one
+    # stage without disturbing the global backend.
+    default_model = (
+        settings.anthropic_model if settings.cloud_provider.value == "anthropic"
+        else (settings.deepseek_model if settings.cloud_provider.value == "deepseek"
+              else settings.openai_model)
+    )
+
+    def _stage(label: str, override: str | None, env_var: str, desc: str) -> dict:
+        return {
+            "stage_label": label,
+            "model": override or default_model,
+            "uses_default": not override,
+            "env_var": env_var,
+            "description": desc,
+        }
+
+    pipeline_stages = {
+        "mud_spec_skeleton": _stage(
+            "MUD Spec — Skeleton (Stage 1)",
+            settings.mud_spec_skeleton_model,
+            "MUD_SPEC_SKELETON_MODEL",
+            "Extracts runnable list + per-runnable key steps from requirements.",
+        ),
+        "mud_spec_generator": _stage(
+            "MUD Spec — Generator (Stage 3)",
+            settings.pipeline_generator_model,
+            "MUD_PIPELINE_GENERATOR_MODEL",
+            "Fills runnable details: signature, pseudo-code, traceability.",
+        ),
+        "activity_skeleton": _stage(
+            "Activity — Skeleton (Stage 1)",
+            settings.activity_pipeline_skeleton_model,
+            "MUD_ACTIVITY_PIPELINE_SKELETON_MODEL",
+            "Extracts runnable list + IRV/DEM cross-references for flowcharts.",
+        ),
+        "activity_generator": _stage(
+            "Activity — Per-Runnable (Stage 3)",
+            settings.pipeline_generator_model,
+            "MUD_PIPELINE_GENERATOR_MODEL",
+            "Generates one activity diagram per runnable with pseudo-code labels.",
+        ),
+        "activity_reviewer": _stage(
+            "Activity — Reviewer (Stage 4)",
+            settings.activity_pipeline_reviewer_model,
+            "MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL",
+            "Reviews drafted diagrams; emits structural patches.",
+        ),
+    }
+
     return {
         "ai_backend": settings.ai_backend.value,
         "cloud_provider": settings.cloud_provider.value,
         "anthropic_model": settings.anthropic_model,
         "openai_base_url": settings.openai_base_url,
         "openai_model": settings.openai_model,
+        "deepseek_base_url": settings.deepseek_base_url,
+        "deepseek_model": settings.deepseek_model,
         "local_model_path": settings.local_model_path,
         "confidence_threshold": settings.confidence_threshold,
         "max_retries": settings.max_retries,
@@ -1701,6 +1755,7 @@ async def get_config():
         "use_kroki": settings.use_kroki,
         "kroki_base_url": settings.kroki_base_url,
         "mud_spec_pipeline": settings.mud_spec_pipeline,
+        "pipeline_stages": pipeline_stages,
     }
 
 
@@ -1763,6 +1818,16 @@ async def update_config(request: ConfigUpdateRequest):
         if request.model:
             updates["MUD_ANTHROPIC_MODEL"] = request.model
 
+    elif bt == "deepseek":
+        updates["MUD_AI_BACKEND"] = "cloud"
+        updates["MUD_CLOUD_PROVIDER"] = "deepseek"
+        if request.api_key:
+            updates["MUD_DEEPSEEK_API_KEY"] = request.api_key
+        if request.model:
+            updates["MUD_DEEPSEEK_MODEL"] = request.model
+        if request.base_url:
+            updates["MUD_DEEPSEEK_BASE_URL"] = request.base_url
+
     elif bt in ("ollama", "localai", "lmstudio", "openai", "openai_compatible"):
         updates["MUD_AI_BACKEND"] = "cloud"
         updates["MUD_CLOUD_PROVIDER"] = "openai_compatible"
@@ -1787,7 +1852,7 @@ async def update_config(request: ConfigUpdateRequest):
     else:
         raise HTTPException(
             400,
-            f"Unknown backend_type: {bt}. Use: anthropic, ollama, localai, "
+            f"Unknown backend_type: {bt}. Use: anthropic, deepseek, ollama, localai, "
             "lmstudio, openai, openai_compatible, local_llamacpp"
         )
 
@@ -1814,6 +1879,127 @@ async def update_config(request: ConfigUpdateRequest):
         "openai_model": new_settings.openai_model,
         "anthropic_model": new_settings.anthropic_model,
         "confidence_threshold": new_settings.confidence_threshold,
+    }
+
+
+# ── Per-stage model overrides (Pipeline AI Map) ───────────────────────────────
+
+_STAGE_TO_ENV: dict[str, str] = {
+    "mud_spec_skeleton":   "MUD_SPEC_SKELETON_MODEL",
+    "mud_spec_generator":  "MUD_PIPELINE_GENERATOR_MODEL",
+    "activity_skeleton":   "MUD_ACTIVITY_PIPELINE_SKELETON_MODEL",
+    "activity_generator":  "MUD_PIPELINE_GENERATOR_MODEL",
+    "activity_reviewer":   "MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL",
+}
+
+
+class StageModelUpdateRequest(BaseModel):
+    """Override which model a single pipeline stage uses.
+
+    Passing model=null reverts the stage to the global generator default.
+    """
+    stage_key: str
+    model: Optional[str] = None
+
+
+@router.post("/config/stage")
+async def update_stage_model(request: StageModelUpdateRequest):
+    """Set or clear a per-stage model override.
+
+    Writes to .env (key = `_STAGE_TO_ENV[stage_key]`) and resets the
+    orchestrator so the new model is picked up on the next generation.
+    """
+    env_key = _STAGE_TO_ENV.get(request.stage_key)
+    if not env_key:
+        raise HTTPException(
+            400,
+            f"Unknown stage_key: {request.stage_key}. "
+            f"Valid: {sorted(_STAGE_TO_ENV.keys())}",
+        )
+
+    if request.model and request.model.strip() and request.model.lower() != "(default)":
+        _write_env_updates({env_key: request.model.strip()})
+    else:
+        _remove_env_keys({env_key})
+
+    get_settings.cache_clear()
+    reset_orchestrator()
+
+    return {
+        "ok": True,
+        "stage_key": request.stage_key,
+        "model": request.model or "(default)",
+        "env_var": env_key,
+    }
+
+
+@router.get("/config/available-models")
+async def list_available_models():
+    """Return models the current backend can use, for the UI dropdowns.
+
+    For local Ollama, queries `/api/tags`. For Anthropic/DeepSeek/OpenAI,
+    returns a curated hardcoded list (their APIs don't expose a stable
+    /models endpoint in all versions).
+    """
+    import httpx
+    settings = get_settings()
+    provider = settings.cloud_provider.value
+
+    if provider == "anthropic":
+        return {
+            "provider": "anthropic",
+            "models": [
+                "claude-sonnet-4-5-20250514",
+                "claude-opus-4-20250514",
+                "claude-haiku-4-20250514",
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022",
+            ],
+        }
+
+    if provider == "deepseek":
+        return {
+            "provider": "deepseek",
+            "models": ["deepseek-chat", "deepseek-reasoner"],
+        }
+
+    # OpenAI-compatible: try /api/tags (Ollama) first, then /models
+    base = settings.openai_base_url or "https://api.openai.com/v1"
+    api_key = settings.openai_api_key or ""
+
+    # Ollama variant — /api/tags lives at the root, not under /v1
+    if any(h in base for h in ("localhost", "127.0.0.1", "0.0.0.0", "::1")):
+        ollama_root = base.rstrip("/").removesuffix("/v1")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(f"{ollama_root}/api/tags")
+                if r.status_code == 200:
+                    data = r.json()
+                    names = [m.get("name") for m in data.get("models", []) if m.get("name")]
+                    return {"provider": "ollama", "models": sorted(set(names))}
+        except Exception as exc:
+            logger.debug("ollama /api/tags failed: %s", exc)
+
+    # Fallback: /models on the OpenAI-compatible endpoint
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                f"{base.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                items = data.get("data", []) if isinstance(data, dict) else []
+                names = [item.get("id") for item in items if isinstance(item, dict) and item.get("id")]
+                if names:
+                    return {"provider": "openai_compatible", "models": sorted(set(names))}
+    except Exception as exc:
+        logger.debug("openai-compatible /models failed: %s", exc)
+
+    # Last resort: just the currently-configured model
+    return {
+        "provider": provider,
+        "models": [settings.openai_model] if settings.openai_model else [],
     }
 
 
@@ -2319,4 +2505,23 @@ def _write_env_updates(updates: dict[str, str]) -> None:
         if key not in updated_keys:
             new_lines.append(f"{key}={value}")
 
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+def _remove_env_keys(keys: set[str]) -> None:
+    """Delete the given keys from the .env file (so they fall back to defaults)."""
+    env_path = Path(".env")
+    if not env_path.exists():
+        env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    if not env_path.exists():
+        return
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in keys:
+                continue   # drop this line — falls back to settings default
+        new_lines.append(line)
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")

@@ -941,18 +941,16 @@ def _classify_step_kind(step: str) -> str:
         return "end_switch"
     if re.match(r"^return\b", lowered):
         return "return"
-    # Implicit decision patterns — AUTOSAR pseudo-code often writes guards
-    # without the literal "if" keyword.  Treat these as decision nodes so the
-    # CFG builder emits a diamond rather than a flat action box.
+    # Implicit decision patterns — AUTOSAR pseudo-code sometimes writes
+    # guards without the literal "if" keyword. Treated as decisions ONLY
+    # when a C comparison operator is present in the same line so that
+    # pure-English summaries like "Check if torque OK" stay as actions
+    # (avoids English text leaking into decision-node names downstream).
     _IMPLICIT_IF_PATTERNS = (
-        r"^validate\s+if\b",
-        r"^check\s+(if|whether|that)\b",
-        r"^guard\s*:",
-        r"^verify\s+if\b",
-        r"^determine\s+if\b",
+        r"^(?:validate|check|verify|determine|guard)\b[^a-z]*[A-Za-z_]\w*\s*(?:>|<|==|!=|>=|<=|&&|\|\|)",
     )
     for p in _IMPLICIT_IF_PATTERNS:
-        if re.match(p, lowered):
+        if re.search(p, lowered):
             return "if"
     return "action"
 

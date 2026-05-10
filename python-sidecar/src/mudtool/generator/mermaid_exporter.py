@@ -394,15 +394,17 @@ class MermaidExporter:
             - Wrap in double quotes so (, ), :, >, <, = etc. are treated as literal text
             - Replace literal backslash-n with <br/> for line breaks
             - Escape embedded double-quotes as #quot;
-            - Replace C logical operators (||, &&) to avoid Mermaid pipe-char conflicts
+            - Preserve C logical operators (||, &&) using HTML entities so engineers
+              see real C syntax in the rendered diagram, not English words like "AND"/"OR"
             """
             safe = (
                 text
                 .replace('"', "#quot;")
                 .replace("\\n", "<br/>")
-                .replace("||", " OR ")    # C logical-or breaks flowchart parser
-                .replace("|", " PIPE ")   # lone pipe → word form (Mermaid is not an HTML parser)
-                .replace("&&", " AND ")   # C logical-and (sanitize for safety)
+                # Preserve C operators as HTML entities (Mermaid renders them back)
+                .replace("&&", "&amp;&amp;")
+                .replace("||", "&vert;&vert;")
+                .replace("|", "&vert;")  # lone pipe → HTML entity (safe in quoted label)
             )
             # Auto-wrap long pseudocode labels at ~60 chars for readability
             if len(safe) > 60 and "<br/>" not in safe:
@@ -446,8 +448,11 @@ class MermaidExporter:
             g = g.strip()
             if g.startswith("[") and g.endswith("]"):
                 g = g[1:-1]
-            # Replace chars that break Mermaid edge-label parsing
-            g = g.replace("||", " OR ").replace("|", " OR ").replace("&&", " AND ")
+            # Preserve C operators via HTML entities. The edge-label `|guard|`
+            # syntax does use `|` as the delimiter, so lone/double pipes must
+            # be entity-escaped — but as entities they render back to real `|`
+            # in the final SVG, keeping C semantics intact.
+            g = g.replace("&&", "&amp;&amp;").replace("||", "&vert;&vert;").replace("|", "&vert;")
             g = g.replace("(", "&#40;").replace(")", "&#41;")
             g = g.replace(">", "&gt;").replace("<", "&lt;")
             g = g.replace('"', "'")

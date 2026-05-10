@@ -22,6 +22,7 @@ class CloudProvider(str, Enum):
     """Cloud AI provider."""
     ANTHROPIC = "anthropic"
     OPENAI_COMPATIBLE = "openai_compatible"
+    DEEPSEEK = "deepseek"
 
 
 def _find_env_file() -> str:
@@ -62,6 +63,12 @@ class Settings(BaseSettings):
     openai_max_tokens: int = 8192
     openai_enable_thinking: bool = False   # MUD_OPENAI_ENABLE_THINKING — pass think:true to Ollama
     openai_json_mode: bool = True           # MUD_OPENAI_JSON_MODE — force JSON output via Ollama format field
+
+    # Cloud AI - DeepSeek (OpenAI-compatible API hosted at api.deepseek.com)
+    deepseek_api_key: Optional[str] = None
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_model: str = "deepseek-chat"   # or "deepseek-reasoner" for R1-style reasoning
+    deepseek_max_tokens: int = 8192
 
     cloud_provider: CloudProvider = CloudProvider.ANTHROPIC
 

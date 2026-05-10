@@ -451,6 +451,53 @@ CONCRETE ONE-SHOT EXAMPLE (6-node pattern — replace names/ids with actual runn
   ],
   "sub_diagrams": []
 }}
+
+STRICT FORMAT EXAMPLES — node names MUST follow these patterns (ZERO tolerance for English prose):
+
+decision node names (C boolean expression only):
+  YES  "l_f32Speed > LIMIT_HIGH"
+  YES  "l_u8RetryCount < MAX_RETRIES"
+  YES  "l_eMode == STATE_ACTIVE"
+  YES  "(l_f32V > LO) && (l_f32V < HI)"
+  NO   "Check if speed valid"                  (English prose)
+  NO   "Validate torque range"                 (English prose)
+  NO   "if l_f32Speed > LIMIT"                 (do NOT include 'if' keyword)
+
+action node names (C assignment or atomic op):
+  YES  "l_f32Out = l_f32K * l_f32In"
+  YES  "l_u8Status = STATUS_OK"
+  YES  "l_boolValid = (l_f32V < MAX)"
+  NO   "Compute assist torque"                 (English prose)
+  NO   "Set status to OK"                      (English prose)
+
+call node names (AUTOSAR service signature):
+  YES  "Rte_Read_RP_VehicleSpeed(&l_f32Speed)"
+  YES  "Rte_Write_PP_AssistTorque(l_f32Out)"
+  YES  "Dem_SetEventStatus(DEM_EVENT_FAULT, DEM_EVENT_STATUS_FAILED)"
+  NO   "Read vehicle speed"                    (use Rte_Read signature)
+  NO   "Rte_Read"                              (must include port and arg)
+
+exception node names (Dem_/Det_ call):
+  YES  "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)"
+  YES  "Det_ReportError(MODULE_ID, INSTANCE, API_ID, ERROR_CODE)"
+  NO   "Report fault"                          (English prose)
+
+LOCAL VARIABLE NAMING — must be l_<type><Name> (lowercase l, type prefix, PascalCase name):
+  YES  l_f32Speed, l_u16Count, l_boolValid, l_eMode, l_i32Delta
+  NO   speed, mySpeed, speedVar, theSpeed, f_speed
+
+EDGE GUARDS — also C expressions only:
+  YES  "[l_f32Speed > 100]", "[else]", "[default]", "[loop]"
+  NO   "[if speed exceeds limit]", "[check valid]"
+
+Before emitting JSON, scan EVERY node.name and EVERY edge.guard:
+  - If a decision/guard contains English words (check/verify/validate/is/should/whether/when),
+    REWRITE it as a C boolean expression using the local variables from the pseudo-code.
+  - If a call name lacks the Rte_/Dem_ prefix with full signature, REWRITE.
+  - If a local variable doesn't match l_<type><Name>, REWRITE.
+  - If you cannot derive a valid C expression from the pseudo-code, set
+    confidence < 0.5 and put a TODO marker in the description, but STILL
+    write the name as a placeholder C expression (never English).
 """
 
 
@@ -475,6 +522,13 @@ Focus on these classes of problems:
      the CFG has a broken bypass edge that skips over valid steps. Emit severity "warn"
      with message: 'Node <id> "<name>" is unreachable (no incoming edges) — a decision
      edge likely bypasses this node and must be rewired to it.'
+  8. Pseudo-code purity: any decision node's name or any edge's guard contains English
+     prose (words like check, verify, validate, is, are, whether, should, when, valid,
+     invalid, ok) instead of a C boolean expression. ALSO any action node whose name
+     is an English summary (no `=` and no recognizable C operator) when the source
+     pseudo-code clearly contained C syntax. For each, emit a rename_node or
+     change_guard patch with a rewritten C expression derived from the local
+     variables used elsewhere in the same diagram. Severity "warn".
 
 Output STRICT JSON only:
 {
@@ -483,13 +537,26 @@ Output STRICT JSON only:
   ],
   "patches": [
     {"runnable": "RE_…", "op": "add_initial"},
-    {"runnable": "RE_…", "op": "add_final"}
+    {"runnable": "RE_…", "op": "add_final"},
+    {"runnable": "RE_…", "op": "rename_node",        "node_id": "N_03", "new_name": "Rte_Read_RP_Speed(&l_f32Speed)"},
+    {"runnable": "RE_…", "op": "change_guard",       "edge_source": "N_04", "edge_target": "N_05", "new_guard": "[l_f32Speed > LIMIT]"},
+    {"runnable": "RE_…", "op": "retype_node",        "node_id": "N_07", "new_type": "action"},
+    {"runnable": "RE_…", "op": "add_exception_edge", "from_node": "N_09", "label": "E_NOT_OK"}
   ]
 }
 
 Patch ops supported (use only these — anything else is ignored):
-  add_initial   — insert a Start node at the top
-  add_final     — insert an End node at the bottom
+  add_initial        — insert a Start node at the top
+  add_final          — insert an End node at the bottom
+  rename_node        — fix a node name; fields: node_id, new_name
+  change_guard       — fix an edge guard; fields: edge_source, edge_target, new_guard
+  retype_node        — correct a node's node_type; fields: node_id, new_type
+                       valid types: action | call | function_call | decision | merge | exception | initial | final
+  add_exception_edge — add a missing fault edge from a node to the diagram's final node
+                       fields: from_node, label (the guard text, e.g. "E_NOT_OK")
+
+For rule 6 (BSW callee typed as function_call): emit BOTH an issue AND a retype_node patch:
+  {"runnable": "RE_…", "op": "retype_node", "node_id": "<id>", "new_type": "action"}
 
 Be conservative: if unsure, log it as an issue without a patch.
 Output ONLY JSON, no prose, no <think>.
@@ -583,6 +650,16 @@ class ActivityPipeline:
             f"[Activity Pipeline] Stage 1 complete — {len(runnables)} runnables identified",
             20,
         )
+
+        # Surface inferred values so engineers can verify before Stage 3 commits to them
+        assumptions = self._extract_assumptions(runnables)
+        if assumptions:
+            self._emit(
+                f"[Activity Pipeline] Stage 1 inferred {len(assumptions)} value(s) from pseudo-code — verify in pipeline log",
+                22,
+                assumptions=assumptions,
+                assumption_count=len(assumptions),
+            )
 
         # ── Stage 2: Cross-reference map ───────────────────────────────────
         xref = self._stage2_xref(runnables, mud_activity_context)
@@ -754,6 +831,60 @@ class ActivityPipeline:
                 "raises_dem": [],
             })
         return {"runnables": runnables}
+
+    @staticmethod
+    def _extract_assumptions(runnables: list[dict]) -> list[dict]:
+        """Extract inferred values from the Stage 1 skeleton for user visibility.
+
+        Surfaces guard conditions, DEM events, and IRV references that the AI
+        inferred from pseudo-code — so engineers can spot wrong guesses before
+        diagram generation commits to them. Returned as a list of dicts emitted
+        in the Stage 1 SSE payload.
+        """
+        assumptions: list[dict] = []
+        for r in runnables:
+            rname = r.get("name", "?")
+
+            # Guard-like key steps (conditions the AI will use as decision guards)
+            for step in r.get("key_steps", []):
+                s = step.strip()
+                if s.lower().startswith("if ") or any(op in s for op in ("==", "!=", ">", "<", ">=", "<=")):
+                    assumptions.append({
+                        "runnable": rname,
+                        "field": "guard_condition",
+                        "inferred_value": s,
+                        "basis": "inferred from Section 7 pseudo-code",
+                    })
+
+            # DEM event IDs the AI found
+            for dem in r.get("raises_dem", []):
+                if dem:
+                    assumptions.append({
+                        "runnable": rname,
+                        "field": "dem_event",
+                        "inferred_value": dem,
+                        "basis": "inferred from MUD spec DEM references",
+                    })
+
+            # IRV producer/consumer relationships
+            for irv in r.get("reads_irvs", []):
+                if irv:
+                    assumptions.append({
+                        "runnable": rname,
+                        "field": "irv_read",
+                        "inferred_value": irv,
+                        "basis": "inferred from MUD spec IRV references",
+                    })
+            for irv in r.get("writes_irvs", []):
+                if irv:
+                    assumptions.append({
+                        "runnable": rname,
+                        "field": "irv_write",
+                        "inferred_value": irv,
+                        "basis": "inferred from MUD spec IRV references",
+                    })
+
+        return assumptions
 
     # ─── Stage 2 ──────────────────────────────────────────────────────────
 
@@ -1248,6 +1379,66 @@ Also flag:
                             "target": new_id,
                         })
 
+            elif op == "rename_node":
+                node_id = patch.get("node_id")
+                new_name = (patch.get("new_name") or "").strip()
+                if node_id and new_name:
+                    for n in nodes:
+                        if isinstance(n, dict) and n.get("id") == node_id:
+                            n["name"] = new_name
+                            break
+
+            elif op == "change_guard":
+                src = patch.get("edge_source")
+                tgt = patch.get("edge_target")
+                new_guard = (patch.get("new_guard") or "").strip()
+                if src and tgt and new_guard:
+                    for e in edges:
+                        if isinstance(e, dict) and e.get("source") == src and e.get("target") == tgt:
+                            e["guard"] = new_guard
+                            break
+
+            elif op == "retype_node":
+                node_id = patch.get("node_id")
+                new_type = (patch.get("new_type") or "").strip().lower()
+                _valid_types = {
+                    "action", "call", "function_call", "decision",
+                    "merge", "exception", "initial", "final", "fork", "join",
+                }
+                if node_id and new_type in _valid_types:
+                    for n in nodes:
+                        if isinstance(n, dict) and n.get("id") == node_id:
+                            n["node_type"] = new_type
+                            # BSW retyped to action — callee field no longer meaningful
+                            if new_type == "action":
+                                n.pop("callee", None)
+                            break
+
+            elif op == "add_exception_edge":
+                from_node = patch.get("from_node")
+                label = (patch.get("label") or "Error").strip()
+                if from_node and any(
+                    isinstance(n, dict) and n.get("id") == from_node for n in nodes
+                ):
+                    tgt = next(
+                        (n["id"] for n in nodes
+                         if isinstance(n, dict) and (n.get("node_type") or "").lower() == "final"),
+                        None,
+                    )
+                    if tgt:
+                        exc_edge_id = f"E_EXC_{from_node}"
+                        already_exists = any(
+                            isinstance(e, dict) and e.get("id") == exc_edge_id
+                            for e in edges
+                        )
+                        if not already_exists:
+                            edges.append({
+                                "id": exc_edge_id,
+                                "source": from_node,
+                                "target": tgt,
+                                "guard": f"[{label}]",
+                            })
+
         # Stamp provenance hash + version + quality metrics on every diagram
         finalised: list[dict] = []
         for d in drafts:
@@ -1453,18 +1644,27 @@ Also flag:
                     if value not in (None, "", []):
                         node[key] = value
 
-            # Use AI name when it is more specific (longer), but never shorten
-            # a good Rte_/Dem_ scaffold name to a vague AI phrase.
+            # Use AI name only when it is comparably specific AND looks like
+            # C syntax. Never let a vague English phrase from the AI overwrite
+            # a precise scaffold-generated name (Rte_/Dem_/C-assignment/C-expr).
             ai_name = (ai_node.get("name") or "").strip()
             scaffold_name = str(node.get("name", ""))
             is_rte_scaffold = scaffold_name.startswith(("Rte_", "Dem_"))
             is_rte_ai = ai_name.startswith(("Rte_", "Dem_"))
+            # AI name "looks like C" if it starts with an AUTOSAR service prefix
+            # or contains an assignment / comparison / logical operator.
+            ai_looks_c = bool(
+                is_rte_ai
+                or ai_name.startswith(("Sch_", "Det_", "WdgM_", "NvM_", "BswM_"))
+                or re.search(r"[A-Za-z_]\w*\s*(?:=|>|<|==|!=|>=|<=|&&|\|\|)", ai_name)
+            )
             if ntype not in {"initial", "final", "merge"} and ai_name:
                 if is_rte_scaffold and not is_rte_ai:
                     # Keep the precise Rte_/Dem_ scaffold name — AI shortened it
                     pass
-                elif len(ai_name) >= len(scaffold_name) // 2:
+                elif len(ai_name) >= int(len(scaffold_name) * 0.8) and ai_looks_c:
                     node["name"] = ai_name
+                # else: keep scaffold name — AI version is too short or too vague
 
             if ai_node.get("trace_reqs"):
                 node["trace_reqs"] = ai_node["trace_reqs"]
