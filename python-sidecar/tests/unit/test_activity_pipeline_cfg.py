@@ -23,6 +23,13 @@ class _FakeBackend:
         return AIResponse(content=content, model="fake-model", latency_ms=12)
 
 
+class _FailingBackend:
+    backend_name = "failing"
+
+    async def generate(self, **kwargs):
+        raise RuntimeError("boom")
+
+
 def _make_requirement(req_id: str) -> Requirement:
     return Requirement(
         req_id=req_id,
@@ -77,6 +84,34 @@ def test_normalize_activity_semantics_drops_local_variable_port_metadata():
     assert node["node_type"] == "action"
     assert "rte_call" not in node
     assert "port" not in node
+
+
+def test_normalize_activity_semantics_retypes_condition_action_to_decision_and_stubs_helper():
+    diagram = {
+        "owner_swc": "SWC_Test",
+        "owner_runnable": "RE_Test",
+        "source_requirements": ["REQ-1"],
+        "nodes": [
+            {"id": "N_00", "name": "Start", "node_type": "initial"},
+            {"id": "N_01", "name": "l_f32Speed > SPEED_LIMIT", "node_type": "action"},
+            {"id": "N_02", "name": "SF_ValidateSensors(...)", "node_type": "function_call", "callee": "SF_ValidateSensors"},
+            {"id": "N_03", "name": "End", "node_type": "final"},
+        ],
+        "edges": [
+            {"id": "E_01", "source": "N_00", "target": "N_01"},
+            {"id": "E_02", "source": "N_01", "target": "N_02"},
+            {"id": "E_03", "source": "N_02", "target": "N_03"},
+        ],
+        "sub_diagrams": [],
+    }
+
+    ActivityPipeline._normalize_activity_semantics(diagram)
+    ActivityPipeline._repair_decision_branches(diagram, "RE_Test")
+    ActivityPipeline._ensure_helper_subdiagrams(diagram, "SWC_Test", "RE_Test", ["REQ-1"])
+
+    assert diagram["nodes"][1]["node_type"] == "decision"
+    assert len([edge for edge in diagram["edges"] if edge["source"] == "N_01"]) == 2
+    assert any(sub.get("function_name") == "SF_ValidateSensors" for sub in diagram["sub_diagrams"])
 
 
 def test_mermaid_activity_decision_edges_use_yes_no_labels():
@@ -207,6 +242,51 @@ async def test_stage3_runnable_rebuilds_invalid_ai_topology_from_cfg():
     assert decision_ids
     for did in decision_ids:
         assert sum(1 for edge in result["edges"] if edge["source"] == did) >= 2
+
+
+@pytest.mark.asyncio
+async def test_stage3_runnable_backend_failure_returns_cfg_fallback():
+    pipeline = ActivityPipeline(
+        backend=_FailingBackend(),
+        skeleton_backend=_FakeBackend([]),
+        reviewer_backend=_FakeBackend([]),
+    )
+    mud_ctx = MudActivityContext(
+        swc_name="SWC_Test",
+        runnables=[
+            RunnableContext(
+                name="RE_Fallback",
+                trigger="10ms",
+                asil="ASIL-B",
+                functional_description="\n".join(
+                    [
+                        "1. If l_u8Mode == MODE_RUN",
+                        "1.1. Rte_Write(PP_Status, STATUS_OK)",
+                        "2. Else",
+                        "2.1. Rte_Write(PP_Status, STATUS_INIT)",
+                        "3. End If",
+                    ]
+                ),
+            )
+        ],
+        rte_calls=[],
+        helper_functions=[],
+        raw_markdown="",
+    )
+
+    result = await pipeline._stage3_runnable(
+        sk_run={"name": "RE_Fallback", "trigger": "10ms", "asil": "ASIL-B", "key_steps": []},
+        mud_activity_context=mud_ctx,
+        swc_name="SWC_Test",
+        requirements=[_make_requirement("REQ-1")],
+        activity_label_style="pseudocode",
+        temperature=0.1,
+    )
+
+    assert result is not None
+    assert result["provenance"]["prompt_version"] == "activity_pipeline_cfg_ai_backend_error"
+    assert result["owner_runnable"] == "RE_Fallback"
+    assert any(node["node_type"] == "decision" for node in result["nodes"])
 
 
 def test_stage5_finalise_rebuilds_from_canonical_when_lint_fails():

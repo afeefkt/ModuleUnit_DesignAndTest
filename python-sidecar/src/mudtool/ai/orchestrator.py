@@ -45,6 +45,61 @@ _DIAGRAM_MODELS = {
 }
 
 
+def _provider_model_field(settings: Settings) -> str:
+    return (
+        "deepseek_model"
+        if settings.cloud_provider.value == "deepseek"
+        else "openai_model"
+    )
+
+
+def _active_provider_model(settings: Settings) -> str:
+    return (
+        settings.deepseek_model
+        if settings.cloud_provider.value == "deepseek"
+        else settings.openai_model
+    )
+
+
+def _is_local_openai_compatible(settings: Settings) -> bool:
+    if settings.cloud_provider.value != "openai_compatible":
+        return False
+    url = (settings.openai_base_url or "").lower()
+    return (
+        "localhost" in url
+        or "127.0.0.1" in url
+        or "host.docker.internal" in url
+        or url.startswith("http://")
+    )
+
+
+def _normalize_provider_model(settings: Settings, model_name: str) -> str:
+    """Translate local/Ollama model aliases to hosted-provider model names."""
+    model = (model_name or "").strip()
+    if settings.cloud_provider.value == "deepseek":
+        model_lower = model.lower()
+        if model_lower.startswith("deepseek-r1") or model_lower.startswith("deepseek-r"):
+            logger.warning(
+                "DeepSeek hosted API does not accept local model '%s'; using deepseek-reasoner",
+                model,
+            )
+            return "deepseek-reasoner"
+    if _is_local_openai_compatible(settings):
+        model_lower = model.lower()
+        hosted_deepseek_names = {"deepseek-chat", "deepseek-reasoner"}
+        if model_lower in hosted_deepseek_names:
+            active = (settings.openai_model or "").strip()
+            logger.warning(
+                "Local OpenAI-compatible backend cannot use hosted DeepSeek model '%s'; "
+                "using active local model '%s' instead. For Ollama DeepSeek R1, set "
+                "the model to a local tag such as deepseek-r1:7b.",
+                model,
+                active,
+            )
+            return active
+    return model
+
+
 class AIOrchestrator:
     """Central AI orchestration engine.
 
@@ -118,7 +173,10 @@ class AIOrchestrator:
           - ``pipeline_reviewer_model`` is empty / not configured
           - The active backend is a local model (no per-model override supported)
         """
-        reviewer_model = self.settings.pipeline_reviewer_model
+        reviewer_model = _normalize_provider_model(
+            self.settings,
+            self.settings.pipeline_reviewer_model,
+        )
         if not reviewer_model:
             logger.debug("Reviewer: no pipeline_reviewer_model configured, using generator backend")
             return self._get_backend()
@@ -128,15 +186,18 @@ class AIOrchestrator:
             logger.info("Reviewer: local backend active — reviewer model override not supported, using generator")
             return gen_backend
 
-        # Build a CloudBackend instance with the reviewer model name substituted
+        # Build a CloudBackend instance with the reviewer model name substituted.
+        # DeepSeek uses the same OpenAI-compatible client path, but CloudBackend
+        # resolves its active model from settings.deepseek_model.
+        model_field = _provider_model_field(self.settings)
         try:
             reviewer_settings = self.settings.model_copy(
-                update={"openai_model": reviewer_model}
+                update={model_field: reviewer_model}
             )
         except AttributeError:
             # Pydantic v1 fallback
             reviewer_settings = self.settings.copy(
-                update={"openai_model": reviewer_model}
+                update={model_field: reviewer_model}
             )
 
         reviewer = CloudBackend(reviewer_settings)
@@ -155,7 +216,10 @@ class AIOrchestrator:
           - The active backend is local (no per-model override supported)
           - The configured skeleton model equals the generator model
         """
-        skeleton_model = (self.settings.mud_spec_skeleton_model or "").strip()
+        skeleton_model = _normalize_provider_model(
+            self.settings,
+            self.settings.mud_spec_skeleton_model,
+        )
         if not skeleton_model:
             return self._get_backend()
 
@@ -166,16 +230,18 @@ class AIOrchestrator:
             )
             return gen_backend
 
-        if skeleton_model == self.settings.openai_model:
+        active_model = _active_provider_model(self.settings)
+        if skeleton_model == active_model:
             return gen_backend
 
+        model_field = _provider_model_field(self.settings)
         try:
             skeleton_settings = self.settings.model_copy(
-                update={"openai_model": skeleton_model}
+                update={model_field: skeleton_model}
             )
         except AttributeError:
             skeleton_settings = self.settings.copy(
-                update={"openai_model": skeleton_model}
+                update={model_field: skeleton_model}
             )
 
         skeleton = CloudBackend(skeleton_settings)
@@ -185,7 +251,7 @@ class AIOrchestrator:
         return skeleton
 
     def _make_backend_with_model(self, model_name: str) -> BaseAIBackend:
-        """Build a CloudBackend variant with ``openai_model`` overridden.
+        """Build a CloudBackend variant with the active provider model overridden.
 
         Falls back to the generator backend when the active backend is local
         or when ``model_name`` matches the generator (no swap needed).
@@ -193,12 +259,15 @@ class AIOrchestrator:
         gen_backend = self._get_backend()
         if not isinstance(gen_backend, CloudBackend):
             return gen_backend
-        if not model_name or model_name == self.settings.openai_model:
+        model_name = _normalize_provider_model(self.settings, model_name)
+        active_model = _active_provider_model(self.settings)
+        if not model_name or model_name == active_model:
             return gen_backend
+        model_field = _provider_model_field(self.settings)
         try:
-            new_settings = self.settings.model_copy(update={"openai_model": model_name})
+            new_settings = self.settings.model_copy(update={model_field: model_name})
         except AttributeError:
-            new_settings = self.settings.copy(update={"openai_model": model_name})
+            new_settings = self.settings.copy(update={model_field: model_name})
         return CloudBackend(new_settings)
 
     def _get_activity_skeleton_backend(self) -> BaseAIBackend:

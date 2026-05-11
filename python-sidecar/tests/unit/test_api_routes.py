@@ -810,6 +810,40 @@ class TestMudSpecRoutes:
         assert "event: complete" in response.text
         assert "section7_normalization" in response.text
 
+    def test_mud_spec_review_provider_error_returns_bad_gateway(self, monkeypatch):
+        from mudtool.ai import mud_spec_generator as msg
+
+        class _ProviderError(Exception):
+            response = SimpleNamespace(status_code=400, text='{"error":"bad model"}')
+
+        class _FakeMudSpecGenerator:
+            def __init__(self, orchestrator):
+                pass
+
+            async def review_spec(self, **kwargs):
+                raise _ProviderError("provider rejected request")
+
+        monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _DummyOrchestrator())
+        monkeypatch.setattr(msg, "MudSpecGenerator", _FakeMudSpecGenerator)
+
+        app = create_app()
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/modules/review",
+                json={
+                    "swc_name": "SWC_Test",
+                    "asil": "ASIL-B",
+                    "req_ids": ["REQ-1"],
+                    "requirements_text": "REQ-1 do control",
+                    "mud_spec_markdown": "# MUD Spec: SWC_Test",
+                    "temperature": 0.1,
+                    "iteration": 1,
+                },
+            )
+
+        assert response.status_code == 502
+        assert "AI review provider rejected the request (400)" in response.json()["detail"]
+
     def test_mud_spec_regenerate_verifies_post_review_without_retry(self, monkeypatch):
         from mudtool.ai import mud_spec_generator as msg
 
@@ -1151,6 +1185,43 @@ class TestTraceabilityAndConfigRoutes:
 
         assert response.status_code == 400
         assert "Unknown backend_type" in response.json()["detail"]
+
+    def test_config_update_ollama_without_model_clears_stale_stage_overrides(self, api_client, monkeypatch):
+        from mudtool.config.settings import AIBackend, CloudProvider, Settings
+
+        captured: dict[str, str] = {}
+
+        def fake_get_settings():
+            return Settings(
+                ai_backend=AIBackend.CLOUD,
+                cloud_provider=CloudProvider.OPENAI_COMPATIBLE,
+                openai_api_key="ollama",
+                openai_base_url="http://localhost:11434/v1",
+                openai_model="mistral",
+                pipeline_generator_model="deepseek-reasoner",
+                pipeline_reviewer_model="deepseek-reasoner",
+                mud_spec_skeleton_model="deepseek-chat",
+                activity_pipeline_skeleton_model="deepseek-chat",
+                activity_pipeline_reviewer_model="deepseek-reasoner",
+            )
+
+        fake_get_settings.cache_clear = lambda: None
+        monkeypatch.setattr(routes, "get_settings", fake_get_settings)
+        monkeypatch.setattr(routes, "_write_env_updates", lambda updates: captured.update(updates))
+        monkeypatch.setattr(dependencies, "reset_orchestrator", lambda: None)
+
+        response = api_client.post(
+            "/api/v1/config/update",
+            json={"backend_type": "ollama"},
+        )
+
+        assert response.status_code == 200
+        assert captured["MUD_OPENAI_BASE_URL"] == "http://localhost:11434/v1"
+        assert captured["MUD_PIPELINE_GENERATOR_MODEL"] == "mistral"
+        assert captured["MUD_PIPELINE_REVIEWER_MODEL"] == "mistral"
+        assert captured["MUD_SPEC_SKELETON_MODEL"] == ""
+        assert captured["MUD_ACTIVITY_PIPELINE_SKELETON_MODEL"] == ""
+        assert captured["MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL"] == ""
 
 
 class TestEnvWriter:

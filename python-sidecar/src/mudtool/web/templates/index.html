@@ -1622,11 +1622,14 @@
       const generated = summary.generated_count ?? 0;
       const rendered = summary.rendered_count ?? generated;
       const status = summary.quality_status || 'needs_fix';
+      const fallback = summary.fallback_count || 0;
+      const aiEnriched = summary.ai_enriched_count ?? Math.max(0, generated - fallback);
       const label = status === 'pass'
         ? 'quality passed'
         : status === 'failed'
           ? 'generation failed'
           : 'quality needs fix';
+      if (fallback) return `Generated ${generated}/${planned} diagrams - rendered ${rendered} - AI enriched ${aiEnriched}/${generated} - fallback ${fallback} - ${label}`;
       return `Generated ${generated}/${planned} diagrams · rendered ${rendered} · ${label}`;
     }
 
@@ -1638,12 +1641,14 @@
       const summary = data.generation_summary || {};
       const grouped = {
         'Generation failures': [],
+        'Fallback scaffold used': [],
         'Render/lint blockers': [],
         'Validation errors': [],
         'Validation warnings': [],
         'Traceability coverage gaps': [],
       };
       (summary.failed_items || []).forEach(item => grouped['Generation failures'].push(String(item)));
+      (summary.fallback_items || []).forEach(item => grouped['Fallback scaffold used'].push(String(item)));
       (diagIssues || []).forEach(issue => {
         const msg = issue.message || '';
         const severity = (issue.severity || '').toLowerCase();

@@ -19,6 +19,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from mudtool.config.settings import Settings, get_settings
+from mudtool.debug_trace import RunDebugTrace
 from mudtool.models.json_uml import DiagramType, GenerationResult
 from mudtool.models.requirements import RequirementSet
 from mudtool.models.validation import ValidationReport
@@ -85,6 +86,18 @@ def _build_generation_summary(
     lint_results: dict,
 ) -> dict:
     generated_count = len(result.diagrams or [])
+    fallback_items: list[str] = []
+    for diagram in result.diagrams or []:
+        prov = getattr(diagram, "provenance", None)
+        mode = getattr(prov, "provenance_mode", None) if prov is not None else None
+        prompt_version = getattr(prov, "prompt_version", "") if prov is not None else ""
+        if mode == "ai_failed_cfg_fallback" or str(prompt_version).startswith("activity_pipeline_cfg_"):
+            fallback_items.append(
+                getattr(diagram, "owner_runnable", None)
+                or getattr(diagram, "name", "")
+                or "activity"
+            )
+    ai_enriched_count = max(0, generated_count - len(fallback_items))
     attempted_count = planned_count
     base_count = max(planned_count, attempted_count)
     failed_count = max(0, base_count - generated_count)
@@ -114,6 +127,9 @@ def _build_generation_summary(
         "generated_count": generated_count,
         "rendered_count": rendered_count,
         "failed_count": failed_count,
+        "ai_enriched_count": ai_enriched_count,
+        "fallback_count": len(fallback_items),
+        "fallback_items": fallback_items,
         "quality_status": quality_status,
         "blocking_count": blocking_count,
         "warning_count": warning_count,
@@ -1023,10 +1039,25 @@ async def generate_diagrams_stream(request: GenerateRequest):
     except ValueError:
         raise HTTPException(400, f"Invalid pipeline_mode '{raw_mode}'.")
 
+    trace = RunDebugTrace(
+        settings,
+        "diagram_generate_stream",
+        {
+            "diagram_types": [dt.value for dt in diagram_types],
+            "requirement_count": len(request.requirements.requirements),
+            "requirement_ids": req_ids,
+            "generation_mode": generation_mode,
+            "pipeline_mode": effective_mode.value,
+            "activity_source": request.activity_source,
+            "module_context": request.module_context,
+        },
+    )
+
     # SSE event queue — progress_callback pushes, generator yields
     queue: asyncio.Queue = asyncio.Queue()
 
     def progress_callback(event: dict) -> None:
+        trace.record_event("progress", event)
         queue.put_nowait(event)
 
     async def run_generation():
@@ -1087,11 +1118,13 @@ async def generate_diagrams_stream(request: GenerateRequest):
             ]
             planned_count, planned_items = _estimate_planned_diagrams(request, active_diagram_types)
             if not active_diagram_types:
-                queue.put_nowait({
+                event = trace.attach_path({
                     "_error": True,
                     "message": "All diagram types blocked by structural pre-check - "
                                "requirements are too sparse. Check precheck warnings.",
                 })
+                trace.record_event("error", event)
+                queue.put_nowait(event)
                 return
 
             # ── Stage 0.5: Guidelines RAG Load ───────────────────────────────
@@ -1365,7 +1398,7 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 validation_report=validation_report,
                 lint_results=lint_results,
             )
-            queue.put_nowait({
+            event = trace.attach_path({
                 "_final": True,
                 "result": result.model_dump(mode="json"),
                 "validation_report": (
@@ -1380,9 +1413,13 @@ async def generate_diagrams_stream(request: GenerateRequest):
                 "lint_summary": {k: v.to_summary() for k, v in lint_results.items()},
                 "generation_summary": generation_summary,
             })
+            trace.record_event("complete", event)
+            queue.put_nowait(event)
         except Exception as exc:
             logger.error(f"SSE generation failed: {exc}", exc_info=True)
-            queue.put_nowait({"_error": True, "message": str(exc)})
+            event = trace.attach_path({"_error": True, "message": str(exc)})
+            trace.record_event("error", event)
+            queue.put_nowait(event)
 
     async def event_generator():
         """Yields SSE-formatted events from the queue."""
@@ -1841,6 +1878,18 @@ async def update_config(request: ConfigUpdateRequest):
             updates["MUD_OPENAI_API_KEY"] = bt
         if request.model:
             updates["MUD_OPENAI_MODEL"] = request.model
+        if bt in ("ollama", "localai", "lmstudio"):
+            # Local OpenAI-compatible backends use provider-local model names.
+            # Keep stage overrides aligned even when the UI switches backend
+            # without sending a model value; otherwise stale hosted aliases such
+            # as deepseek-reasoner can survive and break the next run.
+            local_stage_model = request.model or get_settings().openai_model
+            if local_stage_model:
+                updates["MUD_PIPELINE_GENERATOR_MODEL"] = local_stage_model
+                updates["MUD_PIPELINE_REVIEWER_MODEL"] = local_stage_model
+            updates["MUD_SPEC_SKELETON_MODEL"] = ""
+            updates["MUD_ACTIVITY_PIPELINE_SKELETON_MODEL"] = ""
+            updates["MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL"] = ""
 
     elif bt == "local_llamacpp":
         updates["MUD_AI_BACKEND"] = "local"
@@ -2176,6 +2225,19 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
 
     orchestrator = get_orchestrator()
     generator = MudSpecGenerator(orchestrator)
+    settings: Settings = get_settings()
+    trace = RunDebugTrace(
+        settings,
+        "mud_spec_generate",
+        {
+            "swc_name": request.swc_name,
+            "asil": request.asil,
+            "requirement_count": len(request.req_ids),
+            "requirement_ids": request.req_ids,
+            "spec_pipeline": request.spec_pipeline,
+            "runnables": request.runnables,
+        },
+    )
 
     # Override MUD_SPEC_PIPELINE setting with per-request value (if provided)
     # by temporarily patching settings — the generator reads it at call time.
@@ -2184,6 +2246,7 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
     queue: asyncio.Queue = asyncio.Queue()
 
     def _progress(event: dict) -> None:
+        trace.record_event("progress", event)
         queue.put_nowait(event)
 
     async def _run():
@@ -2199,16 +2262,20 @@ async def generate_mud_spec_stream(request: MudSpecRequest):
                 progress_callback=_progress,
                 pipeline_mode=_pipeline_override,
             )
-            queue.put_nowait({
+            event = trace.attach_path({
                 "_final": True,
                 "mud_spec_markdown": spec_md,
                 "swc_name": request.swc_name,
                 "char_count": len(spec_md),
                 "section7_normalization": generator.last_normalization_result.to_dict(),
             })
+            trace.record_event("complete", event)
+            queue.put_nowait(event)
         except Exception as exc:
             logger.exception("mud_spec generation failed for %s", request.swc_name)
-            queue.put_nowait({"_error": True, "detail": str(exc)})
+            event = trace.attach_path({"_error": True, "detail": str(exc)})
+            trace.record_event("error", event)
+            queue.put_nowait(event)
 
     async def event_generator():
         task = asyncio.create_task(_run())
@@ -2284,16 +2351,30 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
 
     orchestrator = get_orchestrator()
     generator = MudSpecGenerator(orchestrator)
+    settings: Settings = get_settings()
 
     # Reconstruct review object from the dict sent by the client
     review = SpecReviewResult.from_dict(
         request.review,
         iteration=request.review.get("iteration", 1),
     )
+    trace = RunDebugTrace(
+        settings,
+        "mud_spec_regenerate",
+        {
+            "swc_name": request.swc_name,
+            "asil": request.asil,
+            "review_iteration": review.iteration,
+            "requirement_count": len(request.req_ids),
+            "requirement_ids": request.req_ids,
+            "incoming_issue_count": review.error_count + review.warning_count + len(review.uncovered_req_ids),
+        },
+    )
 
     queue: asyncio.Queue = asyncio.Queue()
 
     def _progress(event: dict) -> None:
+        trace.record_event("progress", event)
         queue.put_nowait(event)
 
     async def _run():
@@ -2309,12 +2390,14 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                 progress_callback=_progress,
             )
 
-            queue.put_nowait({
+            event = {
                 "stage": "mud_regen_verify",
                 "message": "Verifying regenerated MUD spec against reviewer comments...",
                 "progress": 96,
                 "iteration": review.iteration + 1,
-            })
+            }
+            trace.record_event("progress", event)
+            queue.put_nowait(event)
             post_review = await generator.review_spec(
                 swc_name=request.swc_name,
                 asil=request.asil,
@@ -2334,7 +2417,7 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                 # than re-processing everything (which dilutes AI attention and may
                 # re-break freshly fixed sections).
                 unresolved_review = build_unresolved_review(comparison, post_review)
-                queue.put_nowait({
+                event = {
                     "stage": "mud_regen_retry",
                     "message": (
                         f"{comparison['repeated_issue_count']} repeated issue(s) remain; "
@@ -2343,7 +2426,9 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                     "progress": 97,
                     "iteration": review.iteration + 2,
                     "remaining_issue_count": comparison["repeated_issue_count"],
-                })
+                }
+                trace.record_event("progress", event)
+                queue.put_nowait(event)
                 improved_md = await generator.regenerate_spec(
                     swc_name=request.swc_name,
                     asil=request.asil,
@@ -2354,12 +2439,14 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                     progress_callback=_progress,
                     repair_attempt=True,        # escalation header in system prompt
                 )
-                queue.put_nowait({
+                event = {
                     "stage": "mud_regen_verify",
                     "message": "Verifying retry result...",
                     "progress": 98,
                     "iteration": review.iteration + 2,
-                })
+                }
+                trace.record_event("progress", event)
+                queue.put_nowait(event)
                 post_review = await generator.review_spec(
                     swc_name=request.swc_name,
                     asil=request.asil,
@@ -2373,7 +2460,7 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
 
             remaining_issue_count = post_review.error_count + post_review.warning_count + len(post_review.uncovered_req_ids)
             quality_status = "pass" if post_review.approved and post_review.warning_count == 0 else "needs_fix"
-            queue.put_nowait({
+            event = trace.attach_path({
                 "_final": True,
                 "mud_spec_markdown": improved_md,
                 "swc_name": request.swc_name,
@@ -2386,10 +2473,16 @@ async def regenerate_mud_spec_stream(request: RegenerateSpecRequest):
                 "retry_count": retry_count,
                 "quality_status": quality_status,
                 "repeated_issue_count": comparison["repeated_issue_count"],
+                "repair_mode": getattr(generator, "last_patch_meta", {}).get("mode", "ai_editor"),
+                "patch_meta": getattr(generator, "last_patch_meta", {}),
             })
+            trace.record_event("complete", event)
+            queue.put_nowait(event)
         except Exception as exc:
             logger.exception("mud_spec regeneration failed for %s", request.swc_name)
-            queue.put_nowait({"_error": True, "detail": str(exc)})
+            event = trace.attach_path({"_error": True, "detail": str(exc)})
+            trace.record_event("error", event)
+            queue.put_nowait(event)
 
     async def event_generator():
         task = asyncio.create_task(_run())
@@ -2453,18 +2546,57 @@ async def review_mud_spec(request: ReviewSpecRequest):
 
     orchestrator = get_orchestrator()
     generator = MudSpecGenerator(orchestrator)
-
-    review = await generator.review_spec(
-        swc_name=request.swc_name,
-        asil=request.asil,
-        req_ids=request.req_ids,
-        requirements_text=request.requirements_text,
-        mud_spec_markdown=request.mud_spec_markdown,
-        temperature=request.temperature,
-        iteration=request.iteration,
+    settings: Settings = get_settings()
+    trace = RunDebugTrace(
+        settings,
+        "mud_spec_review",
+        {
+            "swc_name": request.swc_name,
+            "asil": request.asil,
+            "iteration": request.iteration,
+            "requirement_count": len(request.req_ids),
+            "requirement_ids": request.req_ids,
+            "spec_length": len(request.mud_spec_markdown or ""),
+        },
     )
 
-    return review.to_dict()
+    try:
+        review = await generator.review_spec(
+            swc_name=request.swc_name,
+            asil=request.asil,
+            req_ids=request.req_ids,
+            requirements_text=request.requirements_text,
+            mud_spec_markdown=request.mud_spec_markdown,
+            temperature=request.temperature,
+            iteration=request.iteration,
+        )
+    except Exception as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        body = getattr(getattr(exc, "response", None), "text", "")
+        trace.record(
+            "error",
+            message=str(exc),
+            provider_status=status,
+            provider_body_preview=(body[:500] if body else ""),
+        )
+        if status:
+            detail = f"AI review provider rejected the request ({status})"
+            if body:
+                detail += f": {body[:500]}"
+            raise HTTPException(502, detail) from exc
+        raise
+
+    response = review.to_dict()
+    trace.attach_path(response)
+    trace.record(
+        "complete",
+        approved=review.approved,
+        coverage_pct=review.coverage_pct,
+        error_count=review.error_count,
+        warning_count=review.warning_count,
+        uncovered_req_ids=review.uncovered_req_ids,
+    )
+    return response
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────

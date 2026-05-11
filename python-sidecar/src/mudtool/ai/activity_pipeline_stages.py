@@ -58,6 +58,7 @@ import json
 import logging
 import re
 import time
+from types import SimpleNamespace
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -671,6 +672,7 @@ class ActivityPipeline:
 
         # ── Stage 3: Per-runnable diagrams ─────────────────────────────────
         drafts: list[dict] = []
+        fallback_records: list[dict[str, str]] = []
         total = len(runnables)
         for idx, sk_run in enumerate(runnables, 1):
             rname = sk_run.get("name") or f"RE_{idx}"
@@ -694,11 +696,19 @@ class ActivityPipeline:
                 temperature,
             )
             if draft:
+                prov = draft.get("provenance") if isinstance(draft.get("provenance"), dict) else {}
+                prompt_version = str(prov.get("prompt_version") or "")
+                if prompt_version.startswith("activity_pipeline_cfg_"):
+                    fallback_records.append({
+                        "runnable": rname,
+                        "reason": prompt_version.replace("activity_pipeline_cfg_", "", 1),
+                    })
                 drafts.append(draft)
             else:
                 logger.warning(
                     "[Activity Pipeline] Stage 3 returned no diagram for %s", rname
                 )
+                fallback_records.append({"runnable": rname, "reason": "unavailable"})
 
         if not drafts:
             self._emit("[Activity Pipeline] Stage 3 produced 0 diagrams — falling back", 0)
@@ -727,6 +737,14 @@ class ActivityPipeline:
             90,
         )
         finalised = self._stage5_finalise(drafts, patches)
+        if fallback_records:
+            for d in finalised:
+                runnable = d.get("owner_runnable") or d.get("name", "")
+                match = next((r for r in fallback_records if r["runnable"] == runnable), None)
+                if match:
+                    d.setdefault("warnings", []).append(
+                        f"AI enrichment failed for {runnable}; deterministic CFG fallback used ({match['reason']})."
+                    )
 
         total_nodes = sum(len(d.get("nodes", [])) for d in finalised)
         # Collect per-runnable provenance modes for the summary event
@@ -744,6 +762,7 @@ class ActivityPipeline:
             f"{total_nodes} nodes total | {modes_str}",
             100,
             quality_summary=prov_summary,
+            fallback_records=fallback_records,
         )
         return finalised
 
@@ -1039,7 +1058,14 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
             )
         except Exception as exc:
             logger.warning("[Activity Pipeline/Stage3] backend error for %s: %s", rname, exc)
-            return None
+            return self._finalize_cfg_fallback(
+                cfg_scaffold_obj,
+                rname,
+                swc_name,
+                backend_name,
+                SimpleNamespace(model=backend_name, latency_ms=0),
+                reason="ai_backend_error",
+            )
 
         diagram = _extract_json(response.content)
         # Some models return {"diagrams":[…]} despite instructions — unwrap
@@ -1079,6 +1105,8 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
             diagram = self._overlay_ai_on_cfg(cfg_scaffold_obj, diagram)
             self._normalize_activity_semantics(diagram)
             self._repair_orphaned_nodes(diagram, rname)
+            self._repair_decision_branches(diagram, rname)
+            self._ensure_helper_subdiagrams(diagram, swc_name, rname, req_ids)
             if self._diagram_has_cfg_breakage(diagram, rname):
                 logger.warning(
                     "[Activity Pipeline/Stage3] %s failed CFG/mermaid checks; using deterministic scaffold",
@@ -1115,6 +1143,7 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
             "Rte_", "CanSM_", "LinSM_", "EthSM_", "BswM_", "Dcm_",
         )
         port_re = re.compile(r"^(?:RP|PP)_[A-Za-z][A-Za-z0-9_]*$")
+        bool_expr_re = re.compile(r"[A-Za-z_]\w*\s*(?:==|!=|>=|<=|>|<)|&&|\|\|")
         for node in diagram.get("nodes") or []:
             if not isinstance(node, dict):
                 continue
@@ -1124,6 +1153,18 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
             if ntype == "call":
                 rte_call = (node.get("rte_call") or "").strip()
                 name = (node.get("name") or "").strip()
+                if bool_expr_re.search(name) and "Rte_" not in name and "Dem_" not in name:
+                    node["node_type"] = "decision"
+                    node.pop("rte_call", None)
+                    node.pop("port", None)
+                    node.pop("element", None)
+                    continue
+                if re.match(r"^[A-Za-z_]\w*\s*=\s*Rte_", name):
+                    node["node_type"] = "action"
+                    node.pop("rte_call", None)
+                    node.pop("port", None)
+                    node.pop("element", None)
+                    continue
                 if rte_call and rte_call not in valid_rte_calls:
                     node["node_type"] = "function_call"
                     node["callee"] = node.get("callee") or rte_call or name.split("(", 1)[0]
@@ -1151,6 +1192,96 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
                     logger.debug(
                         "[Normalize] Retyped BSW function_call '%s' → action", fn_name
                     )
+
+        for node in diagram.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            if (node.get("node_type") or "").lower() != "action":
+                continue
+            name = (node.get("name") or "").strip()
+            if bool_expr_re.search(name) and "Rte_" not in name and "Dem_" not in name:
+                node["node_type"] = "decision"
+                logger.debug("[Normalize] Retyped condition action '%s' -> decision", name)
+
+    @staticmethod
+    def _ensure_helper_subdiagrams(diagram: dict, swc_name: str, runnable_name: str, req_ids: list[str]) -> None:
+        sub_diagrams = diagram.setdefault("sub_diagrams", [])
+        existing = {
+            sub.get("function_name")
+            for sub in sub_diagrams
+            if isinstance(sub, dict) and sub.get("function_name")
+        }
+        for node in diagram.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            if (node.get("node_type") or "").lower() != "function_call":
+                continue
+            callee = (node.get("callee") or node.get("name") or "").split("(", 1)[0].strip()
+            if not callee or callee in existing:
+                continue
+            sub_diagrams.append({
+                "diagram_type": "activity",
+                "name": f"{callee} Code Flow",
+                "function_name": callee,
+                "parent_diagram": f"{runnable_name} Code Flow",
+                "owner_swc": swc_name or diagram.get("owner_swc") or "",
+                "owner_runnable": runnable_name,
+                "source_requirements": list(req_ids or diagram.get("source_requirements") or []),
+                "nodes": [
+                    {"id": "N_00", "name": "Start", "node_type": "initial", "trace_reqs": [], "confidence": 0.85, "description": f"Entry point for {callee}"},
+                    {"id": "N_01", "name": f"{callee}(...)", "node_type": "action", "trace_reqs": list(req_ids or []), "confidence": 0.75, "description": f"Stub helper action for {callee}; detailed body not provided in MUD spec."},
+                    {"id": "N_02", "name": "End", "node_type": "final", "trace_reqs": [], "confidence": 0.85, "description": f"Exit point for {callee}"},
+                ],
+                "edges": [
+                    {"id": "E_01", "source": "N_00", "target": "N_01"},
+                    {"id": "E_02", "source": "N_01", "target": "N_02"},
+                ],
+                "sub_diagrams": [],
+            })
+            existing.add(callee)
+
+    @staticmethod
+    def _repair_decision_branches(diagram: dict, runnable_name: str) -> None:
+        nodes = [n for n in diagram.get("nodes") or [] if isinstance(n, dict) and n.get("id")]
+        edges = diagram.setdefault("edges", [])
+        if not nodes:
+            return
+        out_by_src: dict[str, list[dict]] = {}
+        for edge in edges:
+            if isinstance(edge, dict) and edge.get("source"):
+                out_by_src.setdefault(edge["source"], []).append(edge)
+        final_id = next(
+            (n["id"] for n in nodes if (n.get("node_type") or "").lower() == "final"),
+            nodes[-1]["id"],
+        )
+        for idx, node in enumerate(nodes):
+            if (node.get("node_type") or "").lower() != "decision":
+                continue
+            outgoing = out_by_src.get(node["id"], [])
+            if len(outgoing) >= 2:
+                continue
+            existing_targets = {
+                edge.get("target")
+                for edge in outgoing
+                if isinstance(edge, dict) and edge.get("target")
+            }
+            target = final_id
+            for later in nodes[idx + 1:]:
+                if later["id"] != node["id"] and later["id"] not in existing_targets:
+                    target = later["id"]
+                    break
+            if target in existing_targets and final_id not in existing_targets:
+                target = final_id
+            edge_id = f"E_AUTO_FALSE_{node['id']}"
+            if any(isinstance(e, dict) and e.get("id") == edge_id for e in edges):
+                continue
+            edges.append({
+                "id": edge_id,
+                "source": node["id"],
+                "target": target,
+                "guard": "[else]",
+            })
+            logger.info("[DecisionRepair] %s: added else edge %s -> %s", runnable_name, node["id"], target)
 
     @staticmethod
     def _repair_orphaned_nodes(diagram: dict, runnable_name: str) -> None:
@@ -1457,7 +1588,7 @@ Also flag:
                 candidate["_pipeline_latency_ms"] = d.get("_pipeline_latency_ms", 0)
                 provenance_mode = "cfg_restored"
             elif existing_provenance.get("prompt_version", "").startswith("activity_pipeline_cfg"):
-                provenance_mode = "canonical_only"
+                provenance_mode = "ai_failed_cfg_fallback"
             elif any(
                 isinstance(patch, dict) and patch.get("runnable") == runnable_name
                 for patch in patches or []
@@ -1468,6 +1599,13 @@ Also flag:
 
             d = candidate
             ActivityPipeline._normalize_activity_semantics(d)
+            ActivityPipeline._repair_decision_branches(d, runnable_name)
+            ActivityPipeline._ensure_helper_subdiagrams(
+                d,
+                d.get("owner_swc", ""),
+                runnable_name,
+                list(d.get("source_requirements") or []),
+            )
             backend_name = d.pop("_pipeline_backend", "activity_pipeline")
             model = d.pop("_pipeline_model", backend_name)
             latency = d.pop("_pipeline_latency_ms", 0)
