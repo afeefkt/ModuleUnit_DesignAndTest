@@ -270,6 +270,22 @@ class AIOrchestrator:
             new_settings = self.settings.copy(update={model_field: model_name})
         return CloudBackend(new_settings)
 
+    def _get_generator_backend(self) -> BaseAIBackend:
+        """Backend for the code-generation stages (MUD Spec Stage 3 + Activity
+        per-runnable Stage 3).
+
+        Uses ``settings.pipeline_generator_model`` (e.g. ``qwen2.5-coder:7b``)
+        so the pseudo-code generation stages can run through a code-specialized
+        model that differs from the global/reasoning model. Falls back to the
+        global backend when the override is empty or the active backend is local.
+        """
+        model = (getattr(self.settings, "pipeline_generator_model", "") or "").strip()
+        if not model:
+            return self._get_backend()
+        backend = self._make_backend_with_model(model)
+        logger.info("Generator backend: %s (model=%s)", backend.backend_name, model)
+        return backend
+
     def _get_activity_skeleton_backend(self) -> BaseAIBackend:
         """Backend for ActivityPipeline Stage 1 (skeleton extraction).
 
@@ -315,7 +331,7 @@ class AIOrchestrator:
 
         try:
             pipeline = ActivityPipeline(
-                backend=self._get_backend(),
+                backend=self._get_generator_backend(),
                 skeleton_backend=self._get_activity_skeleton_backend(),
                 reviewer_backend=self._get_activity_reviewer_backend(),
                 progress_callback=progress_callback,

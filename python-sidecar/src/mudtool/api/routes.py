@@ -1732,13 +1732,17 @@ async def get_config():
               else settings.openai_model)
     )
 
-    def _stage(label: str, override: str | None, env_var: str, desc: str) -> dict:
+    def _stage(label: str, override: str | None, env_var: str, desc: str, key: str) -> dict:
+        recommended = _RECOMMENDED_STAGE_MODELS.get(key, "")
+        current = override or default_model
         return {
             "stage_label": label,
-            "model": override or default_model,
+            "model": current,
             "uses_default": not override,
             "env_var": env_var,
             "description": desc,
+            "recommended": recommended,
+            "is_recommended": bool(recommended) and current == recommended,
         }
 
     pipeline_stages = {
@@ -1747,30 +1751,35 @@ async def get_config():
             settings.mud_spec_skeleton_model,
             "MUD_SPEC_SKELETON_MODEL",
             "Extracts runnable list + per-runnable key steps from requirements.",
+            "mud_spec_skeleton",
         ),
         "mud_spec_generator": _stage(
             "MUD Spec — Generator (Stage 3)",
             settings.pipeline_generator_model,
             "MUD_PIPELINE_GENERATOR_MODEL",
             "Fills runnable details: signature, pseudo-code, traceability.",
+            "mud_spec_generator",
         ),
         "activity_skeleton": _stage(
             "Activity — Skeleton (Stage 1)",
             settings.activity_pipeline_skeleton_model,
             "MUD_ACTIVITY_PIPELINE_SKELETON_MODEL",
             "Extracts runnable list + IRV/DEM cross-references for flowcharts.",
+            "activity_skeleton",
         ),
         "activity_generator": _stage(
             "Activity — Per-Runnable (Stage 3)",
             settings.pipeline_generator_model,
             "MUD_PIPELINE_GENERATOR_MODEL",
             "Generates one activity diagram per runnable with pseudo-code labels.",
+            "activity_generator",
         ),
         "activity_reviewer": _stage(
             "Activity — Reviewer (Stage 4)",
             settings.activity_pipeline_reviewer_model,
             "MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL",
             "Reviews drafted diagrams; emits structural patches.",
+            "activity_reviewer",
         ),
     }
 
@@ -1941,6 +1950,18 @@ _STAGE_TO_ENV: dict[str, str] = {
     "activity_reviewer":   "MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL",
 }
 
+# Recommended Qwen 3 + DeepSeek combination — code stages use Qwen3 8B (upgraded
+# from Qwen2.5-Coder: 4× larger context 128K, built-in think mode, better JSON),
+# reasoning/critique stages use DeepSeek-R1 7B. Single source of truth for both
+# the "is_recommended" badge in /config and the /config/apply-recommended action.
+_RECOMMENDED_STAGE_MODELS: dict[str, str] = {
+    "mud_spec_skeleton":   "deepseek-r1:7b",
+    "mud_spec_generator":  "qwen3:8b",
+    "activity_skeleton":   "deepseek-r1:7b",
+    "activity_generator":  "qwen3:8b",
+    "activity_reviewer":   "deepseek-r1:7b",
+}
+
 
 class StageModelUpdateRequest(BaseModel):
     """Override which model a single pipeline stage uses.
@@ -1979,6 +2000,40 @@ async def update_stage_model(request: StageModelUpdateRequest):
         "stage_key": request.stage_key,
         "model": request.model or "(default)",
         "env_var": env_key,
+    }
+
+
+@router.post("/config/apply-recommended")
+async def apply_recommended_combo():
+    """Apply the recommended Qwen + DeepSeek per-stage combination in one shot.
+
+    code stages   → qwen2.5-coder:7b
+    reasoning      → deepseek-r1:7b   (skeleton + reviewer)
+
+    Writes all per-stage env vars at once and resets the orchestrator.
+    """
+    from mudtool.api.dependencies import reset_orchestrator
+
+    # Build the env-var → model map from the recommended stage models.
+    # Both generator stages share MUD_PIPELINE_GENERATOR_MODEL, so the dict
+    # naturally de-duplicates to one write for the code model.
+    updates: dict[str, str] = {}
+    for stage_key, model in _RECOMMENDED_STAGE_MODELS.items():
+        env_key = _STAGE_TO_ENV.get(stage_key)
+        if env_key:
+            updates[env_key] = model
+    # The MUD spec reviewer/regen also uses pipeline_reviewer_model
+    updates["MUD_PIPELINE_REVIEWER_MODEL"] = "deepseek-r1:7b"
+
+    _write_env_updates(updates)
+    get_settings.cache_clear()
+    reset_orchestrator()
+
+    return {
+        "ok": True,
+        "applied": _RECOMMENDED_STAGE_MODELS,
+        "env_updates": updates,
+        "note": "Ensure both models are pulled: ollama pull qwen3:8b && ollama pull deepseek-r1:7b",
     }
 
 

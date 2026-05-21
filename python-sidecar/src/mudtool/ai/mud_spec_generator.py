@@ -895,7 +895,7 @@ class MudSpecGenerator:
             try:
                 from mudtool.ai.mud_pipeline_stages import MudSpecPipeline
                 _pipeline = MudSpecPipeline(
-                    backend=self._orchestrator._get_backend(),
+                    backend=self._orchestrator._get_generator_backend(),
                     skeleton_backend=self._orchestrator._get_skeleton_backend(),
                     progress_callback=progress_callback,
                 )
@@ -959,8 +959,8 @@ class MudSpecGenerator:
             swc_name, len(system_prompt), len(user_prompt),
         )
 
-        logger.info("generate_spec: calling _get_backend() for %s", swc_name)
-        backend = self._orchestrator._get_backend()
+        logger.info("generate_spec: calling _get_generator_backend() for %s", swc_name)
+        backend = self._orchestrator._get_generator_backend()
         logger.info("generate_spec: backend selected = %s for %s", backend.backend_name, swc_name)
 
         # ── Token-streaming generation ────────────────────────────────────────
@@ -1369,7 +1369,9 @@ class MudSpecGenerator:
                 "Focus ONLY on the listed items. Do not introduce any other changes.\n"
             )
 
-        backend = self._orchestrator._get_backend()
+        # Regeneration edits Section 7 pseudo-code — route through the code-focused
+        # generator backend (qwen) for consistency with the generation stage.
+        backend = self._orchestrator._get_generator_backend()
 
         # ── Token-streaming regeneration ─────────────────────────────────────
         regen_iter = review.iteration + 1

@@ -231,9 +231,10 @@ class CloudBackend(BaseAIBackend):
                 {"role": "user", "content": user_prompt},
             ],
         }
-        # Enable thinking for reasoning models (deepseek-r1, qwq, etc.) automatically,
+        # Enable thinking for reasoning models (deepseek-r1, qwen3, qwq, etc.) automatically,
         # or for any model when MUD_OPENAI_ENABLE_THINKING=true is set explicitly.
-        _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking")
+        # qwen3 models natively support think/no_think toggle — always enable for best quality.
+        _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking", "qwen3")
         model_lower = payload["model"].lower()
         is_reasoning_model = any(kw in model_lower for kw in _REASONING_KEYWORDS)
         if self.settings.openai_enable_thinking or is_reasoning_model:
@@ -361,8 +362,9 @@ class CloudBackend(BaseAIBackend):
             ],
         }
 
-        # Enable reasoning for deepseek-r1 / qwq style models
-        _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking")
+        # Enable reasoning for deepseek-r1 / qwen3 / qwq style models
+        # qwen3 models natively support think/no_think toggle — always enable for best quality.
+        _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking", "qwen3")
         if self.settings.openai_enable_thinking or any(
             kw in payload["model"].lower() for kw in _REASONING_KEYWORDS
         ):

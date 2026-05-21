@@ -161,47 +161,63 @@ class VisualQAAgent:
     def _build_vision_prompt(
         self, diagram_type: DiagramType, diagram_key: str
     ) -> tuple[str, str]:
-        """Return (system_prompt, user_prompt) for the vision model."""
+        """Return (system_prompt, user_prompt) for the vision model.
+
+        The prompt is deliberately scoped to CONTENT issues that can be fixed by
+        editing the diagram JSON (labels, branches, connections). Layout/spacing
+        artifacts are produced by the auto-layout engine (Mermaid/Kroki) and the
+        AI cannot fix them, so the model is explicitly forbidden from flagging
+        them — this prevents false-positive correction rounds that would re-run
+        the generator and risk regressing an already-correct diagram.
+        """
         system = (
-            "You are a technical diagram quality reviewer specialising in "
-            "UML activity diagrams and flowcharts used in AUTOSAR automotive software design.\n"
-            "Review the provided diagram image and respond ONLY with a valid JSON object. "
-            "No explanation, no markdown fences, no text outside the JSON."
+            "You are a technical diagram quality reviewer for AUTOSAR activity "
+            "diagrams / flowcharts.\n"
+            "CRITICAL: the diagram layout (node positions, spacing, edge routing, "
+            "column vs. spread) is produced by an AUTOMATIC layout engine, NOT by "
+            "a human or the AI you are reviewing. You MUST NOT penalise or comment "
+            "on layout, spacing, overlap, column arrangement, or edge crossings — "
+            "these are not fixable and are out of scope. A clean single vertical "
+            "column is perfectly acceptable.\n"
+            "Only report problems that can be fixed by editing the diagram's "
+            "logical content (its nodes, labels, and connections).\n"
+            "Respond ONLY with a valid JSON object — no markdown, no prose."
         )
 
         specific = {
             DiagramType.ACTIVITY: (
-                "1. A rounded-rectangle Start node labeled 'Start'\n"
-                "2. At least one dark rounded-rectangle End node labeled 'End'\n"
-                "3. Decision diamonds (◇ shape) for conditional logic - "
-                "   a diagram that is a straight vertical chain with NO diamonds is wrong\n"
-                "4. Each decision diamond has at least 2 labeled outgoing arrows (e.g. Yes/No)\n"
-                "5. All boxes connected by arrows - no floating isolated boxes"
+                "  - A Start node and at least one End node are present.\n"
+                "  - Conditional logic uses decision diamonds with >= 2 labeled "
+                "exits (e.g. Yes/No). A long chain with NO diamond when the "
+                "pseudo-code clearly branches is a real issue.\n"
+                "  - No node is completely disconnected (no arrows in AND out), "
+                "EXCEPT Start (no in) and End (no out).\n"
+                "  - Node label text is fully readable and not cut off / clipped "
+                "at the node boundary."
             ),
             DiagramType.SEQUENCE: (
-                "1. Participant lifelines at the top with names\n"
-                "2. Messages as horizontal arrows between lifelines\n"
-                "3. At least 2 distinct lifelines\n"
-                "4. No overlapping message labels"
+                "  - >= 2 named participant lifelines.\n"
+                "  - Messages are labeled and readable (not clipped).\n"
+                "  - No lifeline is completely messageless / orphaned."
             ),
             DiagramType.STATE_MACHINE: (
-                "1. A filled circle (initial pseudo-state) with an outgoing arrow\n"
-                "2. At least 2 named state boxes (rounded rectangles)\n"
-                "3. Arrows connecting states with trigger labels\n"
-                "4. No isolated floating states"
+                "  - An initial pseudo-state with an outgoing arrow.\n"
+                "  - >= 2 named states.\n"
+                "  - Transition labels are readable.\n"
+                "  - No state is completely disconnected."
             ),
         }.get(
             diagram_type,
-            "1. Nodes connected by arrows\n2. Labels readable\n3. No isolated nodes"
+            "  - Nodes connected by arrows.\n  - Labels readable / not clipped.\n"
+            "  - No fully disconnected node."
         )
 
         user = (
             f"Review this {diagram_type.value} diagram image (key: {diagram_key}).\n\n"
-            f"Expected structure:\n{specific}\n\n"
-            "Also check:\n"
-            "  - Spacing: nodes not overlapping, not crammed together\n"
-            "  - Labels: readable, not truncated at edges\n"
-            "  - Layout: nodes distributed across the canvas, not all in one column\n\n"
+            f"Check ONLY these content issues:\n{specific}\n\n"
+            "Do NOT report: spacing, overlap, node distribution, column layout, "
+            "edge crossings, or anything about visual arrangement. Those are not "
+            "in scope and will be ignored.\n\n"
             "Respond ONLY with this exact JSON (fill every field):\n"
             "{\n"
             '  "has_start_node": true,\n'
@@ -210,19 +226,31 @@ class VisualQAAgent:
             '  "all_nodes_connected": true,\n'
             '  "labels_readable": true,\n'
             '  "spacing_ok": true,\n'
-            f'  "quality_score": 0.0,\n'
+            '  "quality_score": 0.0,\n'
             '  "approved": false,\n'
             '  "layout_issues": [],\n'
             '  "semantic_issues": [],\n'
             '  "correction_hints": []\n'
             "}\n\n"
-            "Rules:\n"
-            f"  - quality_score 0.0=unusable … 1.0=perfect\n"
-            f"  - approved=true ONLY when quality_score >= {self._min_score} "
-            "    AND no critical layout issues\n"
-            "  - correction_hints must be specific and actionable, e.g.:\n"
-            "    'Add decision diamond for SensorFault check with Yes/No branches'\n"
-            "    'Connect isolated node Rte_Write(PP_ActuatorSignal) to End node'"
+            "Field rules:\n"
+            "  - spacing_ok: ALWAYS true unless label text literally overlaps so "
+            "it is unreadable. Never set false for column/spread/spacing taste.\n"
+            "  - labels_readable: false ONLY if real label text is clipped or "
+            "unreadable.\n"
+            "  - layout_issues: leave EMPTY unless a label is clipped. Never put "
+            "spacing/arrangement complaints here.\n"
+            "  - semantic_issues: missing branch, disconnected node, missing "
+            "start/end only.\n"
+            "  - correction_hints: must be content edits the generator can apply, "
+            "e.g.:\n"
+            "      'Shorten label of node Rte_Read_RP_VehicleSpeed (text clipped)'\n"
+            "      'Add Yes/No branches to the SensorFault decision diamond'\n"
+            "      'Connect isolated node Rte_Write(PP_Actuator) to the End node'\n"
+            "    NEVER hints like 'spread nodes out', 'reduce overlap', "
+            "'improve spacing'.\n"
+            f"  - quality_score: 0.0=unusable … 1.0=perfect. Judge CONTENT only.\n"
+            f"  - approved=true when quality_score >= {self._min_score} and there "
+            "are no content issues. Layout is never a reason to reject."
         )
         return system, user
 

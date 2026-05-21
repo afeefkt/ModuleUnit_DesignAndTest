@@ -313,6 +313,15 @@ class GuidelinesReader:
             data = json.loads(cache_path.read_text(encoding="utf-8"))
             if data.get("file_hash") != file_hash:
                 return None  # file changed - invalidate
+            # Embedding dimensions differ between models (e.g. nomic-embed-text=768,
+            # bge-m3=1024). Invalidate when the embed model changed so we never mix
+            # incompatible vectors in cosine similarity.
+            if data.get("embed_model") != self._settings.guidelines_embed_model:
+                logger.info(
+                    "[Guidelines] Embed model changed (%s → %s) — re-embedding %s",
+                    data.get("embed_model"), self._settings.guidelines_embed_model, path.name,
+                )
+                return None
             return [
                 DocumentChunk(
                     id=c["id"],

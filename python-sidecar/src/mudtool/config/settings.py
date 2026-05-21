@@ -104,10 +104,12 @@ class Settings(BaseSettings):
     pipeline_enabled: bool = False
     # MUD_PIPELINE_MODE: single_pass | multi_pass | two_model_fast | two_model
     pipeline_mode: str = "single_pass"
-    # Model used for Stage 1 (draft) and Stage 3 (refinement) — code-focused model
-    pipeline_generator_model: str = "codellama"
-    # Model used for Stage 2 (critique) in two_model / two_model_fast modes
-    pipeline_reviewer_model: str = "mistral"
+    # Model used for the code-generation stages (MUD Spec Stage 3 + Activity
+    # per-runnable Stage 3) — a code-specialized model. Recommended default
+    # combination: qwen2.5-coder for code, deepseek-r1 for reasoning stages.
+    pipeline_generator_model: str = "qwen3:8b"
+    # Model used for review/critique stages — a reasoning model.
+    pipeline_reviewer_model: str = "deepseek-r1:7b"
     # Number of critique-refine cycles per diagram type (1 is enough for local hardware)
     pipeline_max_passes: int = 1
     # If draft provenance.confidence >= this value, skip critique/refine (early exit)
@@ -147,17 +149,19 @@ class Settings(BaseSettings):
     guidelines_dir: Optional[Path] = None
     # MUD_GUIDELINES_CACHE_DIR  -> where chunked embeddings are cached
     guidelines_cache_dir: Optional[Path] = None
-    # MUD_GUIDELINES_EMBED_MODEL  -> Ollama model for embeddings (nomic-embed-text recommended)
-    guidelines_embed_model: str = "nomic-embed-text"
+    # MUD_GUIDELINES_EMBED_MODEL  -> Ollama embedding model. bge-m3 (1024-dim)
+    # gives stronger mixed semantic+code retrieval and longer context than
+    # nomic-embed-text (768-dim). Pull first: ollama pull bge-m3
+    guidelines_embed_model: str = "bge-m3"
     # MUD_GUIDELINES_MAX_CHUNKS  -> max chunks injected per diagram type per generation
     guidelines_max_chunks: int = 3
     # MUD_GUIDELINES_CHUNK_SIZE  -> target characters per text chunk
     guidelines_chunk_size: int = 800
 
-    # MUD_SPEC_SKELETON_MODEL: optional separate model for Stage 1 skeleton in
-    # the two-stage pipeline.  Empty = use the same model as Stage 3 (generator).
-    # Recommended: deepseek-r1:7b — better structured-JSON completeness on 7b GPUs.
-    mud_spec_skeleton_model: str = ""
+    # MUD_SPEC_SKELETON_MODEL: separate model for Stage 1 skeleton in the
+    # two-stage pipeline. Recommended: deepseek-r1:7b — a reasoning model gives
+    # better structured-JSON completeness on 7b GPUs. Empty = use generator model.
+    mud_spec_skeleton_model: str = "deepseek-r1:7b"
 
     # ── MUD Spec Generation Pipeline ─────────────────────────────────────────
     # MUD_SPEC_PIPELINE controls the generation mode for /modules/mud-spec:
@@ -175,10 +179,11 @@ class Settings(BaseSettings):
     #   (qwen2.5-coder:7b) → Stage4 reviewer pass → Stage5 deterministic repair.
     # When false (default) the legacy single-call path runs unchanged.
     activity_pipeline_enabled: bool = False
-    # Optional per-stage backend overrides — empty = use generator model.
-    # Recommended: deepseek-r1:7b for both skeleton and reviewer.
-    activity_pipeline_skeleton_model: str = ""
-    activity_pipeline_reviewer_model: str = ""
+    # Per-stage backend overrides. Recommended combination: deepseek-r1:7b
+    # (reasoning) for skeleton + reviewer, qwen2.5-coder:7b (code) for the
+    # per-runnable generation stage (via pipeline_generator_model).
+    activity_pipeline_skeleton_model: str = "deepseek-r1:7b"
+    activity_pipeline_reviewer_model: str = "deepseek-r1:7b"
 
     def get_skills_dir(self) -> Path:
         if self.skills_dir:

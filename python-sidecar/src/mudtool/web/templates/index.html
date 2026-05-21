@@ -4466,27 +4466,92 @@
         activity_generator:  '④',
         activity_reviewer:   '⑤',
       };
+      const roleTag = {
+        mud_spec_skeleton:  { txt: 'reasoning', cls: 'bg-violet-100 text-violet-700' },
+        mud_spec_generator: { txt: 'code',      cls: 'bg-emerald-100 text-emerald-700' },
+        activity_skeleton:  { txt: 'reasoning', cls: 'bg-violet-100 text-violet-700' },
+        activity_generator: { txt: 'code',      cls: 'bg-emerald-100 text-emerald-700' },
+        activity_reviewer:  { txt: 'reasoning', cls: 'bg-violet-100 text-violet-700' },
+      };
       const sectionBreak = (after) => after === 'mud_spec_generator';
+
+      // ── How many stages already match the recommended combo? ──────────────
+      const presentStages = stageOrder.filter(k => stages[k]);
+      const matchedCount = presentStages.filter(k => stages[k].is_recommended).length;
+      const allMatched = presentStages.length > 0 && matchedCount === presentStages.length;
+
+      // ── Recommended-combo banner ──────────────────────────────────────────
+      const banner = `
+        <div class="mb-4 rounded-xl overflow-hidden border ${allMatched ? 'border-emerald-200' : 'border-indigo-200'}">
+          <div class="px-4 py-3 ${allMatched
+              ? 'bg-gradient-to-r from-emerald-50 to-teal-50'
+              : 'bg-gradient-to-r from-indigo-50 to-violet-50'}">
+            <div class="flex items-center gap-3">
+              <div class="text-2xl leading-none">${allMatched ? '✓' : '✦'}</div>
+              <div class="flex-1">
+                <div class="font-bold text-sm ${allMatched ? 'text-emerald-800' : 'text-indigo-800'}">
+                  ${allMatched ? 'Recommended combination active' : 'Recommended combination'}
+                </div>
+                <div class="text-[11px] ${allMatched ? 'text-emerald-600' : 'text-indigo-600'} mt-0.5">
+                  <span class="font-mono font-semibold">qwen3:8b</span> for code ·
+                  <span class="font-mono font-semibold">deepseek-r1:7b</span> for reasoning
+                </div>
+              </div>
+              ${allMatched
+                ? `<span class="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg">${matchedCount}/${presentStages.length} stages</span>`
+                : `<button onclick="applyRecommendedCombo()"
+                     class="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg shadow-sm transition-colors">
+                     Apply Recommended
+                   </button>`}
+            </div>
+          </div>
+          ${allMatched ? '' : `
+            <div class="px-4 py-2 bg-white text-[10px] text-slate-400">
+              ${matchedCount}/${presentStages.length} stages already match · requires
+              <span class="font-mono">ollama pull qwen3:8b</span> &amp;
+              <span class="font-mono">deepseek-r1:7b</span>
+            </div>`}
+        </div>
+      `;
 
       const html = stageOrder.map(key => {
         const stage = stages[key];
         if (!stage) return '';
+
+        // Always include the recommended model as a selectable option even if
+        // Ollama hasn't pulled it yet, so the dropdown can express the target.
+        const modelSet = new Set(availableModels);
+        if (stage.recommended) modelSet.add(stage.recommended);
+        if (stage.model) modelSet.add(stage.model);
         const opts = ['<option value="">(default — use global backend)</option>']
-          .concat(availableModels.map(m => {
+          .concat([...modelSet].sort().map(m => {
             const sel = (m === stage.model) ? 'selected' : '';
-            return `<option value="${escapeHtml(m)}" ${sel}>${escapeHtml(m)}</option>`;
+            const star = (m === stage.recommended) ? ' ★' : '';
+            return `<option value="${escapeHtml(m)}" ${sel}>${escapeHtml(m)}${star}</option>`;
           }));
-        const isDefault = stage.uses_default;
+
+        const role = roleTag[key] || { txt: '', cls: 'bg-slate-100 text-slate-600' };
+        const matches = stage.is_recommended;
         const sectionHr = sectionBreak(key)
-          ? '<div class="my-3 border-t border-slate-200 text-[10px] uppercase tracking-wider text-slate-400 pt-2">Activity Diagram Pipeline</div>'
+          ? '<div class="my-3 flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-400"><span class="h-px flex-1 bg-slate-200"></span>Activity Diagram Pipeline<span class="h-px flex-1 bg-slate-200"></span></div>'
           : '';
 
+        const recHint = matches
+          ? `<span class="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">✓ recommended</span>`
+          : (stage.recommended
+              ? `<button onclick="updateStageModel('${key}','${escapeHtml(stage.recommended)}')"
+                   class="text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline">
+                   ↺ use ${escapeHtml(stage.recommended)}
+                 </button>`
+              : '');
+
         return `
-          <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
+          <div class="border ${matches ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'} rounded-lg p-3">
             <div class="flex items-center gap-2 mb-1">
               <span class="text-blue-500 text-sm font-bold">${stageIcons[key] || '•'}</span>
               <span class="font-semibold text-sm text-slate-800">${escapeHtml(stage.stage_label)}</span>
-              ${isDefault
+              <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded ${role.cls}">${role.txt}</span>
+              ${stage.uses_default
                 ? '<span class="ml-auto text-[10px] text-slate-400 italic">using default</span>'
                 : '<span class="ml-auto text-[10px] text-blue-600 font-semibold">override</span>'}
             </div>
@@ -4496,14 +4561,17 @@
                 class="flex-1 text-xs border border-slate-300 rounded px-2 py-1 bg-white">
                 ${opts.join('')}
               </select>
+            </div>
+            <div class="flex items-center justify-between mt-1.5">
               <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(stage.env_var)}</span>
+              ${recHint}
             </div>
           </div>
           ${sectionHr}
         `;
       }).join('');
 
-      container.innerHTML = html || '<p class="text-xs text-slate-400 italic">No stages available.</p>';
+      container.innerHTML = banner + (html || '<p class="text-xs text-slate-400 italic">No stages available.</p>');
     }
 
     async function updateStageModel(stageKey, model) {
@@ -4520,6 +4588,20 @@
         renderPipelineStages();   // refresh badges
       } catch (e) {
         toast(`Stage update failed: ${e.message}`, true);
+      }
+    }
+
+    async function applyRecommendedCombo() {
+      try {
+        const r = await fetch(`${API}/config/apply-recommended`, { method: 'POST' });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        toast('Recommended combo applied — qwen3:8b for code, deepseek-r1:7b for reasoning');
+        addActivityLog('Applied recommended Qwen + DeepSeek pipeline combination', 'ok');
+        if (data.note) addActivityLog(data.note, 'info');
+        renderPipelineStages();   // re-render → banner flips to "active"
+      } catch (e) {
+        toast(`Failed to apply recommended combo: ${e.message}`, true);
       }
     }
 

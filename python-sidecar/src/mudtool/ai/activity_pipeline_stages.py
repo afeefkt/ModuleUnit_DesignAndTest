@@ -400,6 +400,17 @@ LABEL STYLE: {label_style}
 KEY STEPS (from skeleton):
 {key_steps_block}
 
+══════════════════════════════════════════════════════════════════
+AVAILABLE SIGNALS — USE THESE EXACT NAMES IN call/exception NODES
+══════════════════════════════════════════════════════════════════
+{signal_table}
+══════════════════════════════════════════════════════════════════
+IMPORTANT: copy the signatures above verbatim into your call nodes.
+Do NOT paraphrase, abbreviate, or guess port names — use the exact
+Rte_Read/Write/IRead/IWrite signatures shown. If a pseudo-code step
+says "read vehicle speed", use the Read sig listed above for it.
+══════════════════════════════════════════════════════════════════
+
 NUMBERED PSEUDO-CODE FROM MUD SECTION 7:
 {pseudo_code}
 
@@ -427,28 +438,40 @@ Add "Start" (initial) at the top and "End" (final) at the bottom.
 
 Output ONLY the JSON object.  No text before or after.
 
-CONCRETE ONE-SHOT EXAMPLE (6-node pattern — replace names/ids with actual runnable content):
+GOLD-STANDARD EXAMPLE (11-node — shows port read, IRV read/write, CalPrm decision,
+exception path, computation, second decision, merge, write, End):
 {{
   "diagram_type": "activity",
-  "name": "RE_TorqueCtrl Code Flow",
-  "owner_swc": "SWC_Eps",
-  "owner_runnable": "RE_TorqueCtrl",
-  "source_requirements": ["REQ-01"],
+  "name": "RE_SpeedMonitor Code Flow",
+  "owner_swc": "SWC_VehicleSpeed",
+  "owner_runnable": "RE_SpeedMonitor",
+  "source_requirements": ["REQ-01", "REQ-02"],
   "nodes": [
-    {{"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-01"],"description":"Entry 10ms","confidence":0.95}},
-    {{"id":"N_02","name":"Rte_Read_RP_Torque(&l_f32T)","node_type":"call","rte_call":"Rte_Read","port":"RP_Torque","element":"Torque","trace_reqs":["REQ-01"],"description":"Read torque sensor","confidence":0.95}},
-    {{"id":"N_03","name":"l_f32T > TORQUE_MAX","node_type":"decision","trace_reqs":["REQ-01"],"description":"Range check","confidence":0.9}},
-    {{"id":"N_04","name":"Dem_SetEventStatus(DTC_Torque, DEM_EVENT_STATUS_FAILED)","node_type":"exception","trace_reqs":["REQ-01"],"description":"Report fault","confidence":0.9}},
-    {{"id":"N_05","name":"Rte_Write_PP_TorqueOut(&l_f32Out)","node_type":"call","rte_call":"Rte_Write","port":"PP_TorqueOut","element":"TorqueOut","trace_reqs":["REQ-01"],"description":"Write output","confidence":0.95}},
-    {{"id":"N_06","name":"End","node_type":"final","trace_reqs":["REQ-01"],"description":"Exit","confidence":0.95}}
+    {{"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-01"],"description":"Entry 10 ms cycle","confidence":0.95}},
+    {{"id":"N_02","name":"Rte_Read_RP_VehicleSpeed(&l_f32Speed)","node_type":"call","rte_call":"Rte_Read","port":"RP_VehicleSpeed","element":"VehicleSpeed","trace_reqs":["REQ-01"],"description":"Read raw speed from sensor","confidence":0.95}},
+    {{"id":"N_03","name":"Rte_IRead_IRV_PrevSpeed(&l_f32PrevSpd)","node_type":"call","rte_call":"Rte_IRead","port":"IRV_PrevSpeed","element":"PrevSpeed","trace_reqs":["REQ-01"],"description":"Read previous cycle speed IRV","confidence":0.95}},
+    {{"id":"N_04","name":"(l_f32Speed >= 0.0F) && (l_f32Speed < CALPRM_SPEED_MAX)","node_type":"decision","trace_reqs":["REQ-01"],"description":"Validate speed in range","confidence":0.9}},
+    {{"id":"N_05","name":"Dem_SetEventStatus(DTC_SpeedInvalid, DEM_EVENT_STATUS_FAILED)","node_type":"exception","trace_reqs":["REQ-02"],"description":"Report out-of-range fault","confidence":0.9}},
+    {{"id":"N_06","name":"l_f32Delta = l_f32Speed - l_f32PrevSpd","node_type":"action","trace_reqs":["REQ-01"],"description":"Compute speed delta","confidence":0.95}},
+    {{"id":"N_07","name":"l_f32Speed > CALPRM_SPEED_WARN","node_type":"decision","trace_reqs":["REQ-02"],"description":"Check warning threshold","confidence":0.9}},
+    {{"id":"N_08","name":"Rte_Write_PP_SpeedWarning(TRUE)","node_type":"call","rte_call":"Rte_Write","port":"PP_SpeedWarning","element":"SpeedWarning","trace_reqs":["REQ-02"],"description":"Set warning flag","confidence":0.95}},
+    {{"id":"N_09","name":"merge","node_type":"merge","trace_reqs":["REQ-01"],"description":"Rejoin after warning branch","confidence":0.99}},
+    {{"id":"N_10","name":"Rte_IWrite_IRV_PrevSpeed(l_f32Speed)","node_type":"call","rte_call":"Rte_IWrite","port":"IRV_PrevSpeed","element":"PrevSpeed","trace_reqs":["REQ-01"],"description":"Store current speed for next cycle","confidence":0.95}},
+    {{"id":"N_11","name":"End","node_type":"final","trace_reqs":["REQ-01"],"description":"Exit runnable","confidence":0.95}}
   ],
   "edges": [
-    {{"id":"E_01","source":"N_01","target":"N_02"}},
-    {{"id":"E_02","source":"N_02","target":"N_03"}},
-    {{"id":"E_03","source":"N_03","target":"N_04","guard":"[l_f32T > TORQUE_MAX]"}},
-    {{"id":"E_04","source":"N_03","target":"N_05","guard":"[else]"}},
-    {{"id":"E_05","source":"N_04","target":"N_06"}},
-    {{"id":"E_06","source":"N_05","target":"N_06"}}
+    {{"id":"E_01","source":"N_01","target":"N_02","guard":""}},
+    {{"id":"E_02","source":"N_02","target":"N_03","guard":""}},
+    {{"id":"E_03","source":"N_03","target":"N_04","guard":""}},
+    {{"id":"E_04","source":"N_04","target":"N_05","guard":"[else]"}},
+    {{"id":"E_05","source":"N_04","target":"N_06","guard":"[(l_f32Speed >= 0.0F) && (l_f32Speed < CALPRM_SPEED_MAX)]"}},
+    {{"id":"E_06","source":"N_05","target":"N_11","guard":""}},
+    {{"id":"E_07","source":"N_06","target":"N_07","guard":""}},
+    {{"id":"E_08","source":"N_07","target":"N_08","guard":"[l_f32Speed > CALPRM_SPEED_WARN]"}},
+    {{"id":"E_09","source":"N_07","target":"N_09","guard":"[else]"}},
+    {{"id":"E_10","source":"N_08","target":"N_09","guard":""}},
+    {{"id":"E_11","source":"N_09","target":"N_10","guard":""}},
+    {{"id":"E_12","source":"N_10","target":"N_11","guard":""}}
   ],
   "sub_diagrams": []
 }}
@@ -905,6 +928,105 @@ class ActivityPipeline:
 
         return assumptions
 
+    @staticmethod
+    def _build_signal_table(
+        sk_run: dict,
+        pseudo_code: str,
+        ctx_rte_calls: list[str],
+    ) -> str:
+        """Build a per-runnable available-signals table for Stage 3 injection.
+
+        Combines three sources (priority order):
+          1. Skeleton explicit port/IRV/DEM lists — most authoritative.
+          2. Full Rte_ signatures extracted from the runnable's pseudo-code.
+          3. Global ctx_rte_calls from MudActivityContext — SWC-wide fallback.
+
+        The returned string is injected into _RUNNABLE_USER_TMPL's {signal_table}
+        placeholder so Stage 3 uses exact port names instead of guessing.
+        """
+        lines: list[str] = []
+        seen: set[str] = set()
+
+        def _add(category: str, sig: str) -> None:
+            sig = sig.strip()
+            if sig and sig not in seen:
+                seen.add(sig)
+                lines.append(f"  {category:<14} {sig}")
+
+        # ── 1. Skeleton explicit lists ────────────────────────────────────
+        for p in sk_run.get("reads_ports") or []:
+            p = p.strip()
+            if p:
+                sig = p if p.startswith("Rte_") else f"Rte_Read_{p}(&l_var)"
+                _add("Read port:", sig)
+        for p in sk_run.get("writes_ports") or []:
+            p = p.strip()
+            if p:
+                sig = p if p.startswith("Rte_") else f"Rte_Write_{p}(l_var)"
+                _add("Write port:", sig)
+        for irv in sk_run.get("reads_irvs") or []:
+            irv = irv.strip()
+            if irv:
+                sig = irv if irv.startswith("Rte_") else f"Rte_IRead_{irv}(&l_var)"
+                _add("IRV read:", sig)
+        for irv in sk_run.get("writes_irvs") or []:
+            irv = irv.strip()
+            if irv:
+                sig = irv if irv.startswith("Rte_") else f"Rte_IWrite_{irv}(l_var)"
+                _add("IRV write:", sig)
+        for dem in sk_run.get("raises_dem") or []:
+            dem = dem.strip()
+            if dem:
+                _add("DEM event:", f"Dem_SetEventStatus({dem}, DEM_EVENT_STATUS_FAILED)")
+
+        # ── 2. Full signatures from runnable's pseudo-code ─────────────────
+        _SIG_PAT = re.compile(
+            r"\b(Rte_(?:Read|Write|IRead|IWrite|Call|Switch|Result)\w*\s*\([^)\n]{0,150}\))",
+            re.IGNORECASE,
+        )
+        for m in _SIG_PAT.finditer(pseudo_code):
+            sig = re.sub(r"\s+", " ", m.group(1)).strip()
+            name_lower = sig.lower()
+            if "iread" in name_lower:
+                _add("IRV read:", sig)
+            elif "iwrite" in name_lower:
+                _add("IRV write:", sig)
+            elif "read" in name_lower:
+                _add("Read sig:", sig)
+            elif "write" in name_lower:
+                _add("Write sig:", sig)
+            else:
+                _add("Rte call:", sig)
+
+        # ── 3. Global ctx_rte_calls — include calls that match pseudo-code ──
+        pseudo_lower = pseudo_code.lower()
+        for call in ctx_rte_calls or []:
+            call = call.strip()
+            m = re.search(r"Rte_(?:Read|Write|IRead|IWrite)_(\w+)", call, re.IGNORECASE)
+            if not m:
+                continue
+            port_frag = m.group(1).lower()
+            # Include if: port fragment is mentioned in pseudo-code, OR the SWC
+            # is small enough (≤8 global calls) that showing all is useful.
+            if port_frag in pseudo_lower or len(ctx_rte_calls) <= 8:
+                name_lower = call.lower()
+                if "iread" in name_lower:
+                    _add("IRV read:", call)
+                elif "iwrite" in name_lower:
+                    _add("IRV write:", call)
+                elif "read" in name_lower:
+                    _add("Read sig:", call)
+                elif "write" in name_lower:
+                    _add("Write sig:", call)
+
+        # ── 4. CalPrm constants mentioned in pseudo-code ───────────────────
+        for calprm in sorted(set(re.findall(r"\bCALPRM_[A-Z][A-Z0-9_]+", pseudo_code))):
+            _add("CalPrm:", calprm)
+
+        if not lines:
+            return "  (no signals detected — derive exact names from pseudo-code above)"
+        return "\n".join(lines)
+
     # ─── Stage 2 ──────────────────────────────────────────────────────────
 
     @staticmethod
@@ -1013,6 +1135,14 @@ class ActivityPipeline:
                     req_lines.append(f"  - {rid}")
         requirements_block = "\n".join(req_lines[:30]) or "  (none provided)"
 
+        # Build per-runnable signal table (Strategy 1 — exact port name injection).
+        # This prevents the AI from guessing port names; it copies them verbatim.
+        signal_table = self._build_signal_table(
+            sk_run=sk_run,
+            pseudo_code=pseudo_code,
+            ctx_rte_calls=list(getattr(mud_activity_context, "rte_calls", None) or []),
+        )
+
         backend = self._backend
         backend_name = getattr(backend, "backend_name", "?")
         is_high_end = any(
@@ -1036,6 +1166,7 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
             asil=sk_run.get("asil", "") or "QM",
             label_style=activity_label_style,
             key_steps_block=key_steps_block,
+            signal_table=signal_table,
             pseudo_code=pseudo_code or "(no pseudo-code; produce a minimal Start/End diagram)",
             cfg_scaffold=cfg_scaffold,
             requirements_block=requirements_block,
