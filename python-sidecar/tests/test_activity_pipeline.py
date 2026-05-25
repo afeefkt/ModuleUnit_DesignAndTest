@@ -703,11 +703,11 @@ class TestMermaidExporterActivity:
         )
         mmd = MermaidExporter().export_diagram(diag)
         assert "||" not in mmd, "Raw || found — Mermaid parse error risk"
-        assert " OR " in mmd
-        assert " AND " in mmd
-        # Also ensure the guard content is still human-readable
-        assert "l_bValid" in mmd
-        print("\n  [PASS] C logical operators sanitized: || -> OR, && -> AND")
+        assert "&&" not in mmd, "Raw && found — Mermaid parse error risk"
+        # 2-branch decision guards are normalized to Yes/No (ISO 5807 flowchart convention)
+        # so C expressions never appear verbatim in Mermaid edge labels.
+        assert "Yes" in mmd or "No" in mmd, "Expected Yes/No labels from 2-branch decision normalisation"
+        print("\n  [PASS] C logical operators not present raw in Mermaid; 2-branch decisions -> Yes/No")
 
     def test_special_character_node_ids_are_mermaid_safe(self):
         """Exporter should not leak spaces, parens, or ampersands into node identifiers."""

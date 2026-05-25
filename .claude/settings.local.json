@@ -56,7 +56,10 @@
       "Bash(where gh *)",
       "Bash(winget list *)",
       "Bash(PYTHONPATH=src python -c \"from mudtool.validation.structural_validator import StructuralValidator; from mudtool.config.settings import Settings, CloudProvider; from mudtool.ai.cloud_backend import CloudBackend; from mudtool.ai.activity_pipeline_stages import ActivityPipeline; from mudtool.api.routes import _remove_env_keys; print\\('All imports OK'\\)\")",
-      "Bash(python -m py_compile src/mudtool/validation/structural_validator.py src/mudtool/config/settings.py src/mudtool/ai/cloud_backend.py src/mudtool/ai/activity_pipeline_stages.py src/mudtool/ai/mud_activity_context.py src/mudtool/generator/mermaid_exporter.py src/mudtool/api/routes.py)"
+      "Bash(python -m py_compile src/mudtool/validation/structural_validator.py src/mudtool/config/settings.py src/mudtool/ai/cloud_backend.py src/mudtool/ai/activity_pipeline_stages.py src/mudtool/ai/mud_activity_context.py src/mudtool/generator/mermaid_exporter.py src/mudtool/api/routes.py)",
+      "Bash(python -m pytest tests/test_activity_pipeline.py::TestMermaidExporterActivity::test_c_logical_operators_sanitized tests/unit/test_api_routes.py::TestMudSpecRoutes::test_mud_spec_stream_emits_section7_normalization_metadata -v)",
+      "Bash(python -m pytest tests/test_activity_pipeline.py::TestMermaidExporterActivity::test_c_logical_operators_sanitized \"tests/unit/test_api_routes.py::TestMudSpecRoutes::test_mud_spec_stream_emits_section7_normalization_metadata\" -v)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\afeef\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--AI-Learnigns-moduleunitdesign\\\\16c54a2c-4082-4d8b-a88d-a100f6ca83f0\\\\tasks\\\\\" -Force)"
     ]
   }
 }

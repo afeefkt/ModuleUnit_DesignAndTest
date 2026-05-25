@@ -180,10 +180,15 @@ class Settings(BaseSettings):
     # When false (default) the legacy single-call path runs unchanged.
     activity_pipeline_enabled: bool = False
     # Per-stage backend overrides. Recommended combination: deepseek-r1:7b
-    # (reasoning) for skeleton + reviewer, qwen2.5-coder:7b (code) for the
+    # (reasoning) for skeleton + reviewer, qwen3:8b (code) for the
     # per-runnable generation stage (via pipeline_generator_model).
     activity_pipeline_skeleton_model: str = "deepseek-r1:7b"
     activity_pipeline_reviewer_model: str = "deepseek-r1:7b"
+    # MUD_ACTIVITY_PIPELINE_STAGE3_TWO_PHASE=true → split Stage 3 into:
+    #   Phase A: generate topology only (node types + edges, no labels)
+    #   Phase B: fill in C-expression labels given the locked topology
+    # Produces more consistent diagrams at the cost of one extra AI call per runnable.
+    activity_pipeline_stage3_two_phase: bool = False
 
     def get_skills_dir(self) -> Path:
         if self.skills_dir:

@@ -411,6 +411,9 @@ Rte_Read/Write/IRead/IWrite signatures shown. If a pseudo-code step
 says "read vehicle speed", use the Read sig listed above for it.
 ══════════════════════════════════════════════════════════════════
 
+CROSS-RUNNABLE IRV COHERENCE — use EXACT IRV names shown (consistency with sibling runnables):
+{irv_coherence}
+
 NUMBERED PSEUDO-CODE FROM MUD SECTION 7:
 {pseudo_code}
 
@@ -523,6 +526,95 @@ Before emitting JSON, scan EVERY node.name and EVERY edge.guard:
     confidence < 0.5 and put a TODO marker in the description, but STILL
     write the name as a placeholder C expression (never English).
 """
+
+
+# ── Strategy 3: Two-phase Stage 3 prompts ────────────────────────────────────
+# Phase A: topology-only — the AI focuses purely on structure (node types +
+# edges).  No label text yet, so it cannot "drift" by committing to English
+# labels while still figuring out the flow.
+_STAGE3A_TOPOLOGY_SYSTEM = """You are an AUTOSAR software engineer generating
+an activity diagram TOPOLOGY for a single runnable.
+
+Output STRICT JSON only — a topology skeleton object.  No labels yet.
+Your job: decide the correct NODE TYPES and EDGE structure ONLY.
+
+NODE TYPE rules:
+  initial       — first node; exactly one per diagram.
+  final         — last node; exactly one per diagram.
+  call          — any Rte_Read/Write/IRead/IWrite or Dem_*/Det_* invocation.
+  action        — C assignment or computation (no service call).
+  decision      — conditional branch; MUST have ≥2 outgoing edges with guards.
+  merge         — join point where two branches reunite.
+  function_call — SWC-internal helper sub-function only.
+  exception     — fault / DEM event report node.
+
+Output schema (NO label text — use placeholder names only):
+{
+  "nodes": [
+    {"id": "N_01", "node_type": "initial"},
+    {"id": "N_02", "node_type": "call"},
+    ...
+  ],
+  "edges": [
+    {"id": "E_01", "source": "N_01", "target": "N_02", "guard": ""},
+    {"id": "E_02", "source": "N_02", "target": "N_03", "guard": "[condition]"},
+    ...
+  ]
+}
+
+ID FORMAT: nodes N_01…N_NN, edges E_01…E_NN.  No semantic IDs.
+Every edge source/target must reference an existing node id.
+Aim for 6–15 nodes.  Output JSON only — no prose."""
+
+# Phase B: label enrichment — given the locked topology, fill in C-expression
+# labels for each node and guard.  Structure is frozen; only name/guard text.
+_STAGE3B_LABELS_SYSTEM = """You are an AUTOSAR software engineer enriching an
+activity diagram.  The topology (node IDs, types, edges) is FIXED — do NOT
+change any id, node_type, source, or target.
+
+Your ONLY job: write the correct C-expression name for each node and guard for
+each decision edge.  Follow these rules exactly:
+
+  initial / final / merge  → keep name "Start" / "End" / "merge"
+  call node                → exact Rte_/Dem_/Det_ service signature, e.g.
+                             "Rte_Read_RP_VehicleSpeed(&l_f32Speed)"
+  action node              → C assignment, e.g. "l_f32Out = l_f32K * l_f32In"
+  decision node            → C boolean expression, e.g. "l_f32Speed > LIMIT"
+  exception node           → Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)
+  decision edge guard      → "[C expression]" or "[else]"
+
+ZERO tolerance for English prose in any name or guard.
+Use exact port names from AVAILABLE SIGNALS.  Local variables: l_<type><Name>.
+
+Return the COMPLETE ActivityDiagram JSON with all required fields filled:
+  id, name, node_type, trace_reqs, description (3–10 words),
+  confidence (0.0–1.0 numeric).
+Output JSON only."""
+
+_STAGE3B_LABELS_USER_TMPL = """Enrich the topology below with C-expression labels.
+
+SWC: {swc_name}
+RUNNABLE: {runnable_name}
+ASIL: {asil}
+
+AVAILABLE SIGNALS (use exact signatures in call/exception nodes):
+{signal_table}
+
+CROSS-RUNNABLE IRV COHERENCE:
+{irv_coherence}
+
+NUMBERED PSEUDO-CODE (map each step to its node):
+{pseudo_code}
+
+LOCKED TOPOLOGY (do NOT change ids, types, sources, or targets):
+{topology_json}
+
+REQUIREMENTS (use these IDs in trace_reqs):
+{requirements_block}
+
+Output the complete ActivityDiagram JSON object (add diagram_type, name,
+owner_swc, owner_runnable, source_requirements, sub_diagrams fields).
+Output JSON only."""
 
 
 _REVIEWER_SYSTEM = """You are an AUTOSAR design reviewer.  You receive
@@ -717,6 +809,7 @@ class ActivityPipeline:
                 requirements,
                 activity_label_style,
                 temperature,
+                xref=xref,
             )
             if draft:
                 prov = draft.get("provenance") if isinstance(draft.get("provenance"), dict) else {}
@@ -768,6 +861,82 @@ class ActivityPipeline:
                     d.setdefault("warnings", []).append(
                         f"AI enrichment failed for {runnable}; deterministic CFG fallback used ({match['reason']})."
                     )
+
+        # ── Strategy 5: Targeted per-runnable retry for low-confidence diagrams ──
+        # If any diagram's average node confidence is below the threshold, re-run
+        # Stage 3 for just that runnable with the reviewer's specific feedback as
+        # a prefix.  Only one retry per runnable to avoid infinite loops.
+        _RETRY_CONFIDENCE_THRESHOLD = 0.60
+        low_conf_retried = 0
+        for idx_d, d in enumerate(finalised):
+            rname_d = d.get("owner_runnable") or d.get("name", "?")
+            nodes_d = d.get("nodes") or []
+            if not nodes_d:
+                continue
+            avg_conf = sum(
+                float(n.get("confidence", 0)) for n in nodes_d if isinstance(n, dict)
+            ) / len(nodes_d)
+            if avg_conf >= _RETRY_CONFIDENCE_THRESHOLD:
+                continue
+
+            # Collect reviewer issues specific to this runnable
+            runnable_issues = [
+                i for i in issues
+                if isinstance(i, dict) and i.get("runnable", "") == rname_d
+            ] if issues else []
+            retry_ctx: Optional[str] = None
+            if runnable_issues:
+                retry_ctx = "\n".join(
+                    f"  [{i.get('severity','warn').upper()}] {i.get('message','')}"
+                    for i in runnable_issues[:10]
+                )
+            elif avg_conf < _RETRY_CONFIDENCE_THRESHOLD:
+                retry_ctx = f"Average node confidence was {avg_conf:.2f} — below {_RETRY_CONFIDENCE_THRESHOLD}. Improve C-expression labels and exact port signatures."
+
+            sk_match = next(
+                (r for r in runnables if r.get("name") == rname_d), None
+            )
+            if not sk_match:
+                continue
+
+            self._emit(
+                f"[Activity Pipeline] Strategy-5 retry — low confidence ({avg_conf:.2f}) for {rname_d}…",
+                92,
+            )
+            retry_draft = await self._stage3_runnable(
+                sk_match,
+                mud_activity_context,
+                swc_name,
+                requirements,
+                activity_label_style,
+                temperature=max(temperature, 0.15),  # slight randomness to escape local minimum
+                xref=xref,
+                retry_context=retry_ctx,
+            )
+            if retry_draft:
+                retry_nodes = retry_draft.get("nodes") or []
+                if retry_nodes:
+                    retry_conf = sum(
+                        float(n.get("confidence", 0)) for n in retry_nodes if isinstance(n, dict)
+                    ) / len(retry_nodes)
+                    if retry_conf > avg_conf:
+                        logger.info(
+                            "[Activity Pipeline/Retry] %s improved %.2f → %.2f",
+                            rname_d, avg_conf, retry_conf,
+                        )
+                        finalised[idx_d] = retry_draft
+                    else:
+                        logger.info(
+                            "[Activity Pipeline/Retry] %s retry did not improve (%.2f vs %.2f) — keeping original",
+                            rname_d, retry_conf, avg_conf,
+                        )
+            low_conf_retried += 1
+
+        if low_conf_retried:
+            self._emit(
+                f"[Activity Pipeline] Strategy-5 retry complete — {low_conf_retried} runnable(s) retried",
+                95,
+            )
 
         total_nodes = sum(len(d.get("nodes", [])) for d in finalised)
         # Collect per-runnable provenance modes for the summary event
@@ -1027,6 +1196,42 @@ class ActivityPipeline:
             return "  (no signals detected — derive exact names from pseudo-code above)"
         return "\n".join(lines)
 
+    @staticmethod
+    def _build_irv_coherence_block(sk_run: dict, xref: dict) -> str:
+        """Build cross-runnable IRV coherence context for Stage 3 injection.
+
+        Shows which IRVs this runnable must read/write using the EXACT names
+        agreed upon by sibling runnables.  Prevents name drift like one runnable
+        writing IRV_FilteredSpeed while another reads IRV_SpeedFiltered.
+        """
+        rname = sk_run.get("name", "")
+        irv_writers: dict[str, list[str]] = xref.get("irv_writers", {})
+        irv_readers: dict[str, list[str]] = xref.get("irv_readers", {})
+
+        lines: list[str] = []
+
+        # IRVs this runnable produces — other runnables depend on this exact name
+        for irv_name, writers in irv_writers.items():
+            if rname in writers:
+                consumers = [c for c in irv_readers.get(irv_name, []) if c != rname]
+                consumers_str = ", ".join(consumers) if consumers else "(no consumer yet)"
+                lines.append(
+                    f"  WRITE → Rte_IWrite_{irv_name}(...)   consumed by: {consumers_str}"
+                )
+
+        # IRVs this runnable consumes — must use the exact name as written by the producer
+        for irv_name, readers in irv_readers.items():
+            if rname in readers:
+                producers = [p for p in irv_writers.get(irv_name, []) if p != rname]
+                producers_str = ", ".join(producers) if producers else "(no producer yet)"
+                lines.append(
+                    f"  READ  ← Rte_IRead_{irv_name}(...)    produced by: {producers_str}"
+                )
+
+        if not lines:
+            return "  (no shared IRVs — this runnable is independent)"
+        return "\n".join(lines)
+
     # ─── Stage 2 ──────────────────────────────────────────────────────────
 
     @staticmethod
@@ -1079,6 +1284,109 @@ class ActivityPipeline:
 
     # ─── Stage 3 ──────────────────────────────────────────────────────────
 
+    async def _stage3a_topology(
+        self,
+        rname: str,
+        pseudo_code: str,
+        cfg_scaffold: str,
+        temperature: float,
+    ) -> Optional[dict]:
+        """Phase A of two-phase Stage 3 — generate topology (types + edges) only.
+
+        Returns a minimal dict with {"nodes": [...], "edges": [...]} where nodes
+        have id + node_type only (no label text). Returns None on failure.
+        """
+        user_prompt = (
+            f"RUNNABLE: {rname}\n\n"
+            f"NUMBERED PSEUDO-CODE:\n{pseudo_code}\n\n"
+            f"CFG SCAFFOLD (follow this structure):\n{cfg_scaffold}\n\n"
+            "Output the topology JSON object with nodes (id + node_type) and "
+            "edges (id + source + target + guard placeholder).  JSON only."
+        )
+        try:
+            response = await self._backend.generate(
+                system_prompt=_STAGE3A_TOPOLOGY_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=2048,
+                response_format="json",
+            )
+        except Exception as exc:
+            logger.warning("[Stage3A] topology call failed for %s: %s", rname, exc)
+            return None
+
+        raw = getattr(response, "content", "") or ""
+        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        try:
+            topo = json.loads(raw)
+            if isinstance(topo, dict) and topo.get("nodes"):
+                return topo
+        except Exception:
+            pass
+        logger.warning("[Stage3A] topology parse failed for %s", rname)
+        return None
+
+    async def _stage3b_labels(
+        self,
+        rname: str,
+        swc_name: str,
+        asil: str,
+        pseudo_code: str,
+        topology: dict,
+        signal_table: str,
+        irv_coherence: str,
+        requirements_block: str,
+        req_ids: list[str],
+        temperature: float,
+    ) -> Optional[dict]:
+        """Phase B of two-phase Stage 3 — enrich topology with C-expression labels.
+
+        Takes the locked topology from Phase A and fills in name/guard/description
+        /confidence fields.  Returns a full ActivityDiagram-compatible dict.
+        """
+        topology_json = json.dumps(topology, ensure_ascii=False, indent=2)
+        user_prompt = _STAGE3B_LABELS_USER_TMPL.format(
+            swc_name=swc_name or "unknown",
+            runnable_name=rname,
+            asil=asil or "QM",
+            signal_table=signal_table,
+            irv_coherence=irv_coherence,
+            pseudo_code=pseudo_code or "(no pseudo-code)",
+            topology_json=topology_json,
+            requirements_block=requirements_block,
+        )
+        try:
+            response = await self._backend.generate(
+                system_prompt=_STAGE3B_LABELS_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=4096,
+                response_format="json",
+            )
+        except Exception as exc:
+            logger.warning("[Stage3B] label enrichment failed for %s: %s", rname, exc)
+            return None
+
+        raw = getattr(response, "content", "") or ""
+        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        # Strip markdown fences
+        raw = re.sub(r"^```(?:json)?\s*", "", raw).rstrip("` \n")
+        try:
+            diagram = json.loads(raw)
+            if isinstance(diagram, dict) and diagram.get("nodes"):
+                # Ensure required top-level fields
+                diagram.setdefault("diagram_type", "activity")
+                diagram.setdefault("name", f"{rname} Code Flow")
+                diagram.setdefault("owner_swc", swc_name)
+                diagram.setdefault("owner_runnable", rname)
+                diagram.setdefault("source_requirements", req_ids)
+                diagram.setdefault("sub_diagrams", [])
+                return diagram
+        except Exception:
+            pass
+        logger.warning("[Stage3B] label parse failed for %s", rname)
+        return None
+
     async def _stage3_runnable(
         self,
         sk_run: dict,
@@ -1087,6 +1395,8 @@ class ActivityPipeline:
         requirements,
         activity_label_style: str,
         temperature: float,
+        xref: Optional[dict] = None,
+        retry_context: Optional[str] = None,
     ) -> Optional[dict]:
         rname = sk_run.get("name") or "RE_Unknown"
 
@@ -1143,6 +1453,14 @@ class ActivityPipeline:
             ctx_rte_calls=list(getattr(mud_activity_context, "rte_calls", None) or []),
         )
 
+        # Build cross-runnable IRV coherence block (Strategy 4).
+        # Tells the AI exactly which IRV names sibling runnables produce/consume
+        # so all diagrams agree on IRV identifiers.
+        irv_coherence = self._build_irv_coherence_block(
+            sk_run=sk_run,
+            xref=xref or {},
+        )
+
         backend = self._backend
         backend_name = getattr(backend, "backend_name", "?")
         is_high_end = any(
@@ -1159,7 +1477,7 @@ for example [l_f32Val > LIMIT] or [else].
 Return the exact same ActivityDiagram JSON structure with the same topology and ids. Output JSON only."""
             logger.info("[Activity Pipeline/Stage3] %s using enrichment-only prompt for backend %s", rname, backend_name)
 
-        user_prompt = _RUNNABLE_USER_TMPL.format(
+        base_user_prompt = _RUNNABLE_USER_TMPL.format(
             swc_name=swc_name or "unknown",
             runnable_name=rname,
             trigger=sk_run.get("trigger", "") or "n/a",
@@ -1167,10 +1485,61 @@ Return the exact same ActivityDiagram JSON structure with the same topology and 
             label_style=activity_label_style,
             key_steps_block=key_steps_block,
             signal_table=signal_table,
+            irv_coherence=irv_coherence,
             pseudo_code=pseudo_code or "(no pseudo-code; produce a minimal Start/End diagram)",
             cfg_scaffold=cfg_scaffold,
             requirements_block=requirements_block,
         )
+        # Strategy 5 — targeted retry: prepend reviewer feedback if this is a
+        # second attempt for a low-confidence diagram.
+        user_prompt = (
+            f"🔁 RETRY — previous attempt was low-confidence. Reviewer feedback:\n"
+            f"{retry_context}\n\n"
+            f"Apply the feedback above, then generate the corrected diagram:\n\n"
+            f"{base_user_prompt}"
+            if retry_context
+            else base_user_prompt
+        )
+
+        # ── Strategy 3: Two-phase topology/labels ─────────────────────────────
+        # When enabled: Phase A generates structure only, Phase B fills labels.
+        # Falls back to single-call path on any failure.
+        from mudtool.config.settings import get_settings as _get_settings
+        if _get_settings().activity_pipeline_stage3_two_phase and not retry_context:
+            logger.info("[Stage3/TwoPhase] Phase A — topology for %s", rname)
+            topology = await self._stage3a_topology(
+                rname=rname,
+                pseudo_code=pseudo_code,
+                cfg_scaffold=cfg_scaffold,
+                temperature=temperature,
+            )
+            if topology:
+                logger.info("[Stage3/TwoPhase] Phase B — labels for %s", rname)
+                two_phase_result = await self._stage3b_labels(
+                    rname=rname,
+                    swc_name=swc_name,
+                    asil=sk_run.get("asil", "") or "QM",
+                    pseudo_code=pseudo_code,
+                    topology=topology,
+                    signal_table=signal_table,
+                    irv_coherence=irv_coherence,
+                    requirements_block=requirements_block,
+                    req_ids=req_ids,
+                    temperature=temperature,
+                )
+                if two_phase_result:
+                    logger.info("[Stage3/TwoPhase] Two-phase complete for %s", rname)
+                    two_phase_result.setdefault("provenance", {})["prompt_version"] = \
+                        "activity_pipeline_two_phase"
+                    return two_phase_result
+                logger.warning(
+                    "[Stage3/TwoPhase] Phase B failed for %s — falling back to single-call", rname
+                )
+            else:
+                logger.warning(
+                    "[Stage3/TwoPhase] Phase A failed for %s — falling back to single-call", rname
+                )
+        # ── End two-phase; fall through to standard single-call path ──────────
 
         try:
             response = await backend.generate(

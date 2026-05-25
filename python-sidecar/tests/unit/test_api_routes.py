@@ -786,6 +786,15 @@ class TestMudSpecRoutes:
             def _get_backend(self):
                 return _SpecBackend()
 
+            def _get_generator_backend(self):
+                return _SpecBackend()
+
+            def _get_skeleton_backend(self):
+                return _SpecBackend()
+
+            def _get_reviewer_backend(self):
+                return _SpecBackend()
+
         monkeypatch.setattr(dependencies, "get_orchestrator", lambda: _SpecOrchestrator())
         monkeypatch.setattr(dependencies, "get_mapper", lambda: _DummyMapper())
         monkeypatch.setattr(dependencies, "get_validator", lambda: _DummyValidator())
