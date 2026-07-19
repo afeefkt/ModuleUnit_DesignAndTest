@@ -1,0 +1,94 @@
+services:
+  backend:
+    build: ./backend
+    container_name: cpputest-backend
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./c_projects:/app/c_projects
+      - ./test_examples:/app/test_examples
+      - ./generated_tests:/app/generated_tests
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434/api}
+      - EMBED_MODEL=${EMBED_MODEL:-all-minilm:latest}
+      - GEN_MODEL=${GEN_MODEL:-codellama:latest}
+      - C_PROJECT_DIR=/app/c_projects
+      - TEST_EXAMPLES_DIR=/app/test_examples
+      - OUTPUT_DIR=/app/generated_tests
+      - DATABASE_PATH=/app/data/cpputest.db
+      - MAX_FUNCTIONS_PER_CHUNK=${MAX_FUNCTIONS_PER_CHUNK:-10}
+      - TOP_K=${TOP_K:-3}
+      - BATCH_SIZE=${BATCH_SIZE:-5}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-180}
+      - HOST=0.0.0.0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - cpputest-network
+
+  frontend:
+    build: ./frontend
+    container_name: cpputest-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - cpputest-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - cpputest-network
+
+  test-runner:
+    build: ./test-runner
+    container_name: cpputest-runner
+    volumes:
+      - ./generated_tests:/tests
+      - ./c_projects:/c_projects:ro
+    working_dir: /tests
+    restart: unless-stopped
+    networks:
+      - cpputest-network
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  cpputest-network:
+    driver: bridge

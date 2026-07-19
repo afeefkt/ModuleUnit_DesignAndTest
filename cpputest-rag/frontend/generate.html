@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CppUTest Generator - Generate Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+
+        <!-- Header -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6 border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">CppUTest Generator</h1>
+                    <p class="text-gray-600 mt-1">AI-powered unit test generation with RAG</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="index.html" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">
+                        🏠 Home
+                    </a>
+                    <a href="analyze.html" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">
+                        🔍 Analyze
+                    </a>
+                    <a href="reports.html" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">
+                        📊 Reports
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Project Banner -->
+        <div id="project-banner" class="bg-gray-200 rounded-xl p-4 mb-6 hidden border border-gray-300"></div>
+
+        <!-- Workflow Steps -->
+        <div class="bg-white rounded-xl shadow-xl p-6 mb-6">
+            <div class="step-indicator">
+                <div class="step complete">
+                    <div class="step-number">✓</div>
+                    <span class="text-gray-500">Analyze Project</span>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step active">
+                    <div class="step-number">2</div>
+                    <span class="font-semibold text-gray-700">Generate Tests</span>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <span class="text-gray-500">Run & Verify</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Generation Form -->
+        <div class="bg-white rounded-xl shadow-xl p-6 mb-6 card-hover">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                Configure Test Generation
+            </h2>
+
+            <div class="space-y-4">
+                <!-- Project Selector -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Target Project <span class="text-red-500">*</span>
+                    </label>
+                    <select id="project-selector"
+                            class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none">
+                        <option value="">Loading projects...</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Select the project to generate tests for</p>
+                </div>
+
+                <!-- Function Filter (Optional) -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Function Name <span class="text-gray-400">(optional)</span>
+                    </label>
+                    <input type="text" id="function-name"
+                           placeholder="Leave empty to generate for all functions"
+                           class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none">
+                    <p class="text-xs text-gray-500 mt-1">Filter by specific function name</p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-3">
+                    <button onclick="generateTests()" id="generate-btn"
+                            class="flex-1 bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-700 font-medium transition shadow-lg flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Generate CppUTest Cases
+                    </button>
+                    <button onclick="rebuildIndex()"
+                            class="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Rebuild Index
+                    </button>
+                </div>
+
+                <!-- Generation Info -->
+                <div class="bg-gray-200 border border-gray-400 rounded-lg p-4">
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-gray-700 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div class="text-sm text-gray-900">
+                            <p class="font-medium">Estimated time:</p>
+                            <p class="text-gray-800 mt-1">• With GPU: 30-60 seconds per function</p>
+                            <p class="text-gray-800">• Without GPU: 5-10 minutes per function</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="bg-white rounded-xl shadow-xl p-8 mb-6 text-center hidden">
+            <div class="spinner mb-4"></div>
+            <p class="text-gray-700 font-medium text-lg">Generating tests...</p>
+            <p class="text-gray-500 text-sm mt-2">This may take several minutes depending on project size</p>
+            <div class="mt-4 bg-gray-100 rounded-lg p-3 inline-block">
+                <p class="text-xs text-gray-600">The AI is analyzing your code and creating test cases</p>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden space-y-6">
+            <div class="bg-white rounded-xl shadow-xl p-6 fade-in">
+                <h2 class="text-lg font-bold text-green-700 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Generation Complete
+                </h2>
+
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gray-200 rounded-lg p-4 text-center stat-card border-2 border-gray-400">
+                        <div id="stat-analyzed" class="text-2xl font-bold text-gray-900 mb-1">0</div>
+                        <div class="text-xs text-gray-700 font-medium">Analyzed</div>
+                    </div>
+                    <div class="bg-gray-300 rounded-lg p-4 text-center stat-card border-2 border-gray-500">
+                        <div id="stat-generated" class="text-2xl font-bold text-gray-900 mb-1">0</div>
+                        <div class="text-xs text-gray-700 font-medium">Generated</div>
+                    </div>
+                    <div class="bg-gray-400 rounded-lg p-4 text-center stat-card border-2 border-gray-600">
+                        <div id="stat-failed" class="text-2xl font-bold text-gray-900 mb-1">0</div>
+                        <div class="text-xs text-gray-700 font-medium">Failed</div>
+                    </div>
+                    <div class="bg-gray-500 rounded-lg p-4 text-center stat-card border-2 border-gray-700">
+                        <div id="stat-time" class="text-2xl font-bold text-white mb-1">0s</div>
+                        <div class="text-xs text-gray-100 font-medium">Time</div>
+                    </div>
+                </div>
+
+                <!-- Output Directory -->
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <p class="text-sm text-gray-700 flex items-center gap-2 flex-wrap">
+                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                        </svg>
+                        <strong>Output Directory:</strong>
+                        <code id="output-dir" class="text-xs bg-white px-2 py-1 rounded border break-all"></code>
+                    </p>
+                </div>
+
+                <!-- Failed Functions -->
+                <div id="failed-section" class="hidden mb-4">
+                    <h3 class="text-sm font-bold text-red-700 mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Failed Functions:
+                    </h3>
+                    <ul id="failed-list" class="list-disc list-inside text-sm text-red-600 bg-red-50 rounded-lg p-3"></ul>
+                </div>
+
+                <!-- Run Tests Button -->
+                <div class="flex gap-3 items-center">
+                    <button id="run-tests-btn" onclick="runGeneratedTests()"
+                            class="flex-1 bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-700 font-medium transition shadow-lg flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Build & Run Tests
+                    </button>
+                    <div id="test-running" class="hidden flex items-center px-4">
+                        <div class="spinner mr-2" style="width: 20px; height: 20px; border-width: 2px;"></div>
+                        <span class="text-sm text-gray-600">Building...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Results -->
+        <div id="test-results" class="hidden space-y-6">
+            <div class="bg-white rounded-xl shadow-xl p-6 fade-in">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2" id="test-results-title">
+                        Test Results
+                    </h2>
+                    <div id="report-buttons" class="hidden flex flex-wrap gap-2">
+                        <button
+                            id="view-report-btn"
+                            class="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            View Report
+                        </button>
+                        <button
+                            id="view-coverage-btn"
+                            class="hidden px-3 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                            View Coverage
+                        </button>
+                        <button
+                            id="download-lcov-btn"
+                            class="hidden px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                            </svg>
+                            LCOV
+                        </button>
+                        <button
+                            id="download-junit-btn"
+                            class="hidden px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-400 transition flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                            </svg>
+                            JUnit XML
+                        </button>
+                        <button
+                            id="download-report-btn"
+                            class="px-3 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                            </svg>
+                            Test Report
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Build Output -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                        </svg>
+                        Build Output:
+                    </h3>
+                    <pre id="build-output" class="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-x-auto max-h-64 border border-gray-700"></pre>
+                </div>
+
+                <!-- Test Output -->
+                <div id="test-output-section">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        Test Results:
+                    </h3>
+                    <pre id="test-output" class="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-x-auto max-h-96 border border-gray-700"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6 hidden">
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                    <h3 class="text-red-700 font-bold mb-1">Generation Failed</h3>
+                    <p id="error-msg" class="text-red-600 text-sm"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Index Rebuild Result -->
+        <div id="index-result" class="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-6 hidden">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <p id="index-msg" class="text-green-700 text-sm font-medium"></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/shared.js"></script>
+    <script src="/js/generate.js"></script>
+</body>
+</html>

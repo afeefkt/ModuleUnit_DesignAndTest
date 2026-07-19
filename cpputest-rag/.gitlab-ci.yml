@@ -1,0 +1,115 @@
+# GitLab CI/CD Pipeline — CppUTest Generator v2.0
+# Tests backend and frontend builds independently
+
+stages:
+  - validate
+  - test
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+# Build backend Docker image
+validate:backend-build:
+  stage: validate
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - echo "Building backend Docker image..."
+    - docker build -t cpputest-backend:test ./backend
+    - echo "Backend build successful"
+  only:
+    - merge_requests
+    - main
+
+# Build frontend Docker image
+validate:frontend-build:
+  stage: validate
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    - echo "Building frontend Docker image..."
+    - docker build -t cpputest-frontend:test ./frontend
+    - echo "Frontend build successful"
+  only:
+    - merge_requests
+    - main
+
+# Python import test
+validate:import:
+  stage: validate
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y gcc g++
+    - pip install -q -r backend/requirements.txt
+  script:
+    - echo "Testing imports..."
+    - python -c "from fastapi import FastAPI; print('FastAPI OK')"
+    - python -c "import faiss; print('FAISS OK')"
+    - python -c "import aiohttp; print('aiohttp OK')"
+    - python -c "import aiosqlite; print('aiosqlite OK')"
+    - python -c "import numpy; print('NumPy OK')"
+    - echo "All imports successful"
+  only:
+    - merge_requests
+    - main
+
+# Backend health test
+test:backend-health:
+  stage: test
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - docker build -t cpputest-backend-test ./backend
+    - docker run -d --name backend-test --network host cpputest-backend-test
+    - echo "Waiting for backend..."
+    - sleep 30
+    - echo "Testing health endpoint..."
+    - docker exec backend-test curl -f http://localhost:8000/health
+    - echo "Backend is healthy"
+  after_script:
+    - docker logs backend-test || true
+    - docker stop backend-test || true
+    - docker rm backend-test || true
+  only:
+    - merge_requests
+    - main
+
+# API integration test
+test:api:
+  stage: test
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  before_script:
+    - apk add --no-cache curl jq bash
+    - mkdir -p c_projects/test
+    - echo 'int add(int a, int b) { return a + b; }' > c_projects/test/math.c
+    - echo 'int subtract(int a, int b) { return a - b; }' >> c_projects/test/math.c
+  script:
+    - docker build -t cpputest-backend-test ./backend
+    - docker run -d --name api-test --network host -v $(pwd)/c_projects:/app/c_projects cpputest-backend-test
+    - echo "Waiting for service..."
+    - sleep 30
+    - echo "Testing health endpoint..."
+    - docker exec api-test curl -f http://localhost:8000/health
+    - echo "Testing analyze-project endpoint..."
+    - RESULT=$(docker exec api-test curl -s "http://localhost:8000/analyze-project?project_path=/app/c_projects/test")
+    - echo "API Response - $RESULT"
+    - FUNCS=$(echo "$RESULT" | jq -r '.total_functions // 0')
+    - echo "Found $FUNCS functions"
+    - test "$FUNCS" -ge 1
+    - echo "API test passed"
+  after_script:
+    - docker logs api-test || true
+    - docker stop api-test || true
+    - docker rm api-test || true
+  only:
+    - merge_requests
+    - main

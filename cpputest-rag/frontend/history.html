@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CppUTest Generator - History</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="bg-gradient-to-br from-purple-700 to-blue-600 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+
+        <!-- Header -->
+        <div class="bg-white rounded-xl shadow-xl p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Generation History</h1>
+            <p class="text-gray-500 mt-1">All past test generation runs</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="bg-white rounded-xl shadow-xl p-3 mb-6">
+            <nav class="flex space-x-2">
+                <a href="index.html" class="px-4 py-2 rounded-lg font-medium hover:bg-gray-100 text-gray-600">Dashboard</a>
+                <a href="analyze.html" class="px-4 py-2 rounded-lg font-medium hover:bg-gray-100 text-gray-600">Analyze</a>
+                <a href="generate.html" class="px-4 py-2 rounded-lg font-medium hover:bg-gray-100 text-gray-600">Generate</a>
+                <a href="history.html" class="px-4 py-2 rounded-lg font-medium active">History</a>
+            </nav>
+        </div>
+
+        <!-- History Table -->
+        <div class="bg-white rounded-xl shadow-xl p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-gray-800">Recent Generations</h2>
+                <button onclick="loadHistory()" class="text-sm text-purple-600 hover:underline">Refresh</button>
+            </div>
+
+            <div id="loading" class="text-center py-8 hidden">
+                <div class="spinner mb-3"></div>
+                <p class="text-gray-500 text-sm">Loading history...</p>
+            </div>
+
+            <div id="empty" class="text-center py-8 hidden">
+                <p class="text-gray-500">No generation history yet.</p>
+                <a href="generate.html" class="text-purple-600 hover:underline text-sm mt-2 inline-block">
+                    Generate your first tests
+                </a>
+            </div>
+
+            <div id="history-table" class="hidden overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-3 px-2 text-gray-600 font-medium">Project</th>
+                            <th class="text-center py-3 px-2 text-gray-600 font-medium">Analyzed</th>
+                            <th class="text-center py-3 px-2 text-gray-600 font-medium">Generated</th>
+                            <th class="text-center py-3 px-2 text-gray-600 font-medium">Failed</th>
+                            <th class="text-right py-3 px-2 text-gray-600 font-medium">Time</th>
+                            <th class="text-right py-3 px-2 text-gray-600 font-medium">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/history.js"></script>
+</body>
+</html>
