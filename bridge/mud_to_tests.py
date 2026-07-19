@@ -69,9 +69,13 @@ def _get_json(url: str, timeout: int = 120) -> Any:
         return json.loads(resp.read().decode("utf-8"))
 
 
+class BridgeError(Exception):
+    """Raised when a bridge stage cannot proceed. Callers (CLI or the Streamlit
+    launcher) decide how to surface it."""
+
+
 def _fail(msg: str) -> "None":
-    print(f"\n[bridge] ERROR: {msg}", file=sys.stderr)
-    raise SystemExit(1)
+    raise BridgeError(msg)
 
 
 # ─────────────────────────── Stage 1: obtain the C skeleton ─────────────────
@@ -233,23 +237,27 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--cpputest-url", default=DEFAULT_CPPUTEST_URL)
     args = parser.parse_args(argv)
 
-    # Stage 1 — get the skeleton
-    if args.skeleton:
-        code = skeleton_from_file(args.skeleton)
-    else:
-        export_dir = REPO_ROOT / "bridge" / "out" / "skeletons"
-        c_file = skeleton_from_result(args.result, args.mud_url, export_dir)
-        code = c_file.read_text(encoding="utf-8")
+    try:
+        # Stage 1 — get the skeleton
+        if args.skeleton:
+            code = skeleton_from_file(args.skeleton)
+        else:
+            export_dir = REPO_ROOT / "bridge" / "out" / "skeletons"
+            c_file = skeleton_from_result(args.result, args.mud_url, export_dir)
+            code = c_file.read_text(encoding="utf-8")
 
-    # Stage 2 — place into cpputest-rag
-    place_skeleton(args.module, code)
+        # Stage 2 — place into cpputest-rag
+        place_skeleton(args.module, code)
 
-    # Stage 3 — analyze + generate (+ optional run)
-    generation = analyze_and_generate(args.module, args.cpputest_url, args.run)
+        # Stage 3 — analyze + generate (+ optional run)
+        generation = analyze_and_generate(args.module, args.cpputest_url, args.run)
 
-    # Stage 4 — traceability
-    out_path = args.out or (REPO_ROOT / "bridge" / "out" / f"{args.module}_trace.json")
-    write_traceability(args.module, code, generation, out_path)
+        # Stage 4 — traceability
+        out_path = args.out or (REPO_ROOT / "bridge" / "out" / f"{args.module}_trace.json")
+        write_traceability(args.module, code, generation, out_path)
+    except BridgeError as exc:
+        print(f"\n[bridge] ERROR: {exc}", file=sys.stderr)
+        return 1
 
     print("\n[bridge] Done. requirements -> MUD flow chart -> unit tests linked.")
     return 0

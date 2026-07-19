@@ -90,10 +90,24 @@ Or bring the whole pipeline up with the top-level compose:
 docker compose up          # Ollama + mud-tool + cpputest-rag + test-runner
 ```
 
-Then run the bridge end-to-end for one module:
+### Easiest way to launch & test — the Control Center (Streamlit)
+
+A one-page dashboard to check service health, see which Ollama models are pulled, and run the whole
+requirements → flow chart → tests pipeline with a couple of clicks:
 
 ```bash
-python bridge/mud_to_tests.py --module <SWC_Name>
+./launch.sh        # macOS/Linux/Git-Bash   (Windows: launch.bat)
+# → opens http://localhost:8501
+```
+
+It auto-creates a small venv, installs Streamlit, and starts the UI. Use the **Status** tab to confirm
+mud-tool (8042), cpputest-rag (8000) and Ollama (11434) are up, then the **Run pipeline** tab to feed a C
+skeleton (or a mud-tool GenerationResult) and get generated tests plus a traceability record.
+
+Prefer the CLI? Run the bridge directly:
+
+```bash
+python bridge/mud_to_tests.py --skeleton path/to/<SWC>.c --module <SWC_Name> --run
 ```
 
 ---
@@ -145,6 +159,10 @@ MUD_MUT/
 ├── .env.auto.example         ← local-primary + API-fallback preset
 ├── docs/
 │   └── pipeline.md           ← end-to-end MUD → C-skeleton → tests walkthrough
+├── launcher/
+│   └── streamlit_app.py      ← Control Center UI (launch & test)
+├── launch.sh / launch.bat    ← one-command Control Center launch
+├── .github/workflows/ci.yml  ← GitHub Actions CI
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)
 ├── cpputest-rag/             ← VERIFICATION half (history-preserved subtree)
 └── bridge/
@@ -162,6 +180,22 @@ MUD_MUT/
   used a cloud API key locally, rotate it if there's any chance it was shared.
 
 ---
+
+## Publishing to GitHub
+
+This repo is a fresh local monorepo with **no remote yet**. To publish it on GitHub:
+
+```bash
+# with the GitHub CLI (creates the repo and pushes main):
+gh repo create MUD_MUT --public --source=. --remote=origin --push
+
+# or manually, after creating an empty repo on github.com:
+git remote add origin https://github.com/<you>/MUD_MUT.git
+git push -u origin main
+```
+
+CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml). Your two original
+GitLab repos are untouched and remain a backup.
 
 ## License
 
