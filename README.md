@@ -66,13 +66,15 @@ them merge cleanly into one pipeline.
 recommended (CPU works, slower).
 
 ```bash
-# 1. Pull the local 7B model set (one time)
-ollama pull qwen2.5-coder:7b     # code generation
-ollama pull deepseek-r1:7b       # reasoning / reviewer
-ollama pull codellama:7b         # test generation (cpputest-rag)
-ollama pull bge-m3               # guidelines RAG embeddings (mud-tool)
+# 1. Pull the local model set (one time) — matches the .env.local.example preset
+ollama pull qwen3:8b             # diagram / MUD generation (mud-tool)
+ollama pull deepseek-r1:7b       # reasoning / reviewer (mud-tool)
+ollama pull qwen2.5:7b           # test generation (cpputest-rag)
+ollama pull nomic-embed-text     # guidelines RAG embeddings (mud-tool)
 ollama pull all-minilm           # test-example RAG embeddings (cpputest-rag)
-# optional: ollama pull qwen2-vl:7b   # visual QA of rendered diagrams
+# optional: ollama pull llava:7b     # visual QA of rendered diagrams
+# (Swap any of these for models you prefer — just keep .env in sync. The
+#  Control Center's Status tab shows exactly what you have pulled.)
 
 # 2. Copy the fully-local env preset
 cp .env.local.example .env

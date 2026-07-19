@@ -27,10 +27,10 @@ services:
       - MUD_CLOUD_PROVIDER=${MUD_CLOUD_PROVIDER:-openai_compatible}
       - MUD_OPENAI_BASE_URL=${MUD_OPENAI_BASE_URL:-http://ollama:11434/v1}
       - MUD_OPENAI_API_KEY=${MUD_OPENAI_API_KEY:-ollama}
-      - MUD_OPENAI_MODEL=${MUD_OPENAI_MODEL:-qwen2.5-coder:7b}
+      - MUD_OPENAI_MODEL=${MUD_OPENAI_MODEL:-qwen3:8b}
       - MUD_PIPELINE_MODE=${MUD_PIPELINE_MODE:-two_model}
       - MUD_PIPELINE_REVIEWER_MODEL=${MUD_PIPELINE_REVIEWER_MODEL:-deepseek-r1:7b}
-      - MUD_GUIDELINES_EMBED_MODEL=${MUD_GUIDELINES_EMBED_MODEL:-bge-m3}
+      - MUD_GUIDELINES_EMBED_MODEL=${MUD_GUIDELINES_EMBED_MODEL:-nomic-embed-text:latest}
       - MUD_USE_KROKI=${MUD_USE_KROKI:-true}
     depends_on:
       - ollama
@@ -54,7 +54,7 @@ services:
     environment:
       - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434/api}
       - EMBED_MODEL=${EMBED_MODEL:-all-minilm:latest}
-      - GEN_MODEL=${GEN_MODEL:-codellama:7b}
+      - GEN_MODEL=${GEN_MODEL:-qwen2.5:7b}
       - C_PROJECT_DIR=/app/c_projects
       - TEST_EXAMPLES_DIR=/app/test_examples
       - OUTPUT_DIR=/app/generated_tests
