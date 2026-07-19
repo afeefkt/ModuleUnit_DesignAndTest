@@ -1,0 +1,423 @@
+{
+  "thinking": [
+    "Step 1: REQ-ARCH-0100 mentions SWC_SensorFusion — this is a top-level ApplicationSWC responsible for fusing sensor data.",
+    "Step 2: REQ-ARCH-0101 describes a cyclic runnable RE_FuseData with 10ms trigger for sensor data fusion processing.",
+    "Step 3: REQ-ARCH-0102 specifies that SWC_SensorFusion shall provide fused sensor data via a Sender-Receiver interface containing FusedEnvironmentModel.",
+    "Step 4: REQ-ARCH-0103 mandates that SWC_SensorFusion detects sensor communication failures and transitions to a degraded operation mode within 50ms.",
+    "Step 5: REQ-ARCH-0104 specifies lifecycle management states for SWC_SensorFusion: Init, Running, Degraded, and Shutdown.",
+    "Step 6: REQ-ARCH-0200 mentions SWC_VehicleControl — this component computes vehicle control commands based on fused sensor data.",
+    "Step 7: REQ-ARCH-0201 specifies that SWC_VehicleControl receives fused environment model data via R-Port with a Sender-Receiver interface.",
+    "Step 8: REQ-ARCH-0202 describes a cyclic runnable in SWC_VehicleControl to compute steering and braking commands every 20ms.",
+    "Step 9: REQ-ARCH-0203 specifies that SWC_VehicleControl provides vehicle control commands to SWC_ActuatorManager via Sender-Receiver interface.",
+    "Step 10: REQ-ARCH-0300 mentions SWC_SafetyMonitor — this component continuously monitors system health and can trigger emergency stop.",
+    "Step 11: REQ-ARCH-0301 specifies that SWC_SafetyMonitor receives sensor fusion status and vehicle control status via R-Ports.",
+    "Step 12: REQ-ARCH-0302 mandates a Client-Server interface for diagnostic DTC read requests from SWC_Diagnostics.",
+    "Step 13: REQ-ARCH-0303 specifies that SWC_SafetyMonitor triggers safe state within 20ms if any ASIL-D violation is detected.",
+    "Step 14: REQ-ARCH-0400 mentions SWC_ActuatorManager — this component translates control commands to actuator-specific signals.",
+    "Step 15: REQ-ARCH-0401 specifies that SWC_ActuatorManager receives control commands from SWC_VehicleControl and provides actuator signals via Sender-Receiver interfaces."
+  ],
+  "architecture_summary": "The ADAS system consists of several ApplicationSWCs (SensorFusion, VehicleControl, SafetyMonitor, ActuatorManager) interacting through various R-Ports and S-Ports. Each component has specific responsibilities such as sensor data fusion, vehicle control command computation, safety monitoring, and actuator signal translation.",
+  "elaborated": [
+    {
+      "req_id": "REQ-ARCH-0100",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_FuseData"
+        ],
+        "ports": [
+          "PP_FusedEnvironmentModel",
+          "RP_SensorData"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel"
+        ]
+      },
+      "logic_flow": "The runnable RE_FuseData processes sensor data from multiple sources and fuses them into a unified environment model.",
+      "timing": {
+        "trigger": "periodic",
+        "period_ms": 10
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0101",
+        "REQ-ARCH-0102"
+      ],
+      "diagram_hints": {
+        "activity": "Sensor data reception, fusion logic, and environment model output.",
+        "sequence": "SWC_SensorFusion <-> SWC_VehicleControl, SWC_SafetyMonitor",
+        "component": "Port connections for fused data"
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0101",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_FuseData"
+        ],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The runnable RE_FuseData processes sensor data from multiple sources and fuses them into a unified environment model.",
+      "timing": {
+        "trigger": "periodic",
+        "period_ms": 10
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "Sensor data reception, fusion logic, and environment model output.",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0102",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [],
+        "ports": [
+          "PP_FusedEnvironmentModel"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel"
+        ]
+      },
+      "logic_flow": "The SWC_SensorFusion provides the fused environment model data to consuming SWCs via a Sender-Receiver interface.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": "Port connections for fused data"
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0103",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_SensorFusion detects sensor communication failures and transitions to a degraded operation mode within 50ms.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0104",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_SensorFusion implements lifecycle management with Init, Running, Degraded, and Shutdown states.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0200",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_ComputeCommands"
+        ],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The runnable RE_ComputeCommands computes vehicle control commands based on fused sensor data.",
+      "timing": {
+        "trigger": "periodic",
+        "period_ms": 20
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "Fused environment model reception, command computation, and output.",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0201",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [],
+        "ports": [
+          "RP_FusedEnvironmentModel"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_VehicleControl receives fused environment model data via R-Port with a Sender-Receiver interface.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0202",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [],
+        "ports": [
+          "PP_ControlCommands"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_VehicleControl provides vehicle control commands to SWC_ActuatorManager via Sender-Receiver interface.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0203",
+      "entities": {
+        "swc": "SWC_ActuatorManager",
+        "runnables": [],
+        "ports": [
+          "RP_ControlCommands"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_ActuatorManager receives control commands from SWC_VehicleControl and provides actuator signals via Sender-Receiver interfaces.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0300",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_MonitorSystem"
+        ],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The runnable RE_MonitorSystem continuously monitors system health and can trigger emergency stop.",
+      "timing": {
+        "trigger": "periodic",
+        "period_ms": 10
+      },
+      "safety": "ASIL-D",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "System health monitoring and emergency stop logic.",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0301",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [],
+        "ports": [
+          "RP_SensorFusionStatus",
+          "RP_VehicleControlStatus"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_SafetyMonitor receives sensor fusion status and vehicle control status via R-Ports.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-D",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0302",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [],
+        "ports": [
+          "PP_DTCRead"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_SafetyMonitor provides a Client-Server interface for diagnostic DTC read requests from SWC_Diagnostics.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-D",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0303",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_SafetyMonitor detects critical failures and triggers emergency stop within 50ms.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-D",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0400",
+      "entities": {
+        "swc": "SWC_ActuatorManager",
+        "runnables": [
+          "RE_TranslateCommands"
+        ],
+        "ports": [],
+        "interfaces": []
+      },
+      "logic_flow": "The runnable RE_TranslateCommands translates vehicle control commands into actuator signals.",
+      "timing": {
+        "trigger": "periodic",
+        "period_ms": 20
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "Control command reception, signal translation, and output.",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0401",
+      "entities": {
+        "swc": "SWC_ActuatorManager",
+        "runnables": [],
+        "ports": [
+          "RP_ControlCommands"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_ActuatorManager receives control commands from SWC_VehicleControl and provides actuator signals via Sender-Receiver interfaces.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    },
+    {
+      "req_id": "REQ-ARCH-0402",
+      "entities": {
+        "swc": "SWC_ActuatorManager",
+        "runnables": [],
+        "ports": [
+          "PP_ActuatorSignals"
+        ],
+        "interfaces": []
+      },
+      "logic_flow": "The SWC_ActuatorManager provides actuator signals to the physical actuators.",
+      "timing": {
+        "trigger": "null"
+      },
+      "safety": "ASIL-B",
+      "related_reqs": [
+        "REQ-ARCH-0100"
+      ],
+      "diagram_hints": {
+        "activity": "",
+        "sequence": "",
+        "component": ""
+      }
+    }
+  ],
+  "req_hash": "e4fcc15f1ce7c446",
+  "parse_ok": true,
+  "created_at": "2026-03-01T13:01:18.497146+00:00",
+  "model": "qwen2.5-coder:7b",
+  "source": "cache_miss_regenerated",
+  "quality_score": 1.0,
+  "elaborated_count": 16,
+  "status": "ok",
+  "prompt_version": "1.1"
+}

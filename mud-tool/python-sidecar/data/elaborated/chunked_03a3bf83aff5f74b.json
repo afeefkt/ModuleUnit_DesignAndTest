@@ -1,0 +1,1361 @@
+{
+  "thinking": [
+    "Stage 1: Identified 4 SWCs from 35 requirements: SWC_System, SWC_Spdctrl, SWC_Currctrl, SWC_Mtrmon",
+    "Stage 2 SWC_System: 5 port(s) → SpdCtrl_IqRef, CurrCtrl_IqRef, MtrMon_IqMaxOut",
+    "Stage 3 SWC_System: 6 runnable(s) → RE_InitControllers, RE_UpdateProtectionStatus",
+    "Stage 2 SWC_Spdctrl: 1 port(s) → PP_SpdctrlOut",
+    "Stage 3 SWC_Spdctrl: 4 runnable(s) → RE_InitSpdCtrl, RE_UpdateSpeedControl",
+    "Stage 2 SWC_Currctrl: 1 port(s) → PP_CurrctrlOut",
+    "Stage 3 SWC_Currctrl: 5 runnable(s) → RE_InitCurrCtrl, RE_UpdatePIControllers",
+    "Stage 2 SWC_Mtrmon: 1 port(s) → PP_MtrmonOut",
+    "Stage 3 SWC_Mtrmon: 6 runnable(s) → RE_InitMtrMon, RE_MonitorCurrents"
+  ],
+  "architecture_summary": "System decomposed into 4 SWC(s): SWC_System, SWC_Spdctrl, SWC_Currctrl, SWC_Mtrmon.",
+  "elaborated": [
+    {
+      "req_id": "ARCH-REQ-001",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-002",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-003",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-004",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-005",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-006",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-007",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-008",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-009",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-010",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-011",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-012",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-060",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-061",
+      "entities": {
+        "swc": "SWC_System",
+        "runnables": [
+          "RE_InitControllers",
+          "RE_UpdateProtectionStatus",
+          "RE_UpdateThermalMonitoring",
+          "RE_LimitCurrentRequest",
+          "RE_UpdateSpeedControl",
+          "RE_UpdateCurrentControl"
+        ],
+        "ports": [
+          "SpdCtrl_IqRef",
+          "CurrCtrl_IqRef",
+          "MtrMon_IqMaxOut",
+          "SpdCtrl_IqMaxIn",
+          "ProtectionStatus"
+        ],
+        "interfaces": [
+          "IF_SR_MotorMonitoring",
+          "IF_SR_SpeedControl",
+          "IF_SR_ProtectionStatus",
+          "IF_SR_CurrentControl"
+        ]
+      },
+      "logic_flow": "Initialize speed control controller state → Initialize current control controller state → Initialize motor monitoring controller state",
+      "diagram_hints": {
+        "swc": "SWC_System",
+        "primary_runnable": "RE_InitControllers"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-020",
+      "entities": {
+        "swc": "SWC_Spdctrl",
+        "runnables": [
+          "RE_InitSpdCtrl",
+          "RE_UpdateSpeedControl",
+          "RE_SetIqRefToZero",
+          "RE_ExposeCalibrationParams"
+        ],
+        "ports": [
+          "PP_SpdctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_SpdctrlIf"
+        ]
+      },
+      "logic_flow": "Initialize speed PI integrator to zero → Set IqRef to zero → Read IqMaxIn from MtrMon → Store IqMaxIn as controller output limit",
+      "diagram_hints": {
+        "swc": "SWC_Spdctrl",
+        "primary_runnable": "RE_InitSpdCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-021",
+      "entities": {
+        "swc": "SWC_Spdctrl",
+        "runnables": [
+          "RE_InitSpdCtrl",
+          "RE_UpdateSpeedControl",
+          "RE_SetIqRefToZero",
+          "RE_ExposeCalibrationParams"
+        ],
+        "ports": [
+          "PP_SpdctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_SpdctrlIf"
+        ]
+      },
+      "logic_flow": "Initialize speed PI integrator to zero → Set IqRef to zero → Read IqMaxIn from MtrMon → Store IqMaxIn as controller output limit",
+      "diagram_hints": {
+        "swc": "SWC_Spdctrl",
+        "primary_runnable": "RE_InitSpdCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-022",
+      "entities": {
+        "swc": "SWC_Spdctrl",
+        "runnables": [
+          "RE_InitSpdCtrl",
+          "RE_UpdateSpeedControl",
+          "RE_SetIqRefToZero",
+          "RE_ExposeCalibrationParams"
+        ],
+        "ports": [
+          "PP_SpdctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_SpdctrlIf"
+        ]
+      },
+      "logic_flow": "Initialize speed PI integrator to zero → Set IqRef to zero → Read IqMaxIn from MtrMon → Store IqMaxIn as controller output limit",
+      "diagram_hints": {
+        "swc": "SWC_Spdctrl",
+        "primary_runnable": "RE_InitSpdCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-023",
+      "entities": {
+        "swc": "SWC_Spdctrl",
+        "runnables": [
+          "RE_InitSpdCtrl",
+          "RE_UpdateSpeedControl",
+          "RE_SetIqRefToZero",
+          "RE_ExposeCalibrationParams"
+        ],
+        "ports": [
+          "PP_SpdctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_SpdctrlIf"
+        ]
+      },
+      "logic_flow": "Initialize speed PI integrator to zero → Set IqRef to zero → Read IqMaxIn from MtrMon → Store IqMaxIn as controller output limit",
+      "diagram_hints": {
+        "swc": "SWC_Spdctrl",
+        "primary_runnable": "RE_InitSpdCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-024",
+      "entities": {
+        "swc": "SWC_Spdctrl",
+        "runnables": [
+          "RE_InitSpdCtrl",
+          "RE_UpdateSpeedControl",
+          "RE_SetIqRefToZero",
+          "RE_ExposeCalibrationParams"
+        ],
+        "ports": [
+          "PP_SpdctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_SpdctrlIf"
+        ]
+      },
+      "logic_flow": "Initialize speed PI integrator to zero → Set IqRef to zero → Read IqMaxIn from MtrMon → Store IqMaxIn as controller output limit",
+      "diagram_hints": {
+        "swc": "SWC_Spdctrl",
+        "primary_runnable": "RE_InitSpdCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-025",
+      "entities": {
+        "swc": "SWC_Spdctrl",
+        "runnables": [
+          "RE_InitSpdCtrl",
+          "RE_UpdateSpeedControl",
+          "RE_SetIqRefToZero",
+          "RE_ExposeCalibrationParams"
+        ],
+        "ports": [
+          "PP_SpdctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_SpdctrlIf"
+        ]
+      },
+      "logic_flow": "Initialize speed PI integrator to zero → Set IqRef to zero → Read IqMaxIn from MtrMon → Store IqMaxIn as controller output limit",
+      "diagram_hints": {
+        "swc": "SWC_Spdctrl",
+        "primary_runnable": "RE_InitSpdCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-030",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-031",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-032",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-033",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-034",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-035",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-036",
+      "entities": {
+        "swc": "SWC_Currctrl",
+        "runnables": [
+          "RE_InitCurrCtrl",
+          "RE_UpdatePIControllers",
+          "RE_ApplyDecouplingFeedforward",
+          "RE_LimitVoltageMagnitude",
+          "RE_ScaleAndPublishVoltageCommands"
+        ],
+        "ports": [
+          "PP_CurrctrlOut"
+        ],
+        "interfaces": [
+          "IF_SR_CurrctrlIf"
+        ]
+      },
+      "logic_flow": "Set d-axis and q-axis PI integrator states to zero → Publish safe zero voltage commands",
+      "diagram_hints": {
+        "swc": "SWC_Currctrl",
+        "primary_runnable": "RE_InitCurrCtrl"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-040",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-041",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-042",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-043",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-044",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-045",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-046",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "ARCH-REQ-047",
+      "entities": {
+        "swc": "SWC_Mtrmon",
+        "runnables": [
+          "RE_InitMtrMon",
+          "RE_MonitorCurrents",
+          "RE_MonitorDCBus",
+          "RE_MonitorSpeed",
+          "RE_MonitorTemperature",
+          "RE_DerateIqMaxOut"
+        ],
+        "ports": [
+          "PP_MtrmonOut"
+        ],
+        "interfaces": [
+          "IF_SR_MtrmonIf"
+        ]
+      },
+      "logic_flow": "Initialize protection states to non-fault default → Publish nominal IqMaxOut if input values are valid",
+      "diagram_hints": {
+        "swc": "SWC_Mtrmon",
+        "primary_runnable": "RE_InitMtrMon"
+      },
+      "safety_level": "ASIL-B"
+    }
+  ],
+  "swc_list": [
+    {
+      "name": "SWC_System",
+      "req_ids": [
+        "ARCH-REQ-001",
+        "ARCH-REQ-002",
+        "ARCH-REQ-003",
+        "ARCH-REQ-004",
+        "ARCH-REQ-005",
+        "ARCH-REQ-006",
+        "ARCH-REQ-007",
+        "ARCH-REQ-008",
+        "ARCH-REQ-009",
+        "ARCH-REQ-010",
+        "ARCH-REQ-011",
+        "ARCH-REQ-012",
+        "ARCH-REQ-060",
+        "ARCH-REQ-061"
+      ],
+      "purpose": "Handles SWC_System functionality"
+    },
+    {
+      "name": "SWC_Spdctrl",
+      "req_ids": [
+        "ARCH-REQ-020",
+        "ARCH-REQ-021",
+        "ARCH-REQ-022",
+        "ARCH-REQ-023",
+        "ARCH-REQ-024",
+        "ARCH-REQ-025"
+      ],
+      "purpose": "Handles SWC_Spdctrl functionality"
+    },
+    {
+      "name": "SWC_Currctrl",
+      "req_ids": [
+        "ARCH-REQ-030",
+        "ARCH-REQ-031",
+        "ARCH-REQ-032",
+        "ARCH-REQ-033",
+        "ARCH-REQ-034",
+        "ARCH-REQ-035",
+        "ARCH-REQ-036"
+      ],
+      "purpose": "Handles SWC_Currctrl functionality"
+    },
+    {
+      "name": "SWC_Mtrmon",
+      "req_ids": [
+        "ARCH-REQ-040",
+        "ARCH-REQ-041",
+        "ARCH-REQ-042",
+        "ARCH-REQ-043",
+        "ARCH-REQ-044",
+        "ARCH-REQ-045",
+        "ARCH-REQ-046",
+        "ARCH-REQ-047"
+      ],
+      "purpose": "Handles SWC_Mtrmon functionality"
+    }
+  ],
+  "swc_ports": {
+    "SWC_System": [
+      {
+        "port": "SpdCtrl_IqRef",
+        "direction": "required",
+        "interface": "IF_SR_SpeedControl",
+        "data_type": "float32",
+        "description": "Speed reference for current control"
+      },
+      {
+        "port": "CurrCtrl_IqRef",
+        "direction": "provided",
+        "interface": "IF_SR_CurrentControl",
+        "data_type": "float32",
+        "description": "Current reference for motor control"
+      },
+      {
+        "port": "MtrMon_IqMaxOut",
+        "direction": "required",
+        "interface": "IF_SR_MotorMonitoring",
+        "data_type": "float32",
+        "description": "Maximum commanded q-axis current from motor monitoring"
+      },
+      {
+        "port": "SpdCtrl_IqMaxIn",
+        "direction": "provided",
+        "interface": "IF_SR_SpeedControl",
+        "data_type": "float32",
+        "description": "Maximum allowed q-axis current for speed control"
+      },
+      {
+        "port": "ProtectionStatus",
+        "direction": "provided",
+        "interface": "IF_SR_ProtectionStatus",
+        "data_type": "uint8",
+        "description": "Motor protection status to system manager and fault manager"
+      }
+    ],
+    "SWC_Spdctrl": [
+      {
+        "port": "PP_SpdctrlOut",
+        "direction": "provided",
+        "interface": "IF_SR_SpdctrlIf",
+        "data_type": "uint8",
+        "description": "Output data from SWC_Spdctrl"
+      }
+    ],
+    "SWC_Currctrl": [
+      {
+        "port": "PP_CurrctrlOut",
+        "direction": "provided",
+        "interface": "IF_SR_CurrctrlIf",
+        "data_type": "uint8",
+        "description": "Output data from SWC_Currctrl"
+      }
+    ],
+    "SWC_Mtrmon": [
+      {
+        "port": "PP_MtrmonOut",
+        "direction": "provided",
+        "interface": "IF_SR_MtrmonIf",
+        "data_type": "uint8",
+        "description": "Output data from SWC_Mtrmon"
+      }
+    ]
+  },
+  "swc_runnables": {
+    "SWC_System": [
+      {
+        "runnable": "RE_InitControllers",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Initialize speed control controller state",
+          "Initialize current control controller state",
+          "Initialize motor monitoring controller state"
+        ]
+      },
+      {
+        "runnable": "RE_UpdateProtectionStatus",
+        "trigger": "cyclic",
+        "period_ms": 1,
+        "pseudocode": [
+          "Check overcurrent condition",
+          "Check overtemperature condition",
+          "Check DC-link fault",
+          "Check overspeed condition",
+          "Set protection status accordingly"
+        ]
+      },
+      {
+        "runnable": "RE_UpdateThermalMonitoring",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Read thermal sensor data",
+          "Evaluate thermal state",
+          "Log or report thermal condition"
+        ]
+      },
+      {
+        "runnable": "RE_LimitCurrentRequest",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Receive torque-producing current request",
+          "Check protection status",
+          "Limit current if necessary",
+          "Send limited current to next component"
+        ]
+      },
+      {
+        "runnable": "RE_UpdateSpeedControl",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Receive speed reference",
+          "Calculate desired q-axis current",
+          "Limit q-axis current based on motor monitoring",
+          "Send q-axis current to next component"
+        ]
+      },
+      {
+        "runnable": "RE_UpdateCurrentControl",
+        "trigger": "cyclic",
+        "period_ms": 5,
+        "pseudocode": [
+          "Receive q-axis current reference",
+          "Calculate torque-producing current request",
+          "Limit current based on protection status",
+          "Send current request to next component"
+        ]
+      }
+    ],
+    "SWC_Spdctrl": [
+      {
+        "runnable": "RE_InitSpdCtrl",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Initialize speed PI integrator to zero",
+          "Set IqRef to zero",
+          "Read IqMaxIn from MtrMon",
+          "Store IqMaxIn as controller output limit",
+          "Read calibration parameters (gains, deadband, ramp rate, anti-windup limit)",
+          "Initialize ramped speed reference with current feedback speed"
+        ]
+      },
+      {
+        "runnable": "RE_UpdateSpeedControl",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Read actual motor speed from SpeedObserver",
+          "Read speed reference from AppMgr",
+          "Calculate speed error",
+          "Apply PI control algorithm with ramping, deadband, saturation, and anti-windup",
+          "Limit IqRef to the lower of configured controller output limit and IqMaxIn",
+          "Update ramped speed reference"
+        ]
+      },
+      {
+        "runnable": "RE_SetIqRefToZero",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read operation mode from AppMgr",
+          "If operation mode is not Run",
+          "Set IqRef to zero",
+          "Reset the integrator"
+        ]
+      },
+      {
+        "runnable": "RE_ExposeCalibrationParams",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read calibration parameters from AppMgr",
+          "Update speed controller gains, deadband, ramp rate, and anti-windup limit"
+        ]
+      }
+    ],
+    "SWC_Currctrl": [
+      {
+        "runnable": "RE_InitCurrCtrl",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Set d-axis and q-axis PI integrator states to zero",
+          "Publish safe zero voltage commands"
+        ]
+      },
+      {
+        "runnable": "RE_UpdatePIControllers",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Read IqRef from SpdCtrl and IdRef from MTPA or zero-reference source",
+          "Calculate d-axis and q-axis current errors",
+          "Compute d-axis and q-axis voltage commands using PI control"
+        ]
+      },
+      {
+        "runnable": "RE_ApplyDecouplingFeedforward",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Apply decoupling feedforward to voltage commands"
+        ]
+      },
+      {
+        "runnable": "RE_LimitVoltageMagnitude",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Limit the voltage vector magnitude based on DC bus voltage and configured limit"
+        ]
+      },
+      {
+        "runnable": "RE_ScaleAndPublishVoltageCommands",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Scale voltage commands according to defined scaling",
+          "Publish voltage commands to SVM/PWM"
+        ]
+      }
+    ],
+    "SWC_Mtrmon": [
+      {
+        "runnable": "RE_InitMtrMon",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Initialize protection states to non-fault default",
+          "Publish nominal IqMaxOut if input values are valid"
+        ]
+      },
+      {
+        "runnable": "RE_MonitorCurrents",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Calculate d/q current vector magnitude",
+          "Compare with calibrated overcurrent threshold",
+          "Detect overcurrent if exceeded"
+        ]
+      },
+      {
+        "runnable": "RE_MonitorDCBus",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check DC bus voltage against thresholds",
+          "Publish fault status if thresholds violated"
+        ]
+      },
+      {
+        "runnable": "RE_MonitorSpeed",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Compare actual speed with overspeed threshold",
+          "Detect overspeed if exceeded"
+        ]
+      },
+      {
+        "runnable": "RE_MonitorTemperature",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check motor temperature against thresholds",
+          "Apply hysteresis to prevent status chattering",
+          "Detect overtemperature if exceeded"
+        ]
+      },
+      {
+        "runnable": "RE_DerateIqMaxOut",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check motor temperature and protection states",
+          "Set IqMaxOut to zero for active hard faults",
+          "Derate IqMaxOut based on motor temperature"
+        ]
+      }
+    ]
+  },
+  "req_hash": "03a3bf83aff5f74b",
+  "parse_ok": true,
+  "status": "ok",
+  "source": "chunked_generation",
+  "created_at": "2026-04-30T20:22:43.538079+00:00",
+  "elaborated_count": 35,
+  "quality_score": 1.0
+}

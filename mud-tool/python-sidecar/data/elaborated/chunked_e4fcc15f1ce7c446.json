@@ -1,0 +1,687 @@
+{
+  "thinking": [
+    "Stage 1: Identified 4 SWCs from 15 requirements: SWC_SensorFusion, SWC_VehicleControl, SWC_SafetyMonitor, SWC_ActuatorManager",
+    "Stage 2 SWC_SensorFusion: 4 port(s) → PP_FusedSensorData, PR_SensorDataRadar, PR_SensorDataCamera",
+    "Stage 3 SWC_SensorFusion: 4 runnable(s) → RE_R_FuseSensorData, RE_R_CheckSensorComm",
+    "Stage 2 SWC_VehicleControl: 2 port(s) → RPort_SensorFusion, SP_VehicleControlCommands",
+    "Stage 3 SWC_VehicleControl: 1 runnable(s) → RE_ComputeVehicleControlCommands",
+    "Stage 2 SWC_SafetyMonitor: 3 port(s) → R_Port_SensorFusionStatus, R_Port_VehicleControlStatus, P_Port_DTCReadRequest",
+    "Stage 3 SWC_SafetyMonitor: 4 runnable(s) → RE_ReceiveSensorFusionStatus, RE_ReceiveVehicleControlStatus",
+    "Stage 2 SWC_ActuatorManager: 2 port(s) → ActuatorSignals, ControlCommands",
+    "Stage 3 SWC_ActuatorManager: 3 runnable(s) → RE_InitActuatorManager, RE_ProcessControlCommands"
+  ],
+  "architecture_summary": "System decomposed into 4 SWC(s): SWC_SensorFusion, SWC_VehicleControl, SWC_SafetyMonitor, SWC_ActuatorManager.",
+  "elaborated": [
+    {
+      "req_id": "REQ-ARCH-0100",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_R_FuseSensorData",
+          "RE_R_CheckSensorComm",
+          "RE_R_TransmitFusedData",
+          "RE_R_TransitionToShutdown"
+        ],
+        "ports": [
+          "PP_FusedSensorData",
+          "PR_SensorDataRadar",
+          "PR_SensorDataCamera",
+          "PR_SensorDataLidar"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize fused environment model → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_R_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0101",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_R_FuseSensorData",
+          "RE_R_CheckSensorComm",
+          "RE_R_TransmitFusedData",
+          "RE_R_TransitionToShutdown"
+        ],
+        "ports": [
+          "PP_FusedSensorData",
+          "PR_SensorDataRadar",
+          "PR_SensorDataCamera",
+          "PR_SensorDataLidar"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize fused environment model → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_R_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0102",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_R_FuseSensorData",
+          "RE_R_CheckSensorComm",
+          "RE_R_TransmitFusedData",
+          "RE_R_TransitionToShutdown"
+        ],
+        "ports": [
+          "PP_FusedSensorData",
+          "PR_SensorDataRadar",
+          "PR_SensorDataCamera",
+          "PR_SensorDataLidar"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize fused environment model → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_R_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0103",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_R_FuseSensorData",
+          "RE_R_CheckSensorComm",
+          "RE_R_TransmitFusedData",
+          "RE_R_TransitionToShutdown"
+        ],
+        "ports": [
+          "PP_FusedSensorData",
+          "PR_SensorDataRadar",
+          "PR_SensorDataCamera",
+          "PR_SensorDataLidar"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize fused environment model → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_R_FuseSensorData"
+      },
+      "safety_level": "ASIL-B"
+    },
+    {
+      "req_id": "REQ-ARCH-0104",
+      "entities": {
+        "swc": "SWC_SensorFusion",
+        "runnables": [
+          "RE_R_FuseSensorData",
+          "RE_R_CheckSensorComm",
+          "RE_R_TransmitFusedData",
+          "RE_R_TransitionToShutdown"
+        ],
+        "ports": [
+          "PP_FusedSensorData",
+          "PR_SensorDataRadar",
+          "PR_SensorDataCamera",
+          "PR_SensorDataLidar"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_SensorData"
+        ]
+      },
+      "logic_flow": "Initialize fused environment model → Receive radar data → Receive camera data → Receive lidar data",
+      "diagram_hints": {
+        "swc": "SWC_SensorFusion",
+        "primary_runnable": "RE_R_FuseSensorData"
+      },
+      "safety_level": "not_safety_relevant"
+    },
+    {
+      "req_id": "REQ-ARCH-0200",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_ComputeVehicleControlCommands"
+        ],
+        "ports": [
+          "RPort_SensorFusion",
+          "SP_VehicleControlCommands"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_VehicleControlCommands"
+        ]
+      },
+      "logic_flow": "Receive fused environment model data from RPort_SensorFusion → Initialize steering and braking commands to default values → Process sensor data to determine vehicle state → Calculate optimal steering angle based on vehicle state",
+      "diagram_hints": {
+        "swc": "SWC_VehicleControl",
+        "primary_runnable": "RE_ComputeVehicleControlCommands"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0201",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_ComputeVehicleControlCommands"
+        ],
+        "ports": [
+          "RPort_SensorFusion",
+          "SP_VehicleControlCommands"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_VehicleControlCommands"
+        ]
+      },
+      "logic_flow": "Receive fused environment model data from RPort_SensorFusion → Initialize steering and braking commands to default values → Process sensor data to determine vehicle state → Calculate optimal steering angle based on vehicle state",
+      "diagram_hints": {
+        "swc": "SWC_VehicleControl",
+        "primary_runnable": "RE_ComputeVehicleControlCommands"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0202",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_ComputeVehicleControlCommands"
+        ],
+        "ports": [
+          "RPort_SensorFusion",
+          "SP_VehicleControlCommands"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_VehicleControlCommands"
+        ]
+      },
+      "logic_flow": "Receive fused environment model data from RPort_SensorFusion → Initialize steering and braking commands to default values → Process sensor data to determine vehicle state → Calculate optimal steering angle based on vehicle state",
+      "diagram_hints": {
+        "swc": "SWC_VehicleControl",
+        "primary_runnable": "RE_ComputeVehicleControlCommands"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0203",
+      "entities": {
+        "swc": "SWC_VehicleControl",
+        "runnables": [
+          "RE_ComputeVehicleControlCommands"
+        ],
+        "ports": [
+          "RPort_SensorFusion",
+          "SP_VehicleControlCommands"
+        ],
+        "interfaces": [
+          "IF_SR_FusedEnvironmentModel",
+          "IF_SR_VehicleControlCommands"
+        ]
+      },
+      "logic_flow": "Receive fused environment model data from RPort_SensorFusion → Initialize steering and braking commands to default values → Process sensor data to determine vehicle state → Calculate optimal steering angle based on vehicle state",
+      "diagram_hints": {
+        "swc": "SWC_VehicleControl",
+        "primary_runnable": "RE_ComputeVehicleControlCommands"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0300",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_ReceiveSensorFusionStatus",
+          "RE_ReceiveVehicleControlStatus",
+          "RE_CheckASILDViolation",
+          "RE_ProcessDTCReadRequest"
+        ],
+        "ports": [
+          "R_Port_SensorFusionStatus",
+          "R_Port_VehicleControlStatus",
+          "P_Port_DTCReadRequest"
+        ],
+        "interfaces": [
+          "IF_SR_VehicleControlStatus",
+          "IF_SR_SensorFusionStatus",
+          "IF_SR_DTCReadRequest"
+        ]
+      },
+      "logic_flow": "Read sensor fusion status from R_Port_SensorFusionStatus → Check for any critical errors in sensor data → If error detected, set flag",
+      "diagram_hints": {
+        "swc": "SWC_SafetyMonitor",
+        "primary_runnable": "RE_ReceiveSensorFusionStatus"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-ARCH-0301",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_ReceiveSensorFusionStatus",
+          "RE_ReceiveVehicleControlStatus",
+          "RE_CheckASILDViolation",
+          "RE_ProcessDTCReadRequest"
+        ],
+        "ports": [
+          "R_Port_SensorFusionStatus",
+          "R_Port_VehicleControlStatus",
+          "P_Port_DTCReadRequest"
+        ],
+        "interfaces": [
+          "IF_SR_VehicleControlStatus",
+          "IF_SR_SensorFusionStatus",
+          "IF_SR_DTCReadRequest"
+        ]
+      },
+      "logic_flow": "Read sensor fusion status from R_Port_SensorFusionStatus → Check for any critical errors in sensor data → If error detected, set flag",
+      "diagram_hints": {
+        "swc": "SWC_SafetyMonitor",
+        "primary_runnable": "RE_ReceiveSensorFusionStatus"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-ARCH-0302",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_ReceiveSensorFusionStatus",
+          "RE_ReceiveVehicleControlStatus",
+          "RE_CheckASILDViolation",
+          "RE_ProcessDTCReadRequest"
+        ],
+        "ports": [
+          "R_Port_SensorFusionStatus",
+          "R_Port_VehicleControlStatus",
+          "P_Port_DTCReadRequest"
+        ],
+        "interfaces": [
+          "IF_SR_VehicleControlStatus",
+          "IF_SR_SensorFusionStatus",
+          "IF_SR_DTCReadRequest"
+        ]
+      },
+      "logic_flow": "Read sensor fusion status from R_Port_SensorFusionStatus → Check for any critical errors in sensor data → If error detected, set flag",
+      "diagram_hints": {
+        "swc": "SWC_SafetyMonitor",
+        "primary_runnable": "RE_ReceiveSensorFusionStatus"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-ARCH-0303",
+      "entities": {
+        "swc": "SWC_SafetyMonitor",
+        "runnables": [
+          "RE_ReceiveSensorFusionStatus",
+          "RE_ReceiveVehicleControlStatus",
+          "RE_CheckASILDViolation",
+          "RE_ProcessDTCReadRequest"
+        ],
+        "ports": [
+          "R_Port_SensorFusionStatus",
+          "R_Port_VehicleControlStatus",
+          "P_Port_DTCReadRequest"
+        ],
+        "interfaces": [
+          "IF_SR_VehicleControlStatus",
+          "IF_SR_SensorFusionStatus",
+          "IF_SR_DTCReadRequest"
+        ]
+      },
+      "logic_flow": "Read sensor fusion status from R_Port_SensorFusionStatus → Check for any critical errors in sensor data → If error detected, set flag",
+      "diagram_hints": {
+        "swc": "SWC_SafetyMonitor",
+        "primary_runnable": "RE_ReceiveSensorFusionStatus"
+      },
+      "safety_level": "ASIL-D"
+    },
+    {
+      "req_id": "REQ-ARCH-0400",
+      "entities": {
+        "swc": "SWC_ActuatorManager",
+        "runnables": [
+          "RE_InitActuatorManager",
+          "RE_ProcessControlCommands",
+          "RE_SendActuatorSignals"
+        ],
+        "ports": [
+          "ActuatorSignals",
+          "ControlCommands"
+        ],
+        "interfaces": [
+          "IF_SR_ActuatorSignals",
+          "IF_SR_ControlCommands"
+        ]
+      },
+      "logic_flow": "Initialize actuator signal variables to default values",
+      "diagram_hints": {
+        "swc": "SWC_ActuatorManager",
+        "primary_runnable": "RE_InitActuatorManager"
+      },
+      "safety_level": "ASIL-C"
+    },
+    {
+      "req_id": "REQ-ARCH-0401",
+      "entities": {
+        "swc": "SWC_ActuatorManager",
+        "runnables": [
+          "RE_InitActuatorManager",
+          "RE_ProcessControlCommands",
+          "RE_SendActuatorSignals"
+        ],
+        "ports": [
+          "ActuatorSignals",
+          "ControlCommands"
+        ],
+        "interfaces": [
+          "IF_SR_ActuatorSignals",
+          "IF_SR_ControlCommands"
+        ]
+      },
+      "logic_flow": "Initialize actuator signal variables to default values",
+      "diagram_hints": {
+        "swc": "SWC_ActuatorManager",
+        "primary_runnable": "RE_InitActuatorManager"
+      },
+      "safety_level": "ASIL-C"
+    }
+  ],
+  "swc_list": [
+    {
+      "name": "SWC_SensorFusion",
+      "req_ids": [
+        "REQ-ARCH-0100",
+        "REQ-ARCH-0101",
+        "REQ-ARCH-0102",
+        "REQ-ARCH-0103",
+        "REQ-ARCH-0104"
+      ],
+      "purpose": "Handles SWC_SensorFusion functionality"
+    },
+    {
+      "name": "SWC_VehicleControl",
+      "req_ids": [
+        "REQ-ARCH-0200",
+        "REQ-ARCH-0201",
+        "REQ-ARCH-0202",
+        "REQ-ARCH-0203"
+      ],
+      "purpose": "Handles SWC_VehicleControl functionality"
+    },
+    {
+      "name": "SWC_SafetyMonitor",
+      "req_ids": [
+        "REQ-ARCH-0300",
+        "REQ-ARCH-0301",
+        "REQ-ARCH-0302",
+        "REQ-ARCH-0303"
+      ],
+      "purpose": "Handles SWC_SafetyMonitor functionality"
+    },
+    {
+      "name": "SWC_ActuatorManager",
+      "req_ids": [
+        "REQ-ARCH-0400",
+        "REQ-ARCH-0401"
+      ],
+      "purpose": "Handles SWC_ActuatorManager functionality"
+    }
+  ],
+  "swc_ports": {
+    "SWC_SensorFusion": [
+      {
+        "port": "PP_FusedSensorData",
+        "direction": "provided",
+        "interface": "IF_SR_FusedEnvironmentModel",
+        "data_type": "FusedEnvironmentModel",
+        "description": "Provides fused sensor data to consuming SWCs"
+      },
+      {
+        "port": "PR_SensorDataRadar",
+        "direction": "required",
+        "interface": "IF_SR_SensorData",
+        "data_type": "SensorData",
+        "description": "Receives radar sensor data"
+      },
+      {
+        "port": "PR_SensorDataCamera",
+        "direction": "required",
+        "interface": "IF_SR_SensorData",
+        "data_type": "SensorData",
+        "description": "Receives camera sensor data"
+      },
+      {
+        "port": "PR_SensorDataLidar",
+        "direction": "required",
+        "interface": "IF_SR_SensorData",
+        "data_type": "SensorData",
+        "description": "Receives lidar sensor data"
+      }
+    ],
+    "SWC_VehicleControl": [
+      {
+        "port": "RPort_SensorFusion",
+        "direction": "required",
+        "interface": "IF_SR_FusedEnvironmentModel",
+        "data_type": "uint8",
+        "description": "Receives fused environment model data from SWC_SensorFusion"
+      },
+      {
+        "port": "SP_VehicleControlCommands",
+        "direction": "provided",
+        "interface": "IF_SR_VehicleControlCommands",
+        "data_type": "uint8",
+        "description": "Provides vehicle control commands to SWC_ActuatorManager"
+      }
+    ],
+    "SWC_SafetyMonitor": [
+      {
+        "port": "R_Port_SensorFusionStatus",
+        "direction": "required",
+        "interface": "IF_SR_SensorFusionStatus",
+        "data_type": "uint8",
+        "description": "Sensor fusion status received from other SWCs"
+      },
+      {
+        "port": "R_Port_VehicleControlStatus",
+        "direction": "required",
+        "interface": "IF_SR_VehicleControlStatus",
+        "data_type": "uint8",
+        "description": "Vehicle control status received from other SWCs"
+      },
+      {
+        "port": "P_Port_DTCReadRequest",
+        "direction": "provided",
+        "interface": "IF_SR_DTCReadRequest",
+        "data_type": "uint8",
+        "description": "Client-Server interface for diagnostic DTC read requests"
+      }
+    ],
+    "SWC_ActuatorManager": [
+      {
+        "port": "ActuatorSignals",
+        "direction": "provided",
+        "interface": "IF_SR_ActuatorSignals",
+        "data_type": "uint8",
+        "description": "Provides actuator-specific signals"
+      },
+      {
+        "port": "ControlCommands",
+        "direction": "required",
+        "interface": "IF_SR_ControlCommands",
+        "data_type": "uint8",
+        "description": "Receives control commands from SWC_VehicleControl"
+      }
+    ]
+  },
+  "swc_runnables": {
+    "SWC_SensorFusion": [
+      {
+        "runnable": "RE_R_FuseSensorData",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Initialize fused environment model",
+          "Receive radar data",
+          "Receive camera data",
+          "Receive lidar data",
+          "Fusion algorithm execution",
+          "Update fused environment model"
+        ]
+      },
+      {
+        "runnable": "RE_R_CheckSensorComm",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Check radar communication status",
+          "Check camera communication status",
+          "Check lidar communication status",
+          "If any failure detected",
+          "Transition to degraded mode",
+          "Log error"
+        ]
+      },
+      {
+        "runnable": "RE_R_TransmitFusedData",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Prepare fused environment model data",
+          "Transmit data via PP_FusedSensorData",
+          "Check transmission status",
+          "If failed, retry or log error",
+          "Update last transmission time",
+          "Monitor for communication failures"
+        ]
+      },
+      {
+        "runnable": "RE_R_TransitionToShutdown",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Receive shutdown command",
+          "Set system to shutdown mode",
+          "Save state if necessary",
+          "Log shutdown event",
+          "Prepare for power off",
+          "Exit all runnables"
+        ]
+      }
+    ],
+    "SWC_VehicleControl": [
+      {
+        "runnable": "RE_ComputeVehicleControlCommands",
+        "trigger": "cyclic",
+        "period_ms": 20,
+        "pseudocode": [
+          "Receive fused environment model data from RPort_SensorFusion",
+          "Initialize steering and braking commands to default values",
+          "Process sensor data to determine vehicle state",
+          "Calculate optimal steering angle based on vehicle state",
+          "Calculate optimal braking force based on vehicle state",
+          "Send computed control commands via SP_VehicleControlCommands"
+        ]
+      }
+    ],
+    "SWC_SafetyMonitor": [
+      {
+        "runnable": "RE_ReceiveSensorFusionStatus",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read sensor fusion status from R_Port_SensorFusionStatus",
+          "Check for any critical errors in sensor data",
+          "If error detected, set flag"
+        ]
+      },
+      {
+        "runnable": "RE_ReceiveVehicleControlStatus",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Read vehicle control status from R_Port_VehicleControlStatus",
+          "Check for any critical errors in control data",
+          "If error detected, set flag"
+        ]
+      },
+      {
+        "runnable": "RE_CheckASILDViolation",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check if ASIL-D violation flag is set",
+          "If flag set, trigger safe state within 20ms"
+        ]
+      },
+      {
+        "runnable": "RE_ProcessDTCReadRequest",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Receive DTC read request from P_Port_DTCReadRequest",
+          "Check if any active DTCs exist",
+          "If DTCs exist, send them to requesting SWC"
+        ]
+      }
+    ],
+    "SWC_ActuatorManager": [
+      {
+        "runnable": "RE_InitActuatorManager",
+        "trigger": "init",
+        "period_ms": 0,
+        "pseudocode": [
+          "Initialize actuator signal variables to default values"
+        ]
+      },
+      {
+        "runnable": "RE_ProcessControlCommands",
+        "trigger": "on_data_reception",
+        "period_ms": 0,
+        "pseudocode": [
+          "Receive control commands from SWC_VehicleControl",
+          "Translate control commands to actuator-specific signals",
+          "Store translated signals in local variables"
+        ]
+      },
+      {
+        "runnable": "RE_SendActuatorSignals",
+        "trigger": "cyclic",
+        "period_ms": 10,
+        "pseudocode": [
+          "Check if there are any new actuator signals to send",
+          "If yes, send the actuator signals via ActuatorSignals port",
+          "Update last sent time"
+        ]
+      }
+    ]
+  },
+  "req_hash": "e4fcc15f1ce7c446",
+  "parse_ok": true,
+  "status": "ok",
+  "source": "chunked_generation",
+  "created_at": "2026-04-20T19:53:43.004133+00:00",
+  "elaborated_count": 15,
+  "quality_score": 1.0
+}

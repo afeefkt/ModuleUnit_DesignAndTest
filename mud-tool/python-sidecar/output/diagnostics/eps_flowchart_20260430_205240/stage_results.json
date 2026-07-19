@@ -1,0 +1,93 @@
+[
+  {
+    "name": "health",
+    "ok": true,
+    "duration_ms": 100,
+    "status_code": 200,
+    "detail": "ok",
+    "warnings": [],
+    "errors": [],
+    "artifact": "health.json"
+  },
+  {
+    "name": "import_requirements",
+    "ok": true,
+    "duration_ms": 14,
+    "status_code": 200,
+    "detail": "requirements=55",
+    "warnings": [],
+    "errors": [],
+    "artifact": "import_response.json"
+  },
+  {
+    "name": "plan_modules",
+    "ok": true,
+    "duration_ms": 42238,
+    "status_code": 200,
+    "detail": "modules=1",
+    "warnings": [],
+    "errors": [],
+    "artifact": "module_plan.json"
+  },
+  {
+    "name": "generate_mud_spec",
+    "ok": true,
+    "duration_ms": 138731,
+    "status_code": 200,
+    "detail": "events=13 chars=9254 normalized=5",
+    "warnings": [],
+    "errors": [],
+    "artifact": "section7_normalization.json"
+  },
+  {
+    "name": "review_mud_spec",
+    "ok": true,
+    "duration_ms": 73264,
+    "status_code": 200,
+    "detail": "approved=False issues=0 suggestions=2",
+    "warnings": [],
+    "errors": [],
+    "artifact": "mud_spec_review.json"
+  },
+  {
+    "name": "generate_activity",
+    "ok": true,
+    "duration_ms": 238646,
+    "status_code": 200,
+    "detail": "activity_diagrams=5 placeholder_like=False",
+    "warnings": [
+      "FUNCTION_CALL node 'N_17' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "FUNCTION_CALL node 'N_06' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "FUNCTION_CALL node 'N_03' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "FUNCTION_CALL node 'N_05' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "Section 7 normalization: RE_ControlTorque: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_ControlTorque: left mixed prose/code line unchanged because header + inline code structure was ambiguous",
+      "Section 7 normalization: RE_MonitorSafety: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_Initialize: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_HandleModeChange: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_DiagnosticUpdate: left mixed prose/code line unchanged because structure was ambiguous"
+    ],
+    "errors": [],
+    "artifact": "generate_activity_response.json"
+  },
+  {
+    "name": "export_mermaid_inline",
+    "ok": true,
+    "duration_ms": 4,
+    "status_code": 200,
+    "detail": "diagrams=5",
+    "warnings": [],
+    "errors": [],
+    "artifact": "mermaid_inline.json"
+  },
+  {
+    "name": "validate_generated_activity",
+    "ok": true,
+    "duration_ms": 5,
+    "status_code": 200,
+    "detail": "passed=False issues=8",
+    "warnings": [],
+    "errors": [],
+    "artifact": "validation_report.json"
+  }
+]

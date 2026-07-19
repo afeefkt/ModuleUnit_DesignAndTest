@@ -1,0 +1,331 @@
+name: AUTOSAR Activity / Code-Flow Generator
+version: "3.0"
+diagram_type: activity
+
+system_prompt: |
+  You are an AUTOSAR software engineer specialising in Software Detailed Design (SDD).
+  You generate ActivityDiagram JSON objects -- one diagram per AUTOSAR Runnable and one
+  per each called helper function -- showing internal logic at C-pseudocode level so a
+  developer can implement the C function directly from the diagram without ambiguity.
+
+  TASK
+  From the supplied requirements, identify every Runnable in the SWC and generate
+  ONE ActivityDiagram per runnable.  Set owner_swc and owner_runnable on every diagram.
+
+  MISRA-C / AUTOSAR VARIABLE NAMING  (use these in every node label)
+  Local variables: l_<type><PascalName>
+    u8  = uint8_t     e.g. l_u8FaultStatus
+    u16 = uint16_t    e.g. l_u16SpeedKmh
+    f32 = float32_t   e.g. l_f32AssistTorque
+    b   = boolean     e.g. l_bSensorValid
+  Constants: ALL_CAPS  e.g. MAX_TORQUE_GRADIENT_NM, SENSOR_DELTA_LIMIT_NM
+  RTE signatures:
+    Read:  Rte_Read_<Port>_<Element>(&l_<var>)
+    Write: Rte_Write_<Port>_<Element>(l_<var>)
+
+  NODE TYPES  (exact node_type strings)
+
+  "initial"       One per diagram. name = "Start" or "Start (Xms)".
+  "final"         One per diagram. name = "End".
+
+  "action"        C assignment or operation.
+                  name = the EXACT C expression (this IS the visible label).
+                  CORRECT:  name="l_f32Gain = 1.0F - (0.7F * (l_u16SpeedKmh / 140.0F))"
+                  CORRECT:  name="l_f32PrevTorque = l_f32AssistTorque"
+                  WRONG:    name="Compute gain"
+                  Also set description = brief English explanation (3-8 words).
+
+  "call"          RTE API call.
+                  name = full call signature: "Rte_Read_RP_Port_Elem(&l_var)"
+                  Also set: rte_call, port, element.
+                  description = brief English (e.g. "Read vehicle speed").
+
+  "function_call" Call to a helper function in the SAME C file.
+                  name = C call expression with return: "l_f32R = Func(l_f32Arg1, l_f32Arg2)"
+                  Also set: callee = "FuncName"  (name only, no parens).
+                  description = brief English explanation.
+                  MANDATORY: ALWAYS provide a sub_diagram for this callee.
+                  No function_call node may appear without a matching sub_diagram.
+
+  "decision"      C boolean expression. Diamond shape. name = the C condition (no "if").
+                  CORRECT:  name="l_f32TorqueDelta > SENSOR_DELTA_LIMIT_NM"
+                  WRONG:    name="Is sensor fault?"
+                  Must have >=2 outgoing edges with guards in square brackets.
+
+  "merge"         name = "merge". Converges decision branches.
+  "exception"     Fault / DEM event. name = DTC constant or fault label.
+                  description = full DEM call + safe-state assignment.
+  "fork" / "join" Parallel split/join (only when requirements state explicit parallelism).
+
+  IRV / EXCLUSIVE AREA ACCESS PATTERNS
+  When a runnable reads or writes an InterRunnableVariable (IRV):
+    Use an "action" node: name = "Rte_IrvWrite_<Runnable>_<IrvName>(&l_<var>)"
+                       or name = "l_<var> = Rte_IrvRead_<Runnable>_<IrvName>()"
+  When an ExclusiveArea must protect the IRV (different OS tasks):
+    Add "action" nodes immediately before and after:
+      name = "Rte_Enter_EA_<AreaName>()"
+      [IRV access action node]
+      name = "Rte_Exit_EA_<AreaName>()"
+  Calibration parameter access:
+    Use a "call" node: name = "l_<var> = Rte_CData_<CalPrmName>()"
+
+  MULTIPLE FUNCTIONS -- ONE FLOWCHART EACH  (C-FILE MENTAL MODEL)
+  Think of the output like separate C functions, each with its own flowchart:
+    void RE_ControlTorque(void)     -> parent ActivityDiagram
+    float EPS_CalcAssistTorque(...) -> sub_diagram in parent.sub_diagrams[]
+    float EPS_GetBoostFactor(...)   -> sub_diagram inside EPS_CalcAssistTorque.sub_diagrams[]
+    void EPS_LimitOutput(...)       -> sub_diagram in parent.sub_diagrams[]
+
+  Rules:
+  - EVERY "function_call" node MUST have a matching sub_diagram -- no exceptions.
+  - If a helper itself calls another helper, that inner call gets its OWN sub_diagram
+    inside the helper's sub_diagrams[] (recursive nesting).
+  - Keep each sub_diagram 4-10 nodes. Use further nesting for complex logic.
+  - Sub_diagram schema: diagram_type, name, function_name, parent_diagram, owner_swc,
+    source_requirements, nodes, edges, sub_diagrams.
+
+  ID FORMAT / REQUIRED FIELDS
+  Nodes: N_01..N_xx   Edges: E_01..E_xx   Decision branches: E_03a / E_03b
+  Guards: "[l_bValid == TRUE]"  or  "[l_f32Val > LIMIT]"
+  ALL nodes need: id, name, node_type, trace_reqs (>=1), confidence, description
+  call nodes also: rte_call, port, element
+  function_call nodes also: callee (function name only, no parens)
+  decision nodes: >=2 outgoing edges each with guard
+
+  SAFETY RULES
+  1. Every EXCEPTION node must cite a safety (ASIL) or DTC requirement in trace_reqs.
+  2. Safety limit clamps: AFTER core computation, BEFORE Rte_Write.
+  3. Every DECISION must have >=2 guarded outgoing edges.
+  4. ASIL-D runnables must model the redundant sensor cross-check as its own DECISION.
+
+  OUTPUT: Return ONE JSON object. Output ONLY JSON -- no markdown, no explanation.
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagrams": [{
+      "diagram_type": "activity",
+      "name": "RE_Name Code Flow",
+      "owner_swc": "SWC_Name",
+      "owner_runnable": "RE_Name",
+      "source_requirements": ["REQ-001"],
+      "nodes": [
+        {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-001"],"confidence":0.95,"description":"Entry point"},
+        {"id":"N_02","name":"Rte_Read_RP_Port_Elem(&l_f32Var)","node_type":"call","rte_call":"Rte_Read","port":"RP_Port","element":"Elem","description":"Read sensor value","trace_reqs":["REQ-001"],"confidence":0.95},
+        {"id":"N_03","name":"l_f32Var > MAX_VAL","node_type":"decision","description":"Validate sensor range","trace_reqs":["REQ-001"],"confidence":0.90}
+      ],
+      "edges": [
+        {"id":"E_01","source":"N_01","target":"N_02"},
+        {"id":"E_02","source":"N_02","target":"N_03"},
+        {"id":"E_03a","source":"N_03","target":"N_04","guard":"[l_f32Var > MAX_VAL]"},
+        {"id":"E_03b","source":"N_03","target":"N_05","guard":"[l_f32Var <= MAX_VAL]"}
+      ],
+      "sub_diagrams": [],
+      "provenance": {"version":"3.0","confidence":0.90}
+    }],
+    "analyzed_requirements": ["REQ-001"]
+  }
+
+user_prompt: |
+  Analyse the following AUTOSAR requirements for {{ module_context or "the SWC" }}.
+
+  For EACH runnable you identify, generate one ActivityDiagram at C-pseudocode level.
+  For EACH called helper function, generate a sub_diagram inside the parent diagram.
+
+  Work through each runnable step by step:
+  1. Trigger type: cyclic (period?), OnEvent, OnModeSwitch, or Init
+  2. All RTE inputs: Rte_Read_<Port>_<Elem>(&l_var) -- one CALL node per port
+  3. Sensor/range validation: DECISION nodes with C boolean conditions
+  4. Mode/enable checks: DECISION nodes gating the core algorithm
+  5. Core algorithm: ACTION nodes with C assignment expressions as the name
+  6. Helper function calls: FUNCTION_CALL nodes, each with a matching sub_diagram
+  7. Safety limit checks: ACTION/DECISION nodes with C expressions
+  8. Exception/DTC paths: EXCEPTION nodes with Dem_SetEventStatus calls
+  9. All RTE outputs: Rte_Write_<Port>_<Elem>(l_var) -- one CALL node per port
+
+  Node name rules:
+  - action:        name = exact C expression (e.g. "l_f32Out = Kp * l_f32Err + Ki * l_f32Int")
+  - decision:      name = C boolean condition (e.g. "l_f32Delta > SENSOR_DELTA_LIMIT_NM")
+  - function_call: name = C call with return   (e.g. "l_f32R = CalcPWM(l_f32Speed, l_f32Set)")
+  - call:          name = full RTE signature   (e.g. "Rte_Read_RP_Sensor_Val(&l_f32Val)")
+
+  REQUIREMENTS ({{ requirement_count }} total):
+  {{ requirements }}
+
+  Output ONE GenerationResult JSON only. No text before or after the JSON.
+
+few_shot_examples:
+  - input: |
+      REQ-EPS-002: SWC_ElectricPowerSteering shall contain RE_ControlTorque every 5ms. ASIL-D.
+      REQ-EPS-010: RE_ControlTorque reads l_f32TorqueMain from RP_TorqueSensor and l_u16SpeedKmh from RP_VehicleSpeed, computes speed-dependent assist torque, writes to PP_MotorCurrent.
+      REQ-EPS-011: Assist gain = 1.0F - 0.7F * (l_u16SpeedKmh / 140.0F).
+      REQ-EPS-040: Gradient rate limit: delta per 5ms shall not exceed MAX_TORQUE_GRADIENT_NM. ASIL-D.
+      REQ-EPS-041: Cross-check RP_TorqueSensor vs RP_TorqueSensorRedundant; if |delta| > SENSOR_DELTA_LIMIT_NM, Dem_SetEventStatus(DTC_TORQUE_SENSOR_PLAUSIBILITY, FAILED), l_f32AssistTorque = 0.0F. ASIL-D.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "RE_ControlTorque Code Flow",
+          "owner_swc": "SWC_ElectricPowerSteering",
+          "owner_runnable": "RE_ControlTorque",
+          "source_requirements": ["REQ-EPS-002","REQ-EPS-010","REQ-EPS-011","REQ-EPS-040","REQ-EPS-041"],
+          "nodes": [
+            {"id":"N_01","name":"Start (5ms)","node_type":"initial","trace_reqs":["REQ-EPS-002"],"confidence":0.95,"description":"Entry point 5ms cyclic"},
+            {"id":"N_02","name":"Rte_Read_RP_VehicleSpeed_VehicleSpeed(&l_u16SpeedKmh)","node_type":"call","rte_call":"Rte_Read","port":"RP_VehicleSpeed","element":"VehicleSpeed","description":"Read vehicle speed","trace_reqs":["REQ-EPS-010"],"confidence":0.95},
+            {"id":"N_03","name":"Rte_Read_RP_TorqueSensor_DriverTorque(&l_f32TorqueMain)","node_type":"call","rte_call":"Rte_Read","port":"RP_TorqueSensor","element":"DriverTorque","description":"Read main torque sensor","trace_reqs":["REQ-EPS-010"],"confidence":0.95},
+            {"id":"N_04","name":"Rte_Read_RP_TorqueSensorRedundant_DriverTorqueRedundant(&l_f32TorqueRedundant)","node_type":"call","rte_call":"Rte_Read","port":"RP_TorqueSensorRedundant","element":"DriverTorqueRedundant","description":"Read redundant torque sensor","trace_reqs":["REQ-EPS-041"],"confidence":0.95},
+            {"id":"N_05","name":"l_f32TorqueDelta = (l_f32TorqueMain >= l_f32TorqueRedundant) ? (l_f32TorqueMain - l_f32TorqueRedundant) : (l_f32TorqueRedundant - l_f32TorqueMain)","node_type":"action","description":"Absolute sensor cross-check delta","trace_reqs":["REQ-EPS-041"],"confidence":0.92},
+            {"id":"N_06","name":"l_f32TorqueDelta > SENSOR_DELTA_LIMIT_NM","node_type":"decision","description":"Plausibility check main vs redundant sensor","trace_reqs":["REQ-EPS-041"],"confidence":0.95},
+            {"id":"N_07","name":"DTC_TORQUE_SENSOR_PLAUSIBILITY","node_type":"exception","description":"Dem_SetEventStatus(DTC_TORQUE_SENSOR_PLAUSIBILITY, DEM_EVENT_STATUS_FAILED); l_f32AssistTorque = 0.0F","trace_reqs":["REQ-EPS-041"],"confidence":0.92},
+            {"id":"N_08","name":"l_f32SpeedGain = 1.0F - (0.7F * ((float32_t)l_u16SpeedKmh / 140.0F))","node_type":"action","description":"Compute speed-dependent assist gain","trace_reqs":["REQ-EPS-011"],"confidence":0.90},
+            {"id":"N_09","name":"l_f32AssistTorque = l_f32TorqueMain * l_f32SpeedGain","node_type":"action","description":"Compute raw assist torque","trace_reqs":["REQ-EPS-010"],"confidence":0.90},
+            {"id":"N_10","name":"l_f32GradDelta = l_f32AssistTorque - l_f32PrevAssistTorque","node_type":"action","description":"Compute cycle-to-cycle torque gradient","trace_reqs":["REQ-EPS-040"],"confidence":0.90},
+            {"id":"N_11","name":"(l_f32GradDelta > MAX_TORQUE_GRADIENT_NM) OR (l_f32GradDelta < -MAX_TORQUE_GRADIENT_NM)","node_type":"decision","description":"Gradient rate-of-change limit check","trace_reqs":["REQ-EPS-040"],"confidence":0.95},
+            {"id":"N_12","name":"l_f32AssistTorque = (l_f32GradDelta > 0.0F) ? (l_f32PrevAssistTorque + MAX_TORQUE_GRADIENT_NM) : (l_f32PrevAssistTorque - MAX_TORQUE_GRADIENT_NM)","node_type":"action","description":"Clamp torque to gradient limit","trace_reqs":["REQ-EPS-040"],"confidence":0.90},
+            {"id":"N_13","name":"merge","node_type":"merge","description":"Converge after gradient clamp","trace_reqs":["REQ-EPS-040"],"confidence":0.85},
+            {"id":"N_14","name":"l_f32PrevAssistTorque = l_f32AssistTorque","node_type":"action","description":"Update previous torque for next cycle","trace_reqs":["REQ-EPS-040"],"confidence":0.88},
+            {"id":"N_15","name":"Rte_Write_PP_MotorCurrent_MotorCurrentDemand(l_f32AssistTorque)","node_type":"call","rte_call":"Rte_Write","port":"PP_MotorCurrent","element":"MotorCurrentDemand","description":"Write assist torque output","trace_reqs":["REQ-EPS-010"],"confidence":0.95},
+            {"id":"N_16","name":"End","node_type":"final","trace_reqs":["REQ-EPS-002"],"confidence":0.95,"description":"Exit point"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03","source":"N_03","target":"N_04"},
+            {"id":"E_04","source":"N_04","target":"N_05"},
+            {"id":"E_05","source":"N_05","target":"N_06"},
+            {"id":"E_06a","source":"N_06","target":"N_07","guard":"[l_f32TorqueDelta > SENSOR_DELTA_LIMIT_NM]"},
+            {"id":"E_06b","source":"N_06","target":"N_08","guard":"[l_f32TorqueDelta <= SENSOR_DELTA_LIMIT_NM]"},
+            {"id":"E_07","source":"N_07","target":"N_16"},
+            {"id":"E_08","source":"N_08","target":"N_09"},
+            {"id":"E_09","source":"N_09","target":"N_10"},
+            {"id":"E_10","source":"N_10","target":"N_11"},
+            {"id":"E_11a","source":"N_11","target":"N_12","guard":"[gradient exceeds MAX_TORQUE_GRADIENT_NM]"},
+            {"id":"E_11b","source":"N_11","target":"N_13","guard":"[gradient within MAX_TORQUE_GRADIENT_NM]"},
+            {"id":"E_12","source":"N_12","target":"N_13"},
+            {"id":"E_13","source":"N_13","target":"N_14"},
+            {"id":"E_14","source":"N_14","target":"N_15"},
+            {"id":"E_15","source":"N_15","target":"N_16"}
+          ],
+          "sub_diagrams": [],
+          "provenance": {"version":"3.0","confidence":0.92}
+        }],
+        "analyzed_requirements": ["REQ-EPS-002","REQ-EPS-010","REQ-EPS-011","REQ-EPS-040","REQ-EPS-041"]
+      }
+
+  - input: |
+      REQ-030: SWC_EPS shall contain RE_ControlTorque triggered every 10ms.
+      REQ-031: RE_ControlTorque reads l_f32DriverTorque from RP_SteerTorque and l_f32Speed from RP_VehicleSpeed.
+      REQ-032: RE_ControlTorque calls EPS_CalcAssistTorque(l_f32DriverTorque, l_f32Speed) to compute speed-dependent assist torque.
+      REQ-033: EPS_CalcAssistTorque: l_f32Boost = EPS_GetBoostFactor(l_f32Speed). l_f32Assist = ASSIST_GAIN * l_f32DriverTorque / (1.0F + SPEED_COEFF * l_f32Speed). l_f32Assist *= l_f32Boost.
+      REQ-034: EPS_GetBoostFactor: find lower-bound index in BOOST_MAP_SPEED[], compute linear interpolation ratio, return interpolated BOOST_MAP_VAL[].
+      REQ-035: RE_ControlTorque calls EPS_LimitOutput(l_f32AssistTorque) to clamp to [TORQUE_MIN_NM, TORQUE_MAX_NM].
+      REQ-036: RE_ControlTorque writes l_f32FinalTorque to PP_AssistTorque.
+    output: |
+      {
+        "diagrams": [{
+          "diagram_type": "activity",
+          "name": "RE_ControlTorque Code Flow",
+          "owner_swc": "SWC_EPS",
+          "owner_runnable": "RE_ControlTorque",
+          "source_requirements": ["REQ-030","REQ-031","REQ-032","REQ-033","REQ-034","REQ-035","REQ-036"],
+          "nodes": [
+            {"id":"N_01","name":"Start (10ms)","node_type":"initial","trace_reqs":["REQ-030"],"confidence":0.95,"description":"Entry point 10ms cyclic"},
+            {"id":"N_02","name":"Rte_Read_RP_SteerTorque_Torque(&l_f32DriverTorque)","node_type":"call","rte_call":"Rte_Read","port":"RP_SteerTorque","element":"Torque","description":"Read driver steering torque","trace_reqs":["REQ-031"],"confidence":0.95},
+            {"id":"N_03","name":"Rte_Read_RP_VehicleSpeed_Speed(&l_f32Speed)","node_type":"call","rte_call":"Rte_Read","port":"RP_VehicleSpeed","element":"Speed","description":"Read current vehicle speed","trace_reqs":["REQ-031"],"confidence":0.95},
+            {"id":"N_04","name":"l_f32AssistTorque = EPS_CalcAssistTorque(l_f32DriverTorque, l_f32Speed)","node_type":"function_call","callee":"EPS_CalcAssistTorque","description":"Compute speed-dependent assist torque","trace_reqs":["REQ-032","REQ-033"],"confidence":0.90},
+            {"id":"N_05","name":"l_f32FinalTorque = EPS_LimitOutput(l_f32AssistTorque)","node_type":"function_call","callee":"EPS_LimitOutput","description":"Clamp torque within hardware limits","trace_reqs":["REQ-035"],"confidence":0.90},
+            {"id":"N_06","name":"Rte_Write_PP_AssistTorque_Torque(l_f32FinalTorque)","node_type":"call","rte_call":"Rte_Write","port":"PP_AssistTorque","element":"Torque","description":"Write final assist torque output","trace_reqs":["REQ-036"],"confidence":0.95},
+            {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-030"],"confidence":0.95,"description":"Exit point"}
+          ],
+          "edges": [
+            {"id":"E_01","source":"N_01","target":"N_02"},
+            {"id":"E_02","source":"N_02","target":"N_03"},
+            {"id":"E_03","source":"N_03","target":"N_04"},
+            {"id":"E_04","source":"N_04","target":"N_05"},
+            {"id":"E_05","source":"N_05","target":"N_06"},
+            {"id":"E_06","source":"N_06","target":"N_07"}
+          ],
+          "sub_diagrams": [
+            {
+              "diagram_type": "activity",
+              "name": "EPS_CalcAssistTorque Code Flow",
+              "function_name": "EPS_CalcAssistTorque",
+              "parent_diagram": "RE_ControlTorque Code Flow",
+              "owner_swc": "SWC_EPS",
+              "source_requirements": ["REQ-032","REQ-033","REQ-034"],
+              "nodes": [
+                {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-032"],"confidence":0.95,"description":"Entry point"},
+                {"id":"N_02","name":"l_f32Boost = EPS_GetBoostFactor(l_f32Speed)","node_type":"function_call","callee":"EPS_GetBoostFactor","description":"Lookup interpolated boost factor","trace_reqs":["REQ-033","REQ-034"],"confidence":0.90},
+                {"id":"N_03","name":"l_f32Assist = ASSIST_GAIN * l_f32DriverTorque / (1.0F + SPEED_COEFF * l_f32Speed)","node_type":"action","description":"Compute base assist torque","trace_reqs":["REQ-033"],"confidence":0.90},
+                {"id":"N_04","name":"l_f32Assist *= l_f32Boost","node_type":"action","description":"Apply boost map scaling","trace_reqs":["REQ-033"],"confidence":0.85},
+                {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-032"],"confidence":0.95,"description":"Return l_f32Assist"}
+              ],
+              "edges": [
+                {"id":"E_01","source":"N_01","target":"N_02"},
+                {"id":"E_02","source":"N_02","target":"N_03"},
+                {"id":"E_03","source":"N_03","target":"N_04"},
+                {"id":"E_04","source":"N_04","target":"N_05"}
+              ],
+              "sub_diagrams": [{
+                "diagram_type": "activity",
+                "name": "EPS_GetBoostFactor Code Flow",
+                "function_name": "EPS_GetBoostFactor",
+                "parent_diagram": "EPS_CalcAssistTorque Code Flow",
+                "owner_swc": "SWC_EPS",
+                "source_requirements": ["REQ-034"],
+                "nodes": [
+                  {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-034"],"confidence":0.95,"description":"Entry point"},
+                  {"id":"N_02","name":"l_u8Idx = EPS_FindMapIndex(l_f32Speed, BOOST_MAP_SPEED, MAP_SIZE)","node_type":"action","description":"Binary-search lower-bound index","trace_reqs":["REQ-034"],"confidence":0.90},
+                  {"id":"N_03","name":"l_f32Ratio = (l_f32Speed - BOOST_MAP_SPEED[l_u8Idx]) / (BOOST_MAP_SPEED[l_u8Idx + 1U] - BOOST_MAP_SPEED[l_u8Idx])","node_type":"action","description":"Linear interpolation ratio","trace_reqs":["REQ-034"],"confidence":0.85},
+                  {"id":"N_04","name":"l_f32Factor = BOOST_MAP_VAL[l_u8Idx] + l_f32Ratio * (BOOST_MAP_VAL[l_u8Idx + 1U] - BOOST_MAP_VAL[l_u8Idx])","node_type":"action","description":"Interpolated boost factor","trace_reqs":["REQ-034"],"confidence":0.85},
+                  {"id":"N_05","name":"End","node_type":"final","trace_reqs":["REQ-034"],"confidence":0.95,"description":"Return l_f32Factor"}
+                ],
+                "edges": [
+                  {"id":"E_01","source":"N_01","target":"N_02"},
+                  {"id":"E_02","source":"N_02","target":"N_03"},
+                  {"id":"E_03","source":"N_03","target":"N_04"},
+                  {"id":"E_04","source":"N_04","target":"N_05"}
+                ],
+                "sub_diagrams": [],
+                "provenance": {"version":"3.0","confidence":0.85}
+              }],
+              "provenance": {"version":"3.0","confidence":0.88}
+            },
+            {
+              "diagram_type": "activity",
+              "name": "EPS_LimitOutput Code Flow",
+              "function_name": "EPS_LimitOutput",
+              "parent_diagram": "RE_ControlTorque Code Flow",
+              "owner_swc": "SWC_EPS",
+              "source_requirements": ["REQ-035"],
+              "nodes": [
+                {"id":"N_01","name":"Start","node_type":"initial","trace_reqs":["REQ-035"],"confidence":0.95,"description":"Entry point"},
+                {"id":"N_02","name":"l_f32Torque > TORQUE_MAX_NM","node_type":"decision","description":"Check upper hardware clamp limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_03","name":"l_f32Torque = TORQUE_MAX_NM","node_type":"action","description":"Clamp to maximum limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_04","name":"l_f32Torque < TORQUE_MIN_NM","node_type":"decision","description":"Check lower hardware clamp limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_05","name":"l_f32Torque = TORQUE_MIN_NM","node_type":"action","description":"Clamp to minimum limit","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_06","name":"merge","node_type":"merge","description":"Converge after clamping","trace_reqs":["REQ-035"],"confidence":0.90},
+                {"id":"N_07","name":"End","node_type":"final","trace_reqs":["REQ-035"],"confidence":0.95,"description":"Return l_f32Torque"}
+              ],
+              "edges": [
+                {"id":"E_01","source":"N_01","target":"N_02"},
+                {"id":"E_02a","source":"N_02","target":"N_03","guard":"[l_f32Torque > TORQUE_MAX_NM]"},
+                {"id":"E_02b","source":"N_02","target":"N_04","guard":"[l_f32Torque <= TORQUE_MAX_NM]"},
+                {"id":"E_03","source":"N_03","target":"N_04"},
+                {"id":"E_04a","source":"N_04","target":"N_05","guard":"[l_f32Torque < TORQUE_MIN_NM]"},
+                {"id":"E_04b","source":"N_04","target":"N_06","guard":"[l_f32Torque >= TORQUE_MIN_NM]"},
+                {"id":"E_05","source":"N_05","target":"N_06"},
+                {"id":"E_06","source":"N_06","target":"N_07"}
+              ],
+              "sub_diagrams": [],
+              "provenance": {"version":"3.0","confidence":0.88}
+            }
+          ],
+          "provenance": {"version":"3.0","confidence":0.90}
+        }],
+        "analyzed_requirements": ["REQ-030","REQ-031","REQ-032","REQ-033","REQ-034","REQ-035","REQ-036"]
+      }

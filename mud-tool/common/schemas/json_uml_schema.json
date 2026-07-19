@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JSON-UML Schema for AUTOSAR MUD Tool",
+  "description": "Defines the AI interchange format for UML diagrams with AUTOSAR semantics",
+  "oneOf": [
+    { "$ref": "#/$defs/SequenceDiagram" },
+    { "$ref": "#/$defs/StateMachineDiagram" },
+    { "$ref": "#/$defs/ClassDiagram" },
+    { "$ref": "#/$defs/ComponentDiagram" }
+  ],
+  "$defs": {
+    "Provenance": {
+      "type": "object",
+      "required": ["ai_model", "prompt_version", "confidence"],
+      "properties": {
+        "ai_model": { "type": "string" },
+        "prompt_version": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "prompt_hash": { "type": "string" },
+        "generation_time_ms": { "type": "integer" },
+        "backend": { "type": "string", "enum": ["local", "cloud"] }
+      }
+    },
+    "Lifeline": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "default": "ApplicationSWC" },
+        "runnable": { "type": "string" },
+        "stereotype": { "type": "string" },
+        "trace_reqs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Message": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "id": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "label": { "type": "string" },
+        "rte_call": { "type": "string", "enum": ["Rte_Read", "Rte_Write", "Rte_Call", "Rte_Result", "Rte_IRead", "Rte_IWrite", "Rte_Send", "Rte_Receive", "Rte_Switch"] },
+        "port": { "type": "string" },
+        "element": { "type": "string" },
+        "is_return": { "type": "boolean", "default": false },
+        "is_async": { "type": "boolean", "default": false },
+        "sequence_number": { "type": "integer" },
+        "trace_req": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "SequenceDiagram": {
+      "type": "object",
+      "required": ["diagram_type", "lifelines", "messages"],
+      "properties": {
+        "diagram_type": { "const": "sequence" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "source_requirements": { "type": "array", "items": { "type": "string" } },
+        "lifelines": { "type": "array", "items": { "$ref": "#/$defs/Lifeline" } },
+        "messages": { "type": "array", "items": { "$ref": "#/$defs/Message" } },
+        "fragments": { "type": "array" },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "State": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "is_initial": { "type": "boolean", "default": false },
+        "is_final": { "type": "boolean", "default": false },
+        "state_type": { "type": "string", "enum": ["simple", "composite", "submachine"] },
+        "actions": { "type": "array" },
+        "trace_reqs": { "type": "array", "items": { "type": "string" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "Transition": {
+      "type": "object",
+      "required": ["source", "target"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "trigger": { "type": "string" },
+        "guard": { "type": "object" },
+        "action": { "type": "string" },
+        "trace_req": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "StateMachineDiagram": {
+      "type": "object",
+      "required": ["diagram_type", "states", "transitions"],
+      "properties": {
+        "diagram_type": { "const": "state_machine" },
+        "name": { "type": "string" },
+        "owner_swc": { "type": "string" },
+        "source_requirements": { "type": "array", "items": { "type": "string" } },
+        "states": { "type": "array", "items": { "$ref": "#/$defs/State" } },
+        "transitions": { "type": "array", "items": { "$ref": "#/$defs/Transition" } },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "ClassDiagram": {
+      "type": "object",
+      "required": ["diagram_type", "classes"],
+      "properties": {
+        "diagram_type": { "const": "class" },
+        "name": { "type": "string" },
+        "source_requirements": { "type": "array", "items": { "type": "string" } },
+        "classes": { "type": "array" },
+        "associations": { "type": "array" },
+        "interfaces": { "type": "array" },
+        "data_types": { "type": "array" },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    },
+    "ComponentDiagram": {
+      "type": "object",
+      "required": ["diagram_type", "components"],
+      "properties": {
+        "diagram_type": { "const": "component" },
+        "name": { "type": "string" },
+        "source_requirements": { "type": "array", "items": { "type": "string" } },
+        "components": { "type": "array" },
+        "connectors": { "type": "array" },
+        "packages": { "type": "array" },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    }
+  }
+}

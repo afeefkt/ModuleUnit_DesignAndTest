@@ -1,0 +1,21 @@
+# AUTOSAR MUD Tool - Sample Requirements
+# Format: REQ_ID | Type | Description | Priority | ASIL | Module_Hint
+
+REQ-ARCH-0100 | functional | The ADAS system shall contain a SWC_SensorFusion component responsible for fusing radar, camera, and lidar sensor data into a unified environment model | must | ASIL-B | SWC_SensorFusion
+REQ-ARCH-0101 | functional | SWC_SensorFusion shall execute a cyclic runnable at 10ms period for sensor data fusion processing | must | ASIL-B | SWC_SensorFusion
+REQ-ARCH-0102 | interface | SWC_SensorFusion shall provide fused sensor data to consuming SWCs via a Sender-Receiver interface containing FusedEnvironmentModel data element | must | ASIL-B | SWC_SensorFusion
+REQ-ARCH-0103 | safety | SWC_SensorFusion shall detect sensor communication failures and transition to a degraded operation mode within 50ms of failure detection | must | ASIL-B | SWC_SensorFusion
+REQ-ARCH-0104 | functional | SWC_SensorFusion shall implement lifecycle management with Init, Running, Degraded, and Shutdown states | must | | SWC_SensorFusion
+
+REQ-ARCH-0200 | functional | The ADAS system shall contain a SWC_VehicleControl component responsible for computing vehicle control commands based on fused sensor data | must | ASIL-C | SWC_VehicleControl
+REQ-ARCH-0201 | interface | SWC_VehicleControl shall receive fused environment model data from SWC_SensorFusion via R-Port with Sender-Receiver interface | must | ASIL-C | SWC_VehicleControl
+REQ-ARCH-0202 | functional | SWC_VehicleControl shall compute steering and braking commands in a 20ms cyclic runnable | must | ASIL-C | SWC_VehicleControl
+REQ-ARCH-0203 | interface | SWC_VehicleControl shall provide vehicle control commands to SWC_ActuatorManager via Sender-Receiver interface | must | ASIL-C | SWC_VehicleControl
+
+REQ-ARCH-0300 | functional | The ADAS system shall contain a SWC_SafetyMonitor component that continuously monitors system health and can trigger emergency stop | must | ASIL-D | SWC_SafetyMonitor
+REQ-ARCH-0301 | interface | SWC_SafetyMonitor shall receive sensor fusion status and vehicle control status via R-Ports | must | ASIL-D | SWC_SafetyMonitor
+REQ-ARCH-0302 | functional | SWC_SafetyMonitor shall provide a Client-Server interface for diagnostic DTC read requests from SWC_Diagnostics | should | ASIL-D | SWC_SafetyMonitor
+REQ-ARCH-0303 | safety | SWC_SafetyMonitor shall trigger safe state within 20ms if any ASIL-D violation is detected | must | ASIL-D | SWC_SafetyMonitor
+
+REQ-ARCH-0400 | functional | The ADAS system shall contain a SWC_ActuatorManager component that translates control commands to actuator-specific signals | must | ASIL-C | SWC_ActuatorManager
+REQ-ARCH-0401 | interface | SWC_ActuatorManager shall receive control commands from SWC_VehicleControl and provide actuator signals via Sender-Receiver interfaces | must | ASIL-C | SWC_ActuatorManager

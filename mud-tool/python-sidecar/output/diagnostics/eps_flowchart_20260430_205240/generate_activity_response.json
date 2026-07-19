@@ -1,0 +1,1430 @@
+{
+  "result": {
+    "diagrams": [
+      {
+        "diagram_type": "activity",
+        "name": "RE_ControlTorque Code Flow",
+        "description": null,
+        "source_requirements": [
+          "REQ-EPS-002"
+        ],
+        "owner_swc": "SWC_ElectricPowerSteering",
+        "owner_runnable": "RE_ControlTorque",
+        "function_name": null,
+        "parent_diagram": null,
+        "nodes": [
+          {
+            "id": "N_01",
+            "name": "Start (10ms)",
+            "node_type": "initial",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Entry 10ms",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_02",
+            "name": "Rte_Read_RP_IgnitionStatus(&l_u8Ignition)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_IgnitionStatus",
+            "element": "IgnitionStatus",
+            "callee": null,
+            "description": "Read ignition status",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_03",
+            "name": "l_u8Ignition != 1",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Check ignition status",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_04",
+            "name": "Rte_IWrite(PP_MotorCurrentDemand, 0)",
+            "node_type": "call",
+            "rte_call": "Rte_IWrite",
+            "port": "PP_MotorCurrentDemand",
+            "element": "MotorCurrentDemand",
+            "callee": null,
+            "description": "Set motor current demand to 0",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_05",
+            "name": "Rte_IWrite(PP_AssistLevel, 0)",
+            "node_type": "call",
+            "rte_call": "Rte_IWrite",
+            "port": "PP_AssistLevel",
+            "element": "AssistLevel",
+            "callee": null,
+            "description": "Set assist level to 0",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_06",
+            "name": "End",
+            "node_type": "final",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Exit",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_07",
+            "name": "Rte_Read_RP_VehicleSpeed(&l_u16VehicleSpeed)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_VehicleSpeed",
+            "element": "VehicleSpeed",
+            "callee": null,
+            "description": "Read vehicle speed",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_08",
+            "name": "Rte_Read_RP_TorqueSensorPrimary(&l_i16TorqueSensorPrimary)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_TorqueSensorPrimary",
+            "element": "TorqueSensorPrimary",
+            "callee": null,
+            "description": "Read torque sensor primary",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_09",
+            "name": "l_u16VehicleSpeed < 0 || l_u16VehicleSpeed > 255",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Validate vehicle speed range",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_10",
+            "name": "Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report sensor fail",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_11",
+            "name": "l_i16TorqueSensorPrimary < -32768 || l_i16TorqueSensorPrimary > 32767",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Validate torque sensor primary range",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_12",
+            "name": "Dem_ReportErrorStatus(SWC_DEM_E_EPS_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report sensor fail",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_13",
+            "name": "motorCurrentDemand = l_i16TorqueSensorPrimary * 0.5",
+            "node_type": "action",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Compute motor current demand",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_14",
+            "name": "assistLevel = (l_i16TorqueSensorPrimary > 0) ? 100 : 0",
+            "node_type": "action",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Compute assist level",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_15",
+            "name": "Rte_IWrite(PP_MotorCurrentDemand, motorCurrentDemand)",
+            "node_type": "call",
+            "rte_call": "Rte_IWrite",
+            "port": "PP_MotorCurrentDemand",
+            "element": "MotorCurrentDemand",
+            "callee": null,
+            "description": "Set motor current demand",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_16",
+            "name": "Rte_IWrite(PP_AssistLevel, assistLevel)",
+            "node_type": "call",
+            "rte_call": "Rte_IWrite",
+            "port": "PP_AssistLevel",
+            "element": "AssistLevel",
+            "callee": null,
+            "description": "Set assist level",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_17",
+            "name": "WdgM_UpdateAliveCounter(WDG_ENTITY_RE_CONTROL_TORQUE)",
+            "node_type": "function_call",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": "WdgM_UpdateAliveCounter",
+            "description": "Update watchdog counter",
+            "trace_reqs": [
+              "REQ-EPS-002"
+            ],
+            "confidence": 0.95
+          }
+        ],
+        "edges": [
+          {
+            "id": "E_01",
+            "source": "N_01",
+            "target": "N_02",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_02",
+            "source": "N_02",
+            "target": "N_03",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_03",
+            "source": "N_03",
+            "target": "N_04",
+            "guard": "[l_u8Ignition != 1]",
+            "label": null
+          },
+          {
+            "id": "E_04",
+            "source": "N_03",
+            "target": "N_05",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_05",
+            "source": "N_04",
+            "target": "N_06",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_06",
+            "source": "N_05",
+            "target": "N_06",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_07",
+            "source": "N_03",
+            "target": "N_07",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_08",
+            "source": "N_07",
+            "target": "N_08",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_09",
+            "source": "N_08",
+            "target": "N_09",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_10",
+            "source": "N_09",
+            "target": "N_10",
+            "guard": "[l_u16VehicleSpeed < 0 || l_u16VehicleSpeed > 255]",
+            "label": null
+          },
+          {
+            "id": "E_11",
+            "source": "N_09",
+            "target": "N_11",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_12",
+            "source": "N_10",
+            "target": "N_16",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_13",
+            "source": "N_11",
+            "target": "N_12",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_14",
+            "source": "N_12",
+            "target": "N_16",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_15",
+            "source": "N_09",
+            "target": "N_13",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_16",
+            "source": "N_13",
+            "target": "N_14",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_17",
+            "source": "N_14",
+            "target": "N_15",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_18",
+            "source": "N_15",
+            "target": "N_16",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_19",
+            "source": "N_08",
+            "target": "N_17",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_20",
+            "source": "N_11",
+            "target": "N_13",
+            "guard": "[else]",
+            "label": null
+          }
+        ],
+        "sub_diagrams": [],
+        "provenance": {
+          "ai_model": "activity_pipeline",
+          "prompt_version": "activity_pipeline_v1",
+          "confidence": 0.85,
+          "timestamp": "2026-04-30T19:00:52.688130",
+          "prompt_hash": "activity_pipeline_v1",
+          "generation_time_ms": 0,
+          "backend": "cloud:openai_compatible"
+        }
+      },
+      {
+        "diagram_type": "activity",
+        "name": "RE_MonitorSafety Code Flow",
+        "description": null,
+        "source_requirements": [
+          "REQ-EPS-003"
+        ],
+        "owner_swc": "SWC_ElectricPowerSteering",
+        "owner_runnable": "RE_MonitorSafety",
+        "function_name": null,
+        "parent_diagram": null,
+        "nodes": [
+          {
+            "id": "N_01",
+            "name": "Start (10ms)",
+            "node_type": "initial",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Entry 10ms",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_02",
+            "name": "Rte_Read_RP_IgnitionStatus(&l_u8Ignition)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_IgnitionStatus",
+            "element": "IgnitionStatus",
+            "callee": null,
+            "description": "Read ignition status",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_03",
+            "name": "l_u8Ignition == 0",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Check ignition status",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_04",
+            "name": "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report fault",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_05",
+            "name": "Rte_IWrite(PP_EPSStatus, 3)",
+            "node_type": "call",
+            "rte_call": "Rte_Write",
+            "port": "PP_EPSStatus",
+            "element": "EPSStatus",
+            "callee": null,
+            "description": "Set EPS status",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_06",
+            "name": "WdgM_UpdateAliveCounter(1)",
+            "node_type": "function_call",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": "WdgM_UpdateAliveCounter",
+            "description": "Update watchdog counter",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_07",
+            "name": "Rte_Read_RP_VehicleSpeed(&l_u16VehicleSpeed)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_VehicleSpeed",
+            "element": "VehicleSpeed",
+            "callee": null,
+            "description": "Read vehicle speed",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_08",
+            "name": "Rte_Read_RP_YawRate(&l_s16YawRate)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_YawRate",
+            "element": "YawRate",
+            "callee": null,
+            "description": "Read yaw rate",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_09",
+            "name": "l_u16VehicleSpeed < 0 || l_u16VehicleSpeed > 255",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Validate speed",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_10",
+            "name": "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report fault",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_11",
+            "name": "Rte_IWrite(PP_EPSStatus, 3)",
+            "node_type": "call",
+            "rte_call": "Rte_Write",
+            "port": "PP_EPSStatus",
+            "element": "EPSStatus",
+            "callee": null,
+            "description": "Set EPS status",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_12",
+            "name": "l_s16YawRate < -32768 || l_s16YawRate > 32767",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Validate yaw rate",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_13",
+            "name": "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report fault",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_14",
+            "name": "Rte_IWrite(PP_EPSStatus, 3)",
+            "node_type": "call",
+            "rte_call": "Rte_Write",
+            "port": "PP_EPSStatus",
+            "element": "EPSStatus",
+            "callee": null,
+            "description": "Set EPS status",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_15",
+            "name": "l_s16YawRate > 1000 && l_u16VehicleSpeed > 50",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Validate yaw rate and speed",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_16",
+            "name": "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report fault",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_17",
+            "name": "Rte_IWrite(PP_EPSStatus, 3)",
+            "node_type": "call",
+            "rte_call": "Rte_Write",
+            "port": "PP_EPSStatus",
+            "element": "EPSStatus",
+            "callee": null,
+            "description": "Set EPS status",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_18",
+            "name": "End",
+            "node_type": "final",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Exit",
+            "trace_reqs": [
+              "REQ-EPS-003"
+            ],
+            "confidence": 0.95
+          }
+        ],
+        "edges": [
+          {
+            "id": "E_01",
+            "source": "N_01",
+            "target": "N_02",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_02",
+            "source": "N_02",
+            "target": "N_03",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_03",
+            "source": "N_03",
+            "target": "N_04",
+            "guard": "[l_u8Ignition == 0]",
+            "label": null
+          },
+          {
+            "id": "E_04",
+            "source": "N_03",
+            "target": "N_17",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_05",
+            "source": "N_04",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_06",
+            "source": "N_05",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_07",
+            "source": "N_07",
+            "target": "N_09",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_08",
+            "source": "N_09",
+            "target": "N_10",
+            "guard": "[l_u16VehicleSpeed < 0 || l_u16VehicleSpeed > 255]",
+            "label": null
+          },
+          {
+            "id": "E_09",
+            "source": "N_09",
+            "target": "N_11",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_10",
+            "source": "N_10",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_11",
+            "source": "N_11",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_12",
+            "source": "N_08",
+            "target": "N_12",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_13",
+            "source": "N_12",
+            "target": "N_13",
+            "guard": "[l_s16YawRate < -32768 || l_s16YawRate > 32767]",
+            "label": null
+          },
+          {
+            "id": "E_14",
+            "source": "N_12",
+            "target": "N_14",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_15",
+            "source": "N_13",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_16",
+            "source": "N_14",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_17",
+            "source": "N_09",
+            "target": "N_15",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_18",
+            "source": "N_15",
+            "target": "N_16",
+            "guard": "[l_s16YawRate > 1000 && l_u16VehicleSpeed > 50]",
+            "label": null
+          },
+          {
+            "id": "E_19",
+            "source": "N_15",
+            "target": "N_18",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_20",
+            "source": "N_16",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_21",
+            "source": "N_17",
+            "target": "N_18",
+            "guard": null,
+            "label": null
+          }
+        ],
+        "sub_diagrams": [],
+        "provenance": {
+          "ai_model": "activity_pipeline",
+          "prompt_version": "activity_pipeline_v1",
+          "confidence": 0.85,
+          "timestamp": "2026-04-30T19:00:52.688130",
+          "prompt_hash": "activity_pipeline_v1",
+          "generation_time_ms": 0,
+          "backend": "cloud:openai_compatible"
+        }
+      },
+      {
+        "diagram_type": "activity",
+        "name": "RE_Initialize Code Flow",
+        "description": null,
+        "source_requirements": [
+          "REQ-EPS-004"
+        ],
+        "owner_swc": "SWC_ElectricPowerSteering",
+        "owner_runnable": "RE_Initialize",
+        "function_name": null,
+        "parent_diagram": null,
+        "nodes": [
+          {
+            "id": "N_01",
+            "name": "Start (10ms)",
+            "node_type": "initial",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Entry 10ms",
+            "trace_reqs": [
+              "REQ-EPS-004"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_02",
+            "name": "Rte_IWrite(PP_EPSStatus, EPS_STATUS_INIT)",
+            "node_type": "call",
+            "rte_call": "Rte_IWrite",
+            "port": "PP_EPSStatus",
+            "element": "EPSStatus",
+            "callee": null,
+            "description": "Set EPS status to INIT",
+            "trace_reqs": [
+              "REQ-EPS-004"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_03",
+            "name": "WdgM_UpdateAliveCounter(WDG_ENTITY_ID_RE)",
+            "node_type": "function_call",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": "WdgM_UpdateAliveCounter",
+            "description": "Report initialization complete",
+            "trace_reqs": [
+              "REQ-EPS-004"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_04",
+            "name": "End",
+            "node_type": "final",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Exit",
+            "trace_reqs": [
+              "REQ-EPS-004"
+            ],
+            "confidence": 0.95
+          }
+        ],
+        "edges": [
+          {
+            "id": "E_01",
+            "source": "N_01",
+            "target": "N_02",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_02",
+            "source": "N_02",
+            "target": "N_03",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_03",
+            "source": "N_03",
+            "target": "N_04",
+            "guard": null,
+            "label": null
+          }
+        ],
+        "sub_diagrams": [],
+        "provenance": {
+          "ai_model": "activity_pipeline",
+          "prompt_version": "activity_pipeline_v1",
+          "confidence": 0.85,
+          "timestamp": "2026-04-30T19:00:52.688130",
+          "prompt_hash": "activity_pipeline_v1",
+          "generation_time_ms": 0,
+          "backend": "cloud:openai_compatible"
+        }
+      },
+      {
+        "diagram_type": "activity",
+        "name": "RE_HandleModeChange Code Flow",
+        "description": null,
+        "source_requirements": [
+          "REQ-EPS-005",
+          "REQ-EPS-031"
+        ],
+        "owner_swc": "SWC_ElectricPowerSteering",
+        "owner_runnable": "RE_HandleModeChange",
+        "function_name": null,
+        "parent_diagram": null,
+        "nodes": [
+          {
+            "id": "N_01",
+            "name": "Start (10ms)",
+            "node_type": "initial",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Entry 10ms",
+            "trace_reqs": [
+              "REQ-EPS-005"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_02",
+            "name": "Rte_Read_RP_IgnitionStatus(&l_u8Ignition)",
+            "node_type": "call",
+            "rte_call": "Rte_Read",
+            "port": "RP_IgnitionStatus",
+            "element": "Ignition",
+            "callee": null,
+            "description": "Read ignition status",
+            "trace_reqs": [
+              "REQ-EPS-005"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_03",
+            "name": "l_u8Ignition == 1",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Validate ignition status",
+            "trace_reqs": [
+              "REQ-EPS-005"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_04",
+            "name": "Dem_SetEventStatus(DTC_X, DEM_EVENT_STATUS_FAILED)",
+            "node_type": "exception",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Report fault",
+            "trace_reqs": [
+              "REQ-EPS-005"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_05",
+            "name": "WdgM_UpdateAliveCounter(ENTITY_ID)",
+            "node_type": "function_call",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": "WdgM_UpdateAliveCounter",
+            "description": "Watchdog update",
+            "trace_reqs": [
+              "REQ-EPS-036"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_06",
+            "name": "End",
+            "node_type": "final",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Exit",
+            "trace_reqs": [
+              "REQ-EPS-005"
+            ],
+            "confidence": 0.95
+          }
+        ],
+        "edges": [
+          {
+            "id": "E_01",
+            "source": "N_01",
+            "target": "N_02",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_02",
+            "source": "N_02",
+            "target": "N_03",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_03",
+            "source": "N_03",
+            "target": "N_04",
+            "guard": "[l_u8Ignition != 1]",
+            "label": null
+          },
+          {
+            "id": "E_04",
+            "source": "N_03",
+            "target": "N_05",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_05",
+            "source": "N_04",
+            "target": "N_06",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_06",
+            "source": "N_05",
+            "target": "N_06",
+            "guard": null,
+            "label": null
+          }
+        ],
+        "sub_diagrams": [],
+        "provenance": {
+          "ai_model": "activity_pipeline",
+          "prompt_version": "activity_pipeline_v1",
+          "confidence": 0.85,
+          "timestamp": "2026-04-30T19:00:52.689130",
+          "prompt_hash": "activity_pipeline_v1",
+          "generation_time_ms": 0,
+          "backend": "cloud:openai_compatible"
+        }
+      },
+      {
+        "diagram_type": "activity",
+        "name": "RE_DiagnosticUpdate Code Flow",
+        "description": null,
+        "source_requirements": [
+          "REQ-EPS-006"
+        ],
+        "owner_swc": "SWC_ElectricPowerSteering",
+        "owner_runnable": "RE_DiagnosticUpdate",
+        "function_name": null,
+        "parent_diagram": null,
+        "nodes": [
+          {
+            "id": "N_01",
+            "name": "Start (10ms)",
+            "node_type": "initial",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Entry 10ms",
+            "trace_reqs": [
+              "REQ-EPS-006"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_02",
+            "name": "Rte_IRead(RP_IgnitionStatus)",
+            "node_type": "call",
+            "rte_call": "Rte_IRead",
+            "port": "RP_IgnitionStatus",
+            "element": "IgnitionStatus",
+            "callee": null,
+            "description": "Read ignition status",
+            "trace_reqs": [
+              "REQ-EPS-006"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_03",
+            "name": "l_f32V > LIMIT",
+            "node_type": "decision",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Check ignition status",
+            "trace_reqs": [
+              "REQ-EPS-006"
+            ],
+            "confidence": 0.9
+          },
+          {
+            "id": "N_04",
+            "name": "Rte_IWrite(PP_EPSStatus, 0)",
+            "node_type": "call",
+            "rte_call": "Rte_IWrite",
+            "port": "PP_EPSStatus",
+            "element": "EPSStatus",
+            "callee": null,
+            "description": "Set EPS status to 0",
+            "trace_reqs": [
+              "REQ-EPS-006"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_05",
+            "name": "WdgM_UpdateAliveCounter(WDG_ENTITY_ID_RE_DiagnosticUpdate)",
+            "node_type": "call",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": "WdgM_UpdateAliveCounter",
+            "description": "Watchdog update",
+            "trace_reqs": [
+              "REQ-EPS-006"
+            ],
+            "confidence": 0.95
+          },
+          {
+            "id": "N_06",
+            "name": "End",
+            "node_type": "final",
+            "rte_call": null,
+            "port": null,
+            "element": null,
+            "callee": null,
+            "description": "Exit",
+            "trace_reqs": [
+              "REQ-EPS-006"
+            ],
+            "confidence": 0.95
+          }
+        ],
+        "edges": [
+          {
+            "id": "E_01",
+            "source": "N_01",
+            "target": "N_02",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_02",
+            "source": "N_02",
+            "target": "N_03",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_03",
+            "source": "N_03",
+            "target": "N_04",
+            "guard": "[l_f32V > LIMIT]",
+            "label": null
+          },
+          {
+            "id": "E_04",
+            "source": "N_03",
+            "target": "N_05",
+            "guard": "[else]",
+            "label": null
+          },
+          {
+            "id": "E_05",
+            "source": "N_04",
+            "target": "N_06",
+            "guard": null,
+            "label": null
+          },
+          {
+            "id": "E_06",
+            "source": "N_05",
+            "target": "N_06",
+            "guard": null,
+            "label": null
+          }
+        ],
+        "sub_diagrams": [],
+        "provenance": {
+          "ai_model": "activity_pipeline",
+          "prompt_version": "activity_pipeline_v1",
+          "confidence": 0.85,
+          "timestamp": "2026-04-30T19:00:52.689130",
+          "prompt_hash": "activity_pipeline_v1",
+          "generation_time_ms": 0,
+          "backend": "cloud:openai_compatible"
+        }
+      }
+    ],
+    "analyzed_requirements": [
+      "REQ-EPS-001",
+      "REQ-EPS-002",
+      "REQ-EPS-003",
+      "REQ-EPS-004",
+      "REQ-EPS-005",
+      "REQ-EPS-006",
+      "REQ-EPS-007",
+      "REQ-EPS-008",
+      "REQ-EPS-010",
+      "REQ-EPS-011",
+      "REQ-EPS-012",
+      "REQ-EPS-013",
+      "REQ-EPS-014",
+      "REQ-EPS-015",
+      "REQ-EPS-016",
+      "REQ-EPS-017",
+      "REQ-EPS-018",
+      "REQ-EPS-019",
+      "REQ-EPS-020",
+      "REQ-EPS-021",
+      "REQ-EPS-022",
+      "REQ-EPS-023",
+      "REQ-EPS-024",
+      "REQ-EPS-030",
+      "REQ-EPS-031",
+      "REQ-EPS-032",
+      "REQ-EPS-033",
+      "REQ-EPS-034",
+      "REQ-EPS-035",
+      "REQ-EPS-036",
+      "REQ-EPS-037",
+      "REQ-EPS-040",
+      "REQ-EPS-041",
+      "REQ-EPS-042",
+      "REQ-EPS-043",
+      "REQ-EPS-044",
+      "REQ-EPS-045",
+      "REQ-EPS-046",
+      "REQ-EPS-047",
+      "REQ-EPS-048",
+      "REQ-EPS-049",
+      "REQ-EPS-050",
+      "REQ-EPS-051",
+      "REQ-EPS-052",
+      "REQ-EPS-053",
+      "REQ-EPS-054",
+      "REQ-EPS-055",
+      "REQ-EPS-056",
+      "REQ-EPS-060",
+      "REQ-EPS-061",
+      "REQ-EPS-062",
+      "REQ-EPS-063",
+      "REQ-EPS-064",
+      "REQ-EPS-065",
+      "REQ-EPS-066"
+    ],
+    "module_assignments": null,
+    "warnings": [
+      "FUNCTION_CALL node 'N_17' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "FUNCTION_CALL node 'N_06' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "FUNCTION_CALL node 'N_03' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "FUNCTION_CALL node 'N_05' references callee 'WdgM_UpdateAliveCounter' but no matching sub-diagram was generated.",
+      "Section 7 normalization: RE_ControlTorque: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_ControlTorque: left mixed prose/code line unchanged because header + inline code structure was ambiguous",
+      "Section 7 normalization: RE_MonitorSafety: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_Initialize: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_HandleModeChange: left mixed prose/code line unchanged because structure was ambiguous",
+      "Section 7 normalization: RE_DiagnosticUpdate: left mixed prose/code line unchanged because structure was ambiguous"
+    ],
+    "errors": [],
+    "total_generation_time_ms": null
+  },
+  "validation_report": {
+    "issues": [
+      {
+        "rule_id": "STR-024",
+        "severity": "error",
+        "category": "Structural",
+        "message": "FUNCTION_CALL node 'N_17' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+        "element_id": "N_17",
+        "element_name": null,
+        "diagram_name": "RE_ControlTorque Code Flow",
+        "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-023",
+        "severity": "warning",
+        "category": "Structural",
+        "message": "Activity node 'Rte_IWrite(PP_EPSStatus, 3)' (N_05) may be unreachable",
+        "element_id": "N_05",
+        "element_name": null,
+        "diagram_name": "RE_MonitorSafety Code Flow",
+        "suggestion": null,
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-023",
+        "severity": "warning",
+        "category": "Structural",
+        "message": "Activity node 'WdgM_UpdateAliveCounter(1)' (N_06) may be unreachable",
+        "element_id": "N_06",
+        "element_name": null,
+        "diagram_name": "RE_MonitorSafety Code Flow",
+        "suggestion": null,
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-023",
+        "severity": "warning",
+        "category": "Structural",
+        "message": "Activity node 'Rte_Read_RP_VehicleSpeed(&l_u16VehicleSpeed)' (N_07) may be unreachable",
+        "element_id": "N_07",
+        "element_name": null,
+        "diagram_name": "RE_MonitorSafety Code Flow",
+        "suggestion": null,
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-023",
+        "severity": "warning",
+        "category": "Structural",
+        "message": "Activity node 'Rte_Read_RP_YawRate(&l_s16YawRate)' (N_08) may be unreachable",
+        "element_id": "N_08",
+        "element_name": null,
+        "diagram_name": "RE_MonitorSafety Code Flow",
+        "suggestion": null,
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-024",
+        "severity": "error",
+        "category": "Structural",
+        "message": "FUNCTION_CALL node 'N_06' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+        "element_id": "N_06",
+        "element_name": null,
+        "diagram_name": "RE_MonitorSafety Code Flow",
+        "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-024",
+        "severity": "error",
+        "category": "Structural",
+        "message": "FUNCTION_CALL node 'N_03' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+        "element_id": "N_03",
+        "element_name": null,
+        "diagram_name": "RE_Initialize Code Flow",
+        "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "STR-024",
+        "severity": "error",
+        "category": "Structural",
+        "message": "FUNCTION_CALL node 'N_05' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+        "element_id": "N_05",
+        "element_name": null,
+        "diagram_name": "RE_HandleModeChange Code Flow",
+        "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+        "can_auto_fix": false
+      },
+      {
+        "rule_id": "AUT-010",
+        "severity": "warning",
+        "category": "Completeness",
+        "message": "48 requirements have no model element: ['REQ-EPS-001', 'REQ-EPS-007', 'REQ-EPS-008', 'REQ-EPS-010', 'REQ-EPS-011', 'REQ-EPS-012', 'REQ-EPS-013', 'REQ-EPS-014', 'REQ-EPS-015', 'REQ-EPS-016']...",
+        "element_id": null,
+        "element_name": null,
+        "diagram_name": null,
+        "suggestion": null,
+        "can_auto_fix": false
+      }
+    ],
+    "diagrams_checked": 15,
+    "elements_checked": 158,
+    "passed": false
+  },
+  "generation_mode": "autosar",
+  "elaboration_info": {
+    "source": "cache_hit",
+    "status": "ok",
+    "elaborated_count": 55,
+    "req_hash": "27536566fbbe6b0b",
+    "quality_score": 1.0
+  },
+  "pipeline_summary": null
+}

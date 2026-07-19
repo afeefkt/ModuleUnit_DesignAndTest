@@ -1,0 +1,67 @@
+flowchart TD
+
+    N_01(["Start"])
+    N_02[/"Rte_Read_RP_IgnitionStatus(&l_u8Ignition)"/]
+    N_03{"l_u8Ignition != 1"}
+    N_04[/"Rte_IWrite(PP_MotorCurrentDemand, 0)"/]
+    N_05[/"Rte_IWrite(PP_AssistLevel, 0)"/]
+    N_06(["End"])
+    N_07[/"Rte_Read_RP_VehicleSpeed(&l_u16VehicleSpeed)"/]
+    N_08[/"Rte_Read_RP_TorqueSensorPrimary(...)"/]
+    N_09{"l_u16VehicleSpeed < 0  OR  l_u16VehicleSpeed > 255"}
+    N_10{{"Dem_ReportErrorStatus(...)"}}
+    N_11{"l_i16TorqueSensorPrimary < -32768  OR  l_i16Tor..."}
+    N_12{{"Dem_ReportErrorStatus(...)"}}
+    N_13["motorCurrentDemand = ..."]
+    N_14["assistLevel = ..."]
+    N_15[/"Rte_IWrite(...)"/]
+    N_16[/"Rte_IWrite(PP_AssistLevel, assistLevel)"/]
+    N_17[["Update watchdog counter"]]
+    click N_17 navigateToSubDiagram "WdgM_UpdateAliveCounter"
+
+    N_01 --> N_02
+    N_02 --> N_03
+    N_03 -->|Yes| N_04
+    N_03 -->|No| N_05
+    N_04 --> N_06
+    N_05 --> N_06
+    N_03 -->|No| N_07
+    N_07 --> N_08
+    N_08 --> N_09
+    N_09 -->|Yes| N_10
+    N_09 -->|No| N_11
+    N_10 --> N_16
+    N_11 --> N_12
+    N_12 --> N_16
+    N_09 --> N_13
+    N_13 --> N_14
+    N_14 --> N_15
+    N_15 --> N_16
+    N_08 --> N_17
+    N_11 -->|No| N_13
+
+    %% Node type styling
+    classDef rteCall fill:#d4e6f1,stroke:#2980b9,color:#000
+    classDef decision fill:#fdebd0,stroke:#e67e22,color:#000
+    classDef exception fill:#f5b7b1,stroke:#e74c3c,color:#000
+    classDef funcCall fill:#d5f5e3,stroke:#27ae60,color:#000
+    classDef initial fill:#d5dbdb,stroke:#566573,color:#000
+    classDef final fill:#566573,stroke:#2c3e50,color:#fff
+    classDef action fill:#ebf5fb,stroke:#3498db,color:#000
+    class N_01 initial
+    class N_02 rteCall
+    class N_03 decision
+    class N_04 rteCall
+    class N_05 rteCall
+    class N_06 final
+    class N_07 rteCall
+    class N_08 rteCall
+    class N_09 decision
+    class N_10 exception
+    class N_11 decision
+    class N_12 exception
+    class N_13 action
+    class N_14 action
+    class N_15 rteCall
+    class N_16 rteCall
+    class N_17 funcCall

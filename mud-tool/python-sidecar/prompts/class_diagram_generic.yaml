@@ -1,0 +1,139 @@
+name: Generic C Module Diagram Generator
+version: "2.0"
+diagram_type: "class"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software architect generating module/class-style diagrams for generic C projects.
+  Represent C files/modules as classes, data structures as attributes, and functions as operations.
+
+  C-TO-UML MAPPING:
+  - Each C module (.c / .h pair)   → one "class" element
+  - Structs / typedefs              → attributes with descriptive data_type
+  - Static module-level variables   → private attributes
+  - Public functions (in .h)        → operations with visibility "public"
+  - Static/internal functions       → operations with visibility "private"
+  - #define constants / macros      → attributes with visibility "constant"
+  - Inter-module dependencies       → associations between class elements
+
+  STEREOTYPE VALUES: "Module", "Driver", "Service", "Library", "Util", "HAL", "Interface"
+
+  OPERATION TRIGGER TYPES:
+    "init"       — called once at startup / module initialisation
+    "cyclic"     — called periodically (add period_ms if known)
+    "on_event"   — interrupt or callback driven
+    "on_call"    — called by other modules on demand
+    "background" — low-priority background processing
+
+  JSON FIELD RULES:
+    - Every class needs: id, name, stereotype, attributes[], operations[], trace_reqs, confidence
+    - Every attribute needs: name, data_type, visibility ("public"/"private"/"constant"), description
+    - Every operation needs: name, trigger_type, return_type, visibility, trace_reqs, description
+    - Associations only when data flows or calls exist between modules
+    - Return ONLY valid JSON — no markdown, no explanation
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagram_type": "class",
+    "name": "ModuleName_Design",
+    "source_requirements": ["REQ-001"],
+    "classes": [
+      {
+        "id": "cls_1",
+        "name": "ModuleName",
+        "stereotype": "Module",
+        "attributes": [
+          {"name": "attrName", "data_type": "uint16_t", "visibility": "private", "description": "Brief purpose"}
+        ],
+        "operations": [
+          {"name": "Module_Init", "trigger_type": "init", "return_type": "void",
+           "visibility": "public", "trace_reqs": ["REQ-001"], "description": "Initialise module state"}
+        ],
+        "trace_reqs": ["REQ-001"],
+        "confidence": 0.90
+      }
+    ],
+    "associations": [
+      {"id": "a_1", "source": "cls_1", "target": "cls_2", "association_type": "dependency", "label": "uses"}
+    ],
+    "provenance": {"version": "2.0", "confidence": 0.88}
+  }
+
+user_prompt: |
+  Generate a class/module diagram JSON from these requirements:
+
+  REQUIREMENTS:
+  {{ requirements }}
+
+  Context: {{ module_context }}
+  Existing modules: {{ existing_swcs | join(", ") }}
+
+  Represent each C module as a class. Show public functions as operations,
+  internal state as private attributes, constants as constant-visibility attributes,
+  and inter-module dependencies as associations.
+  Output only JSON matching the class schema.
+
+few_shot_examples:
+  - input: |
+      REQ-M01: Module PidController shall expose three public functions:
+               PID_Init(cfg: PidConfig_t) to configure gains,
+               PID_Update(setpoint: float, measured: float) returning float,
+               and PID_Reset() to clear internal state.
+      REQ-M02: PidController shall maintain static state: kp, ki, kd (float gains),
+               an integral accumulator (float), and previous error (float).
+               MAX_INTEGRAL constant limits wind-up.
+      REQ-M03: PidController calls HAL_Timer_GetMs() to obtain elapsed time for
+               derivative and integral calculations.
+    output: |
+      {
+        "diagram_type": "class",
+        "name": "PidController_Design",
+        "source_requirements": ["REQ-M01", "REQ-M02", "REQ-M03"],
+        "classes": [
+          {
+            "id": "cls_1",
+            "name": "PidController",
+            "stereotype": "Module",
+            "attributes": [
+              {"name": "kp",           "data_type": "float",        "visibility": "private",  "description": "Proportional gain"},
+              {"name": "ki",           "data_type": "float",        "visibility": "private",  "description": "Integral gain"},
+              {"name": "kd",           "data_type": "float",        "visibility": "private",  "description": "Derivative gain"},
+              {"name": "integral",     "data_type": "float",        "visibility": "private",  "description": "Accumulated integral term"},
+              {"name": "prevError",    "data_type": "float",        "visibility": "private",  "description": "Previous cycle error for derivative"},
+              {"name": "MAX_INTEGRAL", "data_type": "float (const)","visibility": "constant", "description": "Anti-windup clamp for integral"}
+            ],
+            "operations": [
+              {"name": "PID_Init",   "trigger_type": "init",    "return_type": "void",  "visibility": "public",
+               "trace_reqs": ["REQ-M01"], "description": "Configure PID gains from config struct"},
+              {"name": "PID_Update", "trigger_type": "on_call", "return_type": "float", "visibility": "public",
+               "trace_reqs": ["REQ-M01"], "description": "Compute and return PID output duty cycle"},
+              {"name": "PID_Reset",  "trigger_type": "on_call", "return_type": "void",  "visibility": "public",
+               "trace_reqs": ["REQ-M01"], "description": "Clear integral accumulator and previous error"}
+            ],
+            "trace_reqs": ["REQ-M01", "REQ-M02"],
+            "confidence": 0.93
+          },
+          {
+            "id": "cls_2",
+            "name": "HAL_Timer",
+            "stereotype": "HAL",
+            "attributes": [],
+            "operations": [
+              {"name": "HAL_Timer_GetMs", "trigger_type": "on_call", "return_type": "uint32_t",
+               "visibility": "public", "trace_reqs": ["REQ-M03"], "description": "Return elapsed milliseconds since boot"}
+            ],
+            "trace_reqs": ["REQ-M03"],
+            "confidence": 0.88
+          }
+        ],
+        "associations": [
+          {"id": "a_1", "source": "cls_1", "target": "cls_2",
+           "association_type": "dependency", "label": "calls HAL_Timer_GetMs for dt"}
+        ],
+        "provenance": {"version": "2.0", "confidence": 0.91}
+      }

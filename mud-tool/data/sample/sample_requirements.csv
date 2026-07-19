@@ -1,0 +1,9 @@
+Req_ID,Title,Description,Type,ASIL,Priority,Module_Hint,Status,Notes
+REQ-ARCH-0100,Sensor Fusion Component,"The ADAS system shall contain a SWC_SensorFusion component responsible for fusing radar, camera, and lidar sensor data into a unified environment model",functional,ASIL-B,must,SWC_SensorFusion,approved,Core ADAS component
+REQ-ARCH-0101,Sensor Fusion Cycle Time,SWC_SensorFusion shall execute a cyclic runnable at 10ms period for sensor data fusion processing,functional,ASIL-B,must,SWC_SensorFusion,approved,Timing-critical
+REQ-ARCH-0102,Sensor Fusion Output Interface,SWC_SensorFusion shall provide fused sensor data to consuming SWCs via a Sender-Receiver interface containing FusedEnvironmentModel data element,interface,ASIL-B,must,SWC_SensorFusion,approved,SR interface
+REQ-ARCH-0103,Sensor Failure Detection,SWC_SensorFusion shall detect sensor communication failures and transition to degraded mode within 50ms,safety,ASIL-B,must,SWC_SensorFusion,approved,Safety requirement
+REQ-ARCH-0200,Vehicle Control Component,The ADAS system shall contain a SWC_VehicleControl component for computing vehicle control commands,functional,ASIL-C,must,SWC_VehicleControl,approved,
+REQ-ARCH-0201,Vehicle Control Input,SWC_VehicleControl shall receive fused environment model data from SWC_SensorFusion via R-Port,interface,ASIL-C,must,SWC_VehicleControl,approved,
+REQ-ARCH-0300,Safety Monitor Component,SWC_SafetyMonitor shall continuously monitor system health and can trigger emergency stop,functional,ASIL-D,must,SWC_SafetyMonitor,approved,Highest ASIL
+REQ-ARCH-0301,Safety Monitor Inputs,SWC_SafetyMonitor shall receive sensor fusion status and vehicle control status via R-Ports,interface,ASIL-D,must,SWC_SafetyMonitor,approved,

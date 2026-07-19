@@ -1,0 +1,126 @@
+name: Generic C Sequence Diagram Generator
+version: "2.0"
+diagram_type: "sequence"
+profile: "generic_c"
+
+system_prompt: |
+  You are a software architect generating sequence diagrams for generic C projects.
+  Focus on module interaction, function call flows, and data handoff between subsystems.
+
+  LIFELINE TYPES:
+    "Module"    — software module or subsystem
+    "Driver"    — hardware abstraction layer or peripheral driver
+    "Service"   — OS service (scheduler, queue, semaphore)
+    "ISR"       — interrupt service routine
+    "Task"      — OS task or thread
+    "Hardware"  — physical hardware or peripheral
+
+  MESSAGE RULES:
+  - Messages represent function calls, callbacks, data transfers, or interrupts
+  - Use actual function-call signatures as labels where possible, e.g. "SensorFilter_Update(raw)"
+  - Synchronous call: is_async = false; always add a matching return message (is_return = true)
+  - Async / interrupt: is_async = true; no mandatory return unless an ACK/callback exists
+  - Self-message (from == to): internal processing, e.g. "filtered = ALPHA * raw + (1-ALPHA) * prev"
+  - Assign sequence_number in strict order of occurrence (1, 2, 3 ...)
+
+  COMBINED FRAGMENTS (use when requirements describe conditional or repeated behaviour):
+    "alt"  — if/else branching (add operand guards, e.g. "[val > MAX]" / "[else]")
+    "opt"  — optional block (single guard condition)
+    "loop" — repeated interaction (add guard or iteration count)
+
+  JSON FIELD RULES:
+    - Every lifeline needs: id, name, type, trace_reqs
+    - Every message needs: id, from, to, label, is_return, is_async, sequence_number, trace_req, confidence
+    - "from" and "to" reference lifeline ids
+    - Return ONLY valid JSON — no markdown, no explanation
+
+  {{ output_schema }}
+
+  {{ few_shot_examples }}
+  {{ additional_context }}
+
+output_schema: |
+  {
+    "diagram_type": "sequence",
+    "name": "Interaction_Name",
+    "description": "Brief description of the interaction scenario",
+    "source_requirements": ["REQ-001"],
+    "lifelines": [
+      {"id": "ll_1", "name": "ModuleName", "type": "Module", "trace_reqs": ["REQ-001"]}
+    ],
+    "messages": [
+      {"id": "msg_1", "from": "ll_1", "to": "ll_2", "label": "FuncCall(arg)",
+       "is_return": false, "is_async": false, "sequence_number": 1,
+       "trace_req": "REQ-001", "confidence": 0.90},
+      {"id": "msg_2", "from": "ll_2", "to": "ll_1", "label": "return result",
+       "is_return": true,  "is_async": false, "sequence_number": 2,
+       "trace_req": "REQ-001", "confidence": 0.90}
+    ],
+    "fragments": [],
+    "provenance": {"version": "2.0", "confidence": 0.88}
+  }
+
+user_prompt: |
+  Generate a sequence diagram JSON from these requirements:
+
+  REQUIREMENTS:
+  {{ requirements }}
+
+  Context: {{ module_context }}
+  Existing modules: {{ existing_swcs | join(", ") }}
+
+  Show module interactions as lifelines and function/API calls as messages.
+  Include return messages for synchronous calls.
+  Use combined fragments for conditional or repeated flows.
+  Output only JSON matching the sequence schema.
+
+few_shot_examples:
+  - input: |
+      REQ-S01: On ADC interrupt, ISR_ADC shall call SensorFilter_Update(raw_adc) with the raw value.
+      REQ-S02: SensorFilter_Update shall apply low-pass filtering and store the result internally.
+      REQ-S03: ControlTask shall call SensorFilter_GetFiltered() every 10 ms and pass the result
+               to PID_Update(setpoint, filtered). PID_Update returns the PWM duty cycle.
+      REQ-S04: ControlTask shall write the duty cycle by calling HAL_PWM_Set(duty).
+    output: |
+      {
+        "diagram_type": "sequence",
+        "name": "SensorFilter_ControlLoop",
+        "description": "ADC interrupt → filter update → PID control → PWM output",
+        "source_requirements": ["REQ-S01", "REQ-S02", "REQ-S03", "REQ-S04"],
+        "lifelines": [
+          {"id": "ll_1", "name": "ISR_ADC",       "type": "ISR",    "trace_reqs": ["REQ-S01"]},
+          {"id": "ll_2", "name": "SensorFilter",  "type": "Module", "trace_reqs": ["REQ-S01", "REQ-S02"]},
+          {"id": "ll_3", "name": "ControlTask",   "type": "Task",   "trace_reqs": ["REQ-S03", "REQ-S04"]},
+          {"id": "ll_4", "name": "PidController", "type": "Module", "trace_reqs": ["REQ-S03"]},
+          {"id": "ll_5", "name": "HAL_PWM",       "type": "Driver", "trace_reqs": ["REQ-S04"]}
+        ],
+        "messages": [
+          {"id": "msg_1", "from": "ll_1", "to": "ll_2", "label": "SensorFilter_Update(raw_adc)",
+           "is_return": false, "is_async": true, "sequence_number": 1,
+           "trace_req": "REQ-S01", "confidence": 0.93},
+          {"id": "msg_2", "from": "ll_2", "to": "ll_2",
+           "label": "filtered = ALPHA * raw_adc + (1-ALPHA) * prev_filtered",
+           "is_return": false, "is_async": false, "sequence_number": 2,
+           "trace_req": "REQ-S02", "confidence": 0.90},
+          {"id": "msg_3", "from": "ll_3", "to": "ll_2", "label": "SensorFilter_GetFiltered()",
+           "is_return": false, "is_async": false, "sequence_number": 3,
+           "trace_req": "REQ-S03", "confidence": 0.92},
+          {"id": "msg_4", "from": "ll_2", "to": "ll_3", "label": "return filtered_val",
+           "is_return": true, "is_async": false, "sequence_number": 4,
+           "trace_req": "REQ-S03", "confidence": 0.92},
+          {"id": "msg_5", "from": "ll_3", "to": "ll_4", "label": "PID_Update(setpoint, filtered_val)",
+           "is_return": false, "is_async": false, "sequence_number": 5,
+           "trace_req": "REQ-S03", "confidence": 0.91},
+          {"id": "msg_6", "from": "ll_4", "to": "ll_3", "label": "return duty_cycle",
+           "is_return": true, "is_async": false, "sequence_number": 6,
+           "trace_req": "REQ-S03", "confidence": 0.91},
+          {"id": "msg_7", "from": "ll_3", "to": "ll_5", "label": "HAL_PWM_Set(duty_cycle)",
+           "is_return": false, "is_async": false, "sequence_number": 7,
+           "trace_req": "REQ-S04", "confidence": 0.93},
+          {"id": "msg_8", "from": "ll_5", "to": "ll_3", "label": "return OK",
+           "is_return": true, "is_async": false, "sequence_number": 8,
+           "trace_req": "REQ-S04", "confidence": 0.90}
+        ],
+        "fragments": [],
+        "provenance": {"version": "2.0", "confidence": 0.91}
+      }

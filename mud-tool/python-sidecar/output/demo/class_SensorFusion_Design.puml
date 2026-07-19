@@ -1,0 +1,10 @@
+@startuml
+title SensorFusion_Design
+
+class SWC_SensorFusion <<ApplicationSWC>> {
+  + RE_InitFusion() <<init>>
+  + RE_FuseSensorData() <<cyclic>>
+}
+
+
+@enduml

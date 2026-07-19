@@ -1,0 +1,95 @@
+{
+  "issues": [
+    {
+      "rule_id": "STR-024",
+      "severity": "error",
+      "category": "Structural",
+      "message": "FUNCTION_CALL node 'N_17' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+      "element_id": "N_17",
+      "element_name": null,
+      "diagram_name": "RE_ControlTorque Code Flow",
+      "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-023",
+      "severity": "warning",
+      "category": "Structural",
+      "message": "Activity node 'Rte_IWrite(PP_EPSStatus, 3)' (N_05) may be unreachable",
+      "element_id": "N_05",
+      "element_name": null,
+      "diagram_name": "RE_MonitorSafety Code Flow",
+      "suggestion": null,
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-023",
+      "severity": "warning",
+      "category": "Structural",
+      "message": "Activity node 'WdgM_UpdateAliveCounter(1)' (N_06) may be unreachable",
+      "element_id": "N_06",
+      "element_name": null,
+      "diagram_name": "RE_MonitorSafety Code Flow",
+      "suggestion": null,
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-023",
+      "severity": "warning",
+      "category": "Structural",
+      "message": "Activity node 'Rte_Read_RP_VehicleSpeed(&l_u16VehicleSpeed)' (N_07) may be unreachable",
+      "element_id": "N_07",
+      "element_name": null,
+      "diagram_name": "RE_MonitorSafety Code Flow",
+      "suggestion": null,
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-023",
+      "severity": "warning",
+      "category": "Structural",
+      "message": "Activity node 'Rte_Read_RP_YawRate(&l_s16YawRate)' (N_08) may be unreachable",
+      "element_id": "N_08",
+      "element_name": null,
+      "diagram_name": "RE_MonitorSafety Code Flow",
+      "suggestion": null,
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-024",
+      "severity": "error",
+      "category": "Structural",
+      "message": "FUNCTION_CALL node 'N_06' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+      "element_id": "N_06",
+      "element_name": null,
+      "diagram_name": "RE_MonitorSafety Code Flow",
+      "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-024",
+      "severity": "error",
+      "category": "Structural",
+      "message": "FUNCTION_CALL node 'N_03' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+      "element_id": "N_03",
+      "element_name": null,
+      "diagram_name": "RE_Initialize Code Flow",
+      "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+      "can_auto_fix": false
+    },
+    {
+      "rule_id": "STR-024",
+      "severity": "error",
+      "category": "Structural",
+      "message": "FUNCTION_CALL node 'N_05' calls 'WdgM_UpdateAliveCounter' but no sub_diagram with function_name='WdgM_UpdateAliveCounter' was provided. Add a sub_diagram showing WdgM_UpdateAliveCounter() body.",
+      "element_id": "N_05",
+      "element_name": null,
+      "diagram_name": "RE_HandleModeChange Code Flow",
+      "suggestion": "Add sub_diagrams entry: {\"function_name\":\"WdgM_UpdateAliveCounter\", \"nodes\":[...], \"edges\":[...]}",
+      "can_auto_fix": false
+    }
+  ],
+  "diagrams_checked": 15,
+  "elements_checked": 158,
+  "passed": false
+}

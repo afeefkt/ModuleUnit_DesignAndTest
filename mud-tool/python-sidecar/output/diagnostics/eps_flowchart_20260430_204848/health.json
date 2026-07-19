@@ -1,0 +1,22 @@
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "backends": {
+    "cloud": {
+      "backend": "cloud:openai_compatible",
+      "available": true,
+      "provider": "openai_compatible",
+      "model": "qwen2.5-coder:7b"
+    },
+    "local": {
+      "backend": "local:llama-cpp",
+      "available": false,
+      "model_path": null,
+      "model_loaded": false,
+      "auto_gpu": true,
+      "gpu_detected": true,
+      "gpu_layers": -1,
+      "context_length": 8192
+    }
+  }
+}

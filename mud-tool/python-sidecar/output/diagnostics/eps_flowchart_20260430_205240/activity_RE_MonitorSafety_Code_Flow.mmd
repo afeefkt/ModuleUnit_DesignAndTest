@@ -1,0 +1,70 @@
+flowchart TD
+
+    N_01(["Start"])
+    N_02[/"Rte_Read_RP_IgnitionStatus(&l_u8Ignition)"/]
+    N_03{"l_u8Ignition == 0"}
+    N_04{{"Dem_SetEventStatus(...)"}}
+    N_05[/"Rte_IWrite(PP_EPSStatus, 3)"/]
+    N_06[["Update watchdog counter"]]
+    click N_06 navigateToSubDiagram "WdgM_UpdateAliveCounter"
+    N_07[/"Rte_Read_RP_VehicleSpeed(&l_u16VehicleSpeed)"/]
+    N_08[/"Rte_Read_RP_YawRate(&l_s16YawRate)"/]
+    N_09{"l_u16VehicleSpeed < 0  OR  l_u16VehicleSpeed > 255"}
+    N_10{{"Dem_SetEventStatus(...)"}}
+    N_11[/"Rte_IWrite(PP_EPSStatus, 3)"/]
+    N_12{"l_s16YawRate < -32768  OR  l_s16YawRate > 32767"}
+    N_13{{"Dem_SetEventStatus(...)"}}
+    N_14[/"Rte_IWrite(PP_EPSStatus, 3)"/]
+    N_15{"l_s16YawRate > 1000  AND  l_u16VehicleSpeed > 50"}
+    N_16{{"Dem_SetEventStatus(...)"}}
+    N_17[/"Rte_IWrite(PP_EPSStatus, 3)"/]
+    N_18(["End"])
+
+    N_01 --> N_02
+    N_02 --> N_03
+    N_03 -->|Yes| N_04
+    N_03 -->|No| N_17
+    N_04 --> N_18
+    N_05 --> N_18
+    N_07 --> N_09
+    N_09 -->|Yes| N_10
+    N_09 -->|No| N_11
+    N_10 --> N_18
+    N_11 --> N_18
+    N_08 --> N_12
+    N_12 -->|Yes| N_13
+    N_12 -->|No| N_14
+    N_13 --> N_18
+    N_14 --> N_18
+    N_09 --> N_15
+    N_15 -->|Yes| N_16
+    N_15 -->|No| N_18
+    N_16 --> N_18
+    N_17 --> N_18
+
+    %% Node type styling
+    classDef rteCall fill:#d4e6f1,stroke:#2980b9,color:#000
+    classDef decision fill:#fdebd0,stroke:#e67e22,color:#000
+    classDef exception fill:#f5b7b1,stroke:#e74c3c,color:#000
+    classDef funcCall fill:#d5f5e3,stroke:#27ae60,color:#000
+    classDef initial fill:#d5dbdb,stroke:#566573,color:#000
+    classDef final fill:#566573,stroke:#2c3e50,color:#fff
+    classDef action fill:#ebf5fb,stroke:#3498db,color:#000
+    class N_01 initial
+    class N_02 rteCall
+    class N_03 decision
+    class N_04 exception
+    class N_05 rteCall
+    class N_06 funcCall
+    class N_07 rteCall
+    class N_08 rteCall
+    class N_09 decision
+    class N_10 exception
+    class N_11 rteCall
+    class N_12 decision
+    class N_13 exception
+    class N_14 rteCall
+    class N_15 decision
+    class N_16 exception
+    class N_17 rteCall
+    class N_18 final
