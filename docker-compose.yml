@@ -1,0 +1,135 @@
+# =====================================================================
+#  MUD_MUT — unified local-AI pipeline
+#  One Ollama + the DESIGN half (mud-tool) + the VERIFICATION half
+#  (cpputest-rag backend/frontend/test-runner), on one network.
+#
+#    docker compose up
+#
+#  mud-tool UI/API : http://localhost:8042
+#  cpputest-rag UI : http://localhost:3000   (API on :8000)
+#  Ollama          : http://localhost:11434
+#
+#  Copy an env preset first:  cp .env.local.example .env
+#  (Ollama models must be pulled once — see README "Quick start".)
+#
+#  ⚠️  Localhost only. The test-runner is driven via the Docker socket;
+#      do NOT expose this stack to a network.
+# =====================================================================
+services:
+  # ── DESIGN half ────────────────────────────────────────────────────
+  mud-tool:
+    build: ./mud-tool
+    container_name: mud-tool
+    ports:
+      - "${MUD_PORT:-8042}:8042"
+    environment:
+      - MUD_AI_BACKEND=${MUD_AI_BACKEND:-cloud}
+      - MUD_CLOUD_PROVIDER=${MUD_CLOUD_PROVIDER:-openai_compatible}
+      - MUD_OPENAI_BASE_URL=${MUD_OPENAI_BASE_URL:-http://ollama:11434/v1}
+      - MUD_OPENAI_API_KEY=${MUD_OPENAI_API_KEY:-ollama}
+      - MUD_OPENAI_MODEL=${MUD_OPENAI_MODEL:-qwen2.5-coder:7b}
+      - MUD_PIPELINE_MODE=${MUD_PIPELINE_MODE:-two_model}
+      - MUD_PIPELINE_REVIEWER_MODEL=${MUD_PIPELINE_REVIEWER_MODEL:-deepseek-r1:7b}
+      - MUD_GUIDELINES_EMBED_MODEL=${MUD_GUIDELINES_EMBED_MODEL:-bge-m3}
+      - MUD_USE_KROKI=${MUD_USE_KROKI:-true}
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - mud-mut-network
+
+  # ── VERIFICATION half ──────────────────────────────────────────────
+  backend:
+    build: ./cpputest-rag/backend
+    container_name: cpputest-backend
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./cpputest-rag/c_projects:/app/c_projects
+      - ./cpputest-rag/test_examples:/app/test_examples
+      - ./cpputest-rag/generated_tests:/app/generated_tests
+      - ./cpputest-rag/data:/app/data
+      - ./cpputest-rag/logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434/api}
+      - EMBED_MODEL=${EMBED_MODEL:-all-minilm:latest}
+      - GEN_MODEL=${GEN_MODEL:-codellama:7b}
+      - C_PROJECT_DIR=/app/c_projects
+      - TEST_EXAMPLES_DIR=/app/test_examples
+      - OUTPUT_DIR=/app/generated_tests
+      - DATABASE_PATH=/app/data/cpputest.db
+      - MAX_FUNCTIONS_PER_CHUNK=${MAX_FUNCTIONS_PER_CHUNK:-10}
+      - TOP_K=${TOP_K:-3}
+      - BATCH_SIZE=${BATCH_SIZE:-5}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-900}
+      - HOST=0.0.0.0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - mud-mut-network
+
+  frontend:
+    build: ./cpputest-rag/frontend
+    container_name: cpputest-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - mud-mut-network
+
+  test-runner:
+    build: ./cpputest-rag/test-runner
+    container_name: cpputest-runner
+    volumes:
+      - ./cpputest-rag/generated_tests:/tests
+      - ./cpputest-rag/c_projects:/c_projects:ro
+    working_dir: /tests
+    restart: unless-stopped
+    networks:
+      - mud-mut-network
+
+  # ── Shared local LLM runtime ───────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mud-mut-network
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  mud-mut-network:
+    driver: bridge

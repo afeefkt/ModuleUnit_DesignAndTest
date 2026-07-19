@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green)
-![License](https://img.shields.io/badge/License-Proprietary-red)
+![License](https://img.shields.io/badge/License-Apache_2.0-blue)
 
 ---
 
@@ -1079,4 +1079,4 @@ Native Modelio IDE integration. Build with Maven, install the `.jmdac` file, con
 
 ## License
 
-Proprietary. All rights reserved.
+Licensed under the Apache License 2.0. See the [LICENSE](../LICENSE) file at the repository root.

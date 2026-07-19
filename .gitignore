@@ -1,13 +1,10 @@
 # ── Secrets / local env ─────────────────────────────────────────────
-# NEVER commit real secrets. Only *.example files are tracked.
+# Real env files are NEVER committed. Only *.example templates are tracked.
 .env
-.env.*
-!.env.example
-!.env.local.example
-!.env.auto.example
+.env.local
+.env.auto
 **/.env
-**/.env.*
-!**/.env.example
+!**/*.example
 
 # ── Python ──────────────────────────────────────────────────────────
 __pycache__/
@@ -45,6 +42,7 @@ node_modules/
 graphify-out/cache/
 **/output/
 **/logs/*.log
+bridge/out/
 
 # ── Databases ───────────────────────────────────────────────────────
 *.db

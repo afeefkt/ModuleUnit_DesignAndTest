@@ -227,7 +227,7 @@ class ExportRequest(BaseModel):
     result: GenerationResult
     output_path: str
     model_name: str = "MUD_Generated_Model"
-    format: str = Field("xmi", description="xmi | plantuml | mermaid | drawio")
+    format: str = Field("xmi", description="xmi | plantuml | mermaid | drawio | c_skeleton")
 
 
 class MermaidInlineRequest(BaseModel):
@@ -1522,8 +1522,9 @@ async def validate_model(request: ValidateRequest):
 async def export_model(request: ExportRequest):
     """Export generated models.
 
-    Supported formats: xmi, plantuml, mermaid, drawio
+    Supported formats: xmi, plantuml, mermaid, drawio, c_skeleton
     """
+    from mudtool.generator.c_skeleton_exporter import CSkeletonExporter
     from mudtool.generator.drawio_exporter import DrawIOExporter
     from mudtool.generator.mermaid_exporter import MermaidExporter
     from mudtool.generator.plantuml_exporter import PlantUMLExporter
@@ -1553,11 +1554,24 @@ async def export_model(request: ExportRequest):
         paths = exporter.export_result(request.result, output_path)
         return {"format": "drawio", "paths": [str(p) for p in paths]}
 
+    elif request.format in ("c_skeleton", "c-skeleton"):
+        # Emit a .c skeleton per ActivityDiagram. This is the seam consumed by
+        # the cpputest-rag verification half (see bridge/mud_to_tests.py).
+        exporter = CSkeletonExporter()
+        code_by_name = exporter.export_result(request.result)
+        output_path.mkdir(parents=True, exist_ok=True)
+        written: list[str] = []
+        for safe_name, c_code in code_by_name.items():
+            file_path = output_path / f"{safe_name}.c"
+            file_path.write_text(c_code, encoding="utf-8")
+            written.append(str(file_path))
+        return {"format": "c_skeleton", "paths": written, "files": len(written)}
+
     else:
         raise HTTPException(
             400,
             f"Unsupported export format: {request.format}. "
-            "Use: xmi, plantuml, mermaid, or drawio"
+            "Use: xmi, plantuml, mermaid, drawio, or c_skeleton"
         )
 
 
