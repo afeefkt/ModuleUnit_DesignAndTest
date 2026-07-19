@@ -77,11 +77,19 @@ with tab_status:
         (c2, "cpputest-rag (verify)", f"{cpputest_url}/health", "8000"),
         (c3, "Ollama (LLM runtime)", f"{ollama_url}/api/tags", "11434"),
     ]
+    _hints = {
+        "8042": "mud-tool down → run `docker compose up` or:\n"
+                "`cd mud-tool/python-sidecar && cp .env.local.example .env && pip install -e . && mudtool-server`",
+        "8000": "cpputest-rag down → run `docker compose up` (requires Docker)",
+        "11434": "Ollama down → start Ollama, then `ollama pull qwen3:8b`",
+    }
     for col, label, url, port in checks:
         ok, detail = _ping(url)
         with col:
             st.metric(label, "● up" if ok else "○ down")
             st.caption(f"port {port} · {detail}")
+            if not ok:
+                st.info(_hints.get(port, ""), icon="ℹ️")
 
     st.divider()
     st.subheader("Local models pulled in Ollama")

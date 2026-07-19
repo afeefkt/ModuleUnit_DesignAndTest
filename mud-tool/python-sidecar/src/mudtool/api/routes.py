@@ -412,20 +412,26 @@ async def elaborate_requirements(request: AnalyzeRequest):
 
     Returns: {thinking: [...], elaborated: [...], req_hash: "..."}
     """
-    from mudtool.api.dependencies import get_orchestrator
+    try:
+        from mudtool.api.dependencies import get_orchestrator
 
-    orchestrator = get_orchestrator()
+        orchestrator = get_orchestrator()
 
-    if not request.requirements.requirements:
-        raise HTTPException(400, "No requirements provided")
+        if not request.requirements.requirements:
+            raise HTTPException(400, "No requirements provided")
 
-    backend = orchestrator._get_backend()
-    settings = get_settings()
-    elaborator = _make_elaborator(settings, backend)
-    result = await elaborator.elaborate(
-        request.requirements.requirements, force_refresh=False
-    )
-    return result
+        backend = orchestrator._get_backend()
+        settings = get_settings()
+        elaborator = _make_elaborator(settings, backend)
+        result = await elaborator.elaborate(
+            request.requirements.requirements, force_refresh=False
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Elaboration failed")
+        raise HTTPException(500, detail=f"Elaboration error: {exc}") from exc
 
 
 @router.post("/elaborate/refresh")
@@ -434,20 +440,26 @@ async def elaborate_requirements_refresh(request: AnalyzeRequest):
 
     Mode is controlled by MUD_ELABORATION_MODE (see /elaborate).
     """
-    from mudtool.api.dependencies import get_orchestrator
+    try:
+        from mudtool.api.dependencies import get_orchestrator
 
-    orchestrator = get_orchestrator()
+        orchestrator = get_orchestrator()
 
-    if not request.requirements.requirements:
-        raise HTTPException(400, "No requirements provided")
+        if not request.requirements.requirements:
+            raise HTTPException(400, "No requirements provided")
 
-    backend = orchestrator._get_backend()
-    settings = get_settings()
-    elaborator = _make_elaborator(settings, backend)
-    result = await elaborator.elaborate(
-        request.requirements.requirements, force_refresh=True
-    )
-    return result
+        backend = orchestrator._get_backend()
+        settings = get_settings()
+        elaborator = _make_elaborator(settings, backend)
+        result = await elaborator.elaborate(
+            request.requirements.requirements, force_refresh=True
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Elaboration refresh failed")
+        raise HTTPException(500, detail=f"Elaboration error: {exc}") from exc
 
 
 @router.post("/analyze", response_model=dict)
