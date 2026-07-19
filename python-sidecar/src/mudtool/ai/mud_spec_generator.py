@@ -26,8 +26,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
 
+from mudtool.ai.pseudocode_guideline import (
+    FINAL_REMINDER as _PSEUDO_FINAL_REMINDER,
+    PSEUDO_CODE_GOLDEN_RULE as _PSEUDO_GOLDEN_RULE,
+    SECTION7_GUIDELINE_BLOCK as _PSEUDO_GUIDELINE_BLOCK,
+)
 from mudtool.ai.section7_normalizer import (
     Section7NormalizationResult,
+    detect_pure_prose_steps,
     normalize_section7_markdown,
 )
 
@@ -35,7 +41,8 @@ logger = logging.getLogger(__name__)
 
 # ── Generation system prompt ─────────────────────────────────────────────────
 
-_GEN_SYSTEM_PROMPT = """You are an expert AUTOSAR software architect producing Module Unit
+_GEN_SYSTEM_PROMPT = _PSEUDO_GUIDELINE_BLOCK + """
+You are an expert AUTOSAR software architect producing Module Unit
 Design (MUD) specifications.
 
 Your output is a detailed Markdown document for ONE Software Component.
@@ -108,51 +115,79 @@ values for all ASIL-C/D runnables, redundancy mechanisms, and fault reaction str
 // CalPrm used:   RP_CalPrm_DefaultTorque
 
 1. Guard
-   if (moduleState != MODULE_READY) {
-      irvModuleStatus = STATUS_INIT;
-   }
+```c
+if (l_eModuleState != MODULE_READY) {
+   irvModuleStatus = STATUS_INIT;
+}
+```
+
 2. Read inputs
-   Rte_Read(RP_NvM_State, &nvmState);
+```c
+Rte_Read(RP_NvM_State, &l_NvmState);
+```
+
 3. Restore defaults
-   if (nvmState == NVM_VALID) {
-      irvTorqueSetpoint = nvmState.lastTorque;
-   } else {
-      irvTorqueSetpoint = Rte_Prm(RP_CalPrm_DefaultTorque);
-   }
+```c
+if (l_NvmState == NVM_VALID) {
+   irvTorqueSetpoint = l_NvmState.lastTorque;
+} else {
+   irvTorqueSetpoint = Rte_Prm(RP_CalPrm_DefaultTorque);
+}
+```
+
 4. Validate
-   if (irvTorqueSetpoint > 100.0F) {
-      irvTorqueSetpoint = 100.0F;
-   }
+```c
+if (irvTorqueSetpoint > 100.0F) {
+   irvTorqueSetpoint = 100.0F;
+}
+```
+
 5. Write outputs
-   Rte_Write(PP_InitStatus, INIT_DONE);
-   irvModuleStatus = STATUS_READY;
+```c
+Rte_Write(PP_InitStatus, INIT_DONE);
+irvModuleStatus = STATUS_READY;
+```
 
 ### RE_Control
 // Reads:  RP_SteerAngle, RP_MotorCurrent
 // Writes: PP_TorqueOut
 // IRVs consumed: irvTorqueSetpoint, irvModuleStatus
 // IRVs produced: irvFilteredTorque
-// CalPrm used:   RP_CalPrm_TorqueGain, RP_CalPrm_CurrentLimit
+// CalPrm used:   RP_CalPrm_TorqueGain, RP_CalPrm_CurrentLimit, RP_CalPrm_FilterCoeff
 
 1. Guard
-   if (irvModuleStatus != STATUS_READY) {
-      Rte_Write(PP_TorqueOut, 0.0F);
-      return;
-   }
+```c
+if (irvModuleStatus != STATUS_READY) {
+   Rte_Write(PP_TorqueOut, 0.0F);
+   return;
+}
+```
+
 2. Read inputs
-   Rte_Read(RP_SteerAngle, &steerAngle);
-   Rte_Read(RP_MotorCurrent, &motorCurrent);
+```c
+Rte_Read(RP_SteerAngle, &l_f32SteerAngle);
+Rte_Read(RP_MotorCurrent, &l_f32MotorCurrent);
+```
+
 3. Validate
-   if (motorCurrent > Rte_Prm(RP_CalPrm_CurrentLimit)) {
-      Rte_Write(PP_TorqueOut, 0.0F);
-      Dem_ReportErrorStatus(SWC_DEM_E_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);
-      return;
-   }
+```c
+if (l_f32MotorCurrent > Rte_Prm(RP_CalPrm_CurrentLimit)) {
+   Rte_Write(PP_TorqueOut, 0.0F);
+   Dem_ReportErrorStatus(SWC_DEM_E_SENSOR_FAIL, DEM_EVENT_STATUS_FAILED);
+   return;
+}
+```
+
 4. Compute
-   torqueCmd = steerAngle * Rte_Prm(RP_CalPrm_TorqueGain);
-   irvFilteredTorque = LowPassFilter(torqueCmd, Rte_Prm(RP_CalPrm_FilterCoeff));
+```c
+l_f32TorqueCmd = l_f32SteerAngle * Rte_Prm(RP_CalPrm_TorqueGain);
+irvFilteredTorque = LowPassFilter(l_f32TorqueCmd, Rte_Prm(RP_CalPrm_FilterCoeff));
+```
+
 5. Write outputs
-   Rte_Write(PP_TorqueOut, clamp(irvFilteredTorque, -100.0F, 100.0F));
+```c
+Rte_Write(PP_TorqueOut, clamp(irvFilteredTorque, -100.0F, 100.0F));
+```
 ════════════════════════════════════════════════
 
 RULES (follow ALL — do not deviate):
@@ -164,23 +199,34 @@ RULES (follow ALL — do not deviate):
   IF_SR_/IF_CS_/IF_Prm_ interfaces, EA_ ExclusiveAreas, DEM event IDs (SWC_DEM_E_*)
 - Section 3.1: include ALL OS-scheduled runnables — at minimum RE_Init + one RE_Cyclic
 - Section 3.2: include ALL internal helper functions called by those runnables
-- Section 7 MUST use the pseudo-code format shown above for EVERY runnable in Section 3.1:
+- Section 7 MUST use the pseudo-code format shown above for EVERY runnable in Section 3.1.
+  MANDATORY — PSEUDO-CODE ONLY (violations cause automatic regeneration):
+
+  ✅ EVERY numbered step body MUST contain at least ONE of:
+    · A C assignment:          l_var = expr;
+    · An Rte_Read/Rte_IRead/Rte_Write/Rte_IWrite/Rte_Prm call with exact port name
+    · A Dem_ReportErrorStatus() or WdgM_UpdateAliveCounter() call
+    · An explicit control keyword: if( / else { / return; / switch( / while(
+
+  ❌ FORBIDDEN — these patterns cause regeneration:
+    · "The runnable reads speed and checks range"        ← prose narrative, no code
+    · "1. Process data → update output"                 ← arrow shorthand
+    · "3. Validate inputs and handle errors"            ← vague label, empty code body
+    · "if speed is too high set to safe state"          ← mixed prose + logic, no C syntax
+    · Any step whose entire code body is a single English sentence with no operators/APIs
+
+  Required structure per runnable:
     * // Reads / Writes / IRVs consumed / IRVs produced / CalPrm used — header comment block
-    * Numbered steps with short labels such as Guard / Read inputs / Validate / Compute / Write outputs
-    * One executable statement per line in the pseudo-code body
-    * Explicit if / else if / else / switch / case / default / return statements
-    * Numbered steps using Rte_Read/Rte_Write with actual port/signal names from Section 2
+    * Numbered steps: Guard → Read inputs → Validate → Compute → Write outputs
+    * One executable statement per line
     * SAFE_STATE output value (0 or fail-safe) for every ASIL-C/D validation step
-    * Dem_ReportErrorStatus() call with named DEM event ID on every error path
-    * Sub-function calls (e.g. ReadSensorInputs()) as standalone statements referencing names from Section 3.2
-    * No mixed prose + logic on one line
-    * No arrow shorthand such as "-> SAFE_STATE" or "→"
-    * No long narrative sentences describing multiple operations in one step
+    * Dem_ReportErrorStatus() with named DEM event ID (SWC_DEM_E_*) on every error path
+    * Sub-function calls as standalone statements referencing names from Section 3.2
 - Signal ranges must use engineering units (Nm, deg, m/s, %, A, V)
 - Every CalPrm must have a default value and valid range in Section 2.3
 - If an IRV is shared between runnables in different OS tasks, list the ExclusiveArea name
 - Do NOT output JSON — output ONLY the Markdown document above
-"""
+""" + _PSEUDO_FINAL_REMINDER
 
 _GEN_USER_PROMPT_TMPL = """Generate the MUD specification document for SWC: {swc_name}
 
@@ -255,7 +301,8 @@ Return the JSON review result."""
 
 # ── Regeneration prompt ───────────────────────────────────────────────────────
 
-_REGEN_SYSTEM_PROMPT = """You are a TEXT EDITOR for AUTOSAR MUD specifications.
+_REGEN_SYSTEM_PROMPT = _PSEUDO_GOLDEN_RULE + """
+You are a TEXT EDITOR for AUTOSAR MUD specifications.
 You are NOT a writer. You DO NOT generate new content from scratch.
 You modify exactly the lines you are told to modify and copy everything else verbatim.
 
@@ -913,9 +960,11 @@ class MudSpecGenerator:
                         "generate_spec: pipeline produced %d chars for %s",
                         len(_pipeline_result), swc_name,
                     )
-                    return self._apply_section7_normalization(
+                    return await self._normalize_with_auto_repair(
                         _pipeline_result,
                         swc_name=swc_name,
+                        asil=asil,
+                        requirements_text=requirements_text,
                         progress_callback=progress_callback,
                         stage="mud_spec",
                     )
@@ -928,8 +977,13 @@ class MudSpecGenerator:
                     if progress_callback:
                         progress_callback({
                             "stage": "mud_spec",
-                            "message": "Pipeline produced no output — falling back to single-pass generation…",
+                            "message": (
+                                f"⚠ Two-stage pipeline returned only "
+                                f"{len(_pipeline_result or '')} chars — falling back to single-pass"
+                            ),
                             "progress": 5,
+                            "fallback_reason": "two_stage_short_result",
+                            "fallback_chars": len(_pipeline_result or ""),
                         })
             except Exception as _pipe_exc:
                 logger.warning(
@@ -939,8 +993,10 @@ class MudSpecGenerator:
                 if progress_callback:
                     progress_callback({
                         "stage": "mud_spec",
-                        "message": f"Pipeline error ({_pipe_exc}) — falling back to single-pass…",
+                        "message": f"⚠ Two-stage pipeline error ({_pipe_exc}) — falling back to single-pass",
                         "progress": 5,
+                        "fallback_reason": "two_stage_exception",
+                        "fallback_error": str(_pipe_exc),
                     })
 
         # ── Single-pass generation (default path) ────────────────────────────
@@ -1086,9 +1142,11 @@ class MudSpecGenerator:
             spec_md = re.sub(r"\n?```$", "", spec_md)
 
         logger.info("MudSpecGenerator: generated %d chars for %s", len(spec_md), swc_name)
-        return self._apply_section7_normalization(
+        return await self._normalize_with_auto_repair(
             spec_md,
             swc_name=swc_name,
+            asil=asil,
+            requirements_text=requirements_text,
             progress_callback=progress_callback,
             stage="mud_spec",
         )
@@ -1515,6 +1573,114 @@ class MudSpecGenerator:
             result.approved = rule_approved
         return result
 
+    async def _normalize_with_auto_repair(
+        self,
+        spec_md: str,
+        *,
+        swc_name: str,
+        asil: str,
+        requirements_text: str,
+        progress_callback=None,
+        stage: str = "mud_spec",
+    ) -> str:
+        """Normalise Section 7 and trigger ONE-SHOT prose repair if needed.
+
+        Used by generation paths (single-pass + two-stage). Returns the final
+        markdown after at most one repair pass. If the repair pass STILL produces
+        prose, the warnings are surfaced via SSE but no further retries fire.
+        """
+        repair_ctx: dict = {"repaired": False}
+        spec_md = self._apply_section7_normalization(
+            spec_md,
+            swc_name=swc_name,
+            progress_callback=progress_callback,
+            stage=stage,
+            auto_repair_context=repair_ctx,
+        )
+        if repair_ctx.get("needs_repair"):
+            spec_md = await self._repair_section7_prose(
+                spec_md,
+                repair_ctx["flagged_steps"],
+                swc_name=swc_name,
+                asil=asil,
+                requirements_text=requirements_text,
+                progress_callback=progress_callback,
+            )
+            # Mark repaired BEFORE re-normalisation so the one-shot guard fires.
+            repair_ctx["repaired"] = True
+            spec_md = self._apply_section7_normalization(
+                spec_md,
+                swc_name=swc_name,
+                progress_callback=progress_callback,
+                stage=stage,
+                auto_repair_context=repair_ctx,
+            )
+        return spec_md
+
+    async def _repair_section7_prose(
+        self,
+        prose_spec: str,
+        flagged_steps: list[dict],
+        *,
+        swc_name: str,
+        asil: str,
+        requirements_text: str,
+        progress_callback=None,
+    ) -> str:
+        """Targeted one-shot regeneration when Section 7 contains pure-prose steps.
+
+        Builds a synthetic ``SpecReviewResult`` from ``flagged_steps`` and routes
+        through the proven ``regenerate_spec()`` machinery — reusing repair_attempt
+        prompt escalation. Returns the regenerated markdown (not yet re-normalised).
+        """
+        issues = [
+            ReviewIssue(
+                severity="error",
+                section=f"Section 7 — {item.get('runnable', '?')} step {item.get('step_num', '?')}",
+                message=(
+                    f"Step body is pure prose, not pseudo-code: "
+                    f"\"{item.get('code_preview', '')}\". "
+                    f"Rewrite the step.code as a ```c fenced block containing "
+                    f"real Rte_*/Dem_*/WdgM_* calls or C operators (=, ==, if, return)."
+                ),
+            )
+            for item in flagged_steps
+        ]
+        synthetic_review = SpecReviewResult(
+            approved=False,
+            coverage_pct=100,    # not a coverage issue — pure formatting
+            issues=issues,
+            suggestions=[],
+            uncovered_req_ids=[],
+            coverage_gaps=[],
+            iteration=1,
+        )
+        if progress_callback:
+            progress_callback({
+                "stage": "mud_spec",
+                "message": (
+                    f"⚠ Section 7 prose detected ({len(flagged_steps)} step(s)) — "
+                    "running targeted repair pass..."
+                ),
+                "progress": 95,
+                "prose_repair_attempt": 1,
+                "prose_repair_count": len(flagged_steps),
+            })
+        logger.warning(
+            "Auto-repair triggered: %d prose step(s) in Section 7 for %s",
+            len(flagged_steps), swc_name,
+        )
+        return await self.regenerate_spec(
+            swc_name=swc_name,
+            asil=asil,
+            requirements_text=requirements_text,
+            current_spec_markdown=prose_spec,
+            review=synthetic_review,
+            temperature=0.1,
+            progress_callback=progress_callback,
+            repair_attempt=True,
+        )
+
     def _apply_section7_normalization(
         self,
         spec_md: str,
@@ -1523,7 +1689,17 @@ class MudSpecGenerator:
         progress_callback=None,
         stage: str = "mud_spec",
         iteration: int | None = None,
+        auto_repair_context: dict | None = None,
     ) -> str:
+        """Normalise Section 7 + detect prose.
+
+        When ``auto_repair_context`` is a dict, prose-step detection writes into it:
+            auto_repair_context["needs_repair"]   = True
+            auto_repair_context["flagged_steps"] = [...]
+        ...so the caller can trigger a one-shot ``_repair_section7_prose`` pass.
+        The caller is responsible for setting ``auto_repair_context["repaired"]``
+        to True after the repair pass to prevent infinite re-entry.
+        """
         try:
             normalization = normalize_section7_markdown(spec_md)
         except Exception as exc:
@@ -1560,13 +1736,39 @@ class MudSpecGenerator:
             normalization.changed_runnable_count,
             normalization.warning_count,
         )
+        # ── Prose-detection gate (UI-D + Phase PSEUDO) ───────────────────────
+        # Scan the normalised output for steps that contain only English prose
+        # (no C operators, no Rte_/Dem_ API calls). Two behaviours:
+        #   1. Always: emit warnings to SSE so UI can show "⚠ N prose steps" badge
+        #   2. If auto_repair_context is supplied AND not yet repaired: signal
+        #      the caller to trigger _repair_section7_prose() one-shot.
+        prose_flagged = detect_pure_prose_steps(normalization.normalized_markdown)
+        prose_warning_msgs: list[str] = []
+        if prose_flagged and auto_repair_context is not None \
+                and not auto_repair_context.get("repaired"):
+            # One-shot signal — caller will await the repair, then re-enter this
+            # function with auto_repair_context["repaired"] = True
+            auto_repair_context["needs_repair"] = True
+            auto_repair_context["flagged_steps"] = prose_flagged
+        if prose_flagged:
+            for item in prose_flagged:
+                msg = (
+                    f"Step {item['step_num']} of {item['runnable']} looks like prose "
+                    f"(\"{item['label']}\": {item['code_preview']})"
+                )
+                prose_warning_msgs.append(msg)
+                logger.warning("Section 7 prose-step detected: %s", msg)
+            normalization.warnings.extend(prose_warning_msgs)
+
         if progress_callback:
             summary = normalization.summary()
+            prose_count = len(prose_flagged)
             message = (
-                "Section 7 normalization complete - "
-                f"{summary['normalized_runnable_count']} runnable block(s), "
+                "Section 7 normalization complete — "
+                f"{summary['normalized_runnable_count']} runnable(s), "
                 f"{summary['changed_runnable_count']} adjusted, "
                 f"{summary['warning_count']} warning(s)"
+                + (f", ⚠ {prose_count} prose step(s) detected" if prose_count else "")
             )
             event = {
                 "stage": stage,
@@ -1576,6 +1778,8 @@ class MudSpecGenerator:
                     **summary,
                     "runnable_reports": [report.to_dict() for report in normalization.runnable_reports],
                     "warnings": list(normalization.warnings),
+                    "prose_steps_flagged": prose_flagged,
+                    "prose_step_count": prose_count,
                 },
             }
             if iteration is not None:

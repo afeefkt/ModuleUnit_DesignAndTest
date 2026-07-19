@@ -469,3 +469,84 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
         seen.add(value)
         ordered.append(value)
     return ordered
+
+
+# ── Prose-detection gate (UI-D) ───────────────────────────────────────────────
+
+_PROSE_SENTENCE_RE = re.compile(
+    r"^[A-Z][a-z][\w ,'\-]+\.?\s*$"   # capitalised English sentence, no C operators
+)
+
+
+def _step_body_is_pure_prose(code: str) -> bool:
+    """Return True if the step code block contains no C constructs — only prose.
+
+    A step is pure prose when ALL of the following are true:
+    - No Rte_/Dem_/WdgM_ API call
+    - No C operators (=, ==, !=, >=, <=, <, >, &&, ||, !)
+    - No control keyword (if, else, return, switch, while, for)
+    - No semicolons
+    """
+    s = (code or "").strip()
+    if not s:
+        return True   # empty code body — treat as pure prose
+    has_api   = bool(re.search(r"\b(?:Rte_|Dem_|WdgM_)[A-Za-z]", s))
+    has_op    = bool(re.search(r"[=!<>]=|[<>!]|&&|\|\||;", s))
+    has_ctrl  = bool(re.search(r"\b(?:if|else|return|switch|while|for)\s*[\(\{]?", s))
+    has_assign = bool(re.search(r"[A-Za-z_]\w*\s*=\s*\S", s))
+    return not (has_api or has_op or has_ctrl or has_assign)
+
+
+def detect_pure_prose_steps(section7_markdown: str) -> list[dict]:
+    """Scan Section 7 markdown for steps whose code body is pure English prose.
+
+    Returns a list of dicts: {runnable, step_num, label, code_preview}.
+    An empty list means all steps look code-like (good).
+
+    This is called from MudSpecGenerator._apply_section7_normalization() and
+    the result is surfaced as warnings in the SSE event so the UI can show a
+    "⚠ N steps look like prose — regenerate recommended" badge.
+    """
+    match = _SECTION_HEADING_RE.search(section7_markdown or "")
+    if not match:
+        return []
+
+    body = match.group("body")
+    # Split into runnable sections
+    runnable_chunks = re.split(r"(?m)^###\s+", body)
+    flagged: list[dict] = []
+
+    for chunk in runnable_chunks:
+        if not chunk.strip():
+            continue
+        lines = chunk.splitlines()
+        runnable_name = lines[0].strip() if lines else "?"
+        current_num: str = ""
+        current_label: str = ""
+        code_lines: list[str] = []
+
+        def _flush() -> None:
+            if not current_num:
+                return
+            code = "\n".join(code_lines).strip()
+            if _step_body_is_pure_prose(code):
+                flagged.append({
+                    "runnable": runnable_name,
+                    "step_num": current_num,
+                    "label": current_label,
+                    "code_preview": (code[:80] + "…") if len(code) > 80 else code or "(empty)",
+                })
+
+        for line in lines[1:]:
+            m = _NUMBERED_STEP_RE.match(line)
+            if m:
+                _flush()
+                current_num = m.group("num")
+                current_label = m.group("body").strip()
+                code_lines = []
+            elif current_num:
+                code_lines.append(line)
+
+        _flush()
+
+    return flagged

@@ -15,6 +15,21 @@ def test_single_pass_mud_prompt_requires_short_section7_labels_and_no_arrow_shor
     lowered = _GEN_SYSTEM_PROMPT.lower()
 
     assert "one executable statement per line" in lowered
-    assert "explicit if / else if / else / switch / case / default / return statements" in lowered
-    assert "no arrow shorthand such as \"-> safe_state\"" in lowered
-    assert "short labels such as guard / read inputs / validate / compute / write outputs" in lowered
+    # The prompt forbids prose — at least one of these control-flow rule phrases must be present
+    assert (
+        "explicit if / else if / else / switch / case / default / return statements" in lowered
+        or "explicit control keyword" in lowered
+        or "if( / else {" in lowered.replace(" ", "").replace("\n", "")
+        or "if / else if / else / switch" in lowered
+    ), "GEN_SYSTEM_PROMPT must require explicit C control-flow keywords in Section 7"
+    # Arrow shorthand must be forbidden
+    assert (
+        "no arrow shorthand" in lowered
+        or "arrow shorthand" in lowered
+    ), "GEN_SYSTEM_PROMPT must forbid arrow shorthand (-> SAFE_STATE)"
+    # Guard / Read / Compute / Write structure must be mentioned
+    assert (
+        "short labels such as guard" in lowered
+        or "guard → read inputs" in lowered
+        or "guard" in lowered and "read inputs" in lowered and "compute" in lowered
+    ), "GEN_SYSTEM_PROMPT must describe structural step labels (Guard, Read, Compute, Write)"

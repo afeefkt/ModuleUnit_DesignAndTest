@@ -30,6 +30,18 @@
       height: auto;
     }
 
+    /* Ensure decision diamond labels are fully visible — never clipped */
+    .mermaid svg .node .label,
+    .mermaid svg .node foreignObject,
+    .mermaid svg text.nodeLabel {
+      overflow: visible !important;
+    }
+    .mermaid svg .node polygon,
+    .mermaid svg .node .label div {
+      overflow: visible !important;
+      white-space: normal;
+    }
+
     .tab-btn.active {
       border-bottom: 2px solid #3b82f6;
       color: #3b82f6;
@@ -1178,6 +1190,7 @@
             </div>
             <div class="ml-auto flex gap-2 items-center">
               <button class="secondary text-xs px-3" onclick="showModulePickerPanel()">← Modules</button>
+              <button class="secondary text-xs px-3" id="btnEditMudSpec" onclick="toggleMudSpecEdit()">✏ Edit</button>
               <button class="primary text-xs px-3" id="btnUseMudSpecForDiagrams">Use for Diagrams →</button>
               <button class="secondary text-xs px-3" id="btnDownloadMudSpec">Download .md</button>
             </div>
@@ -1284,6 +1297,19 @@
             </div>
             <!-- Rendered content -->
             <div id="mudSpecContent" class="p-6 prose max-w-none"></div>
+            <!-- Edit mode: raw markdown textarea (hidden by default) -->
+            <textarea id="mudSpecEditor"
+              class="hidden w-full font-mono text-xs border-0 rounded-b-xl p-6
+                     bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400 resize-y"
+              style="min-height:520px;line-height:1.65;tab-size:2"
+              spellcheck="false"
+              placeholder="Edit the MUD specification Markdown here…"></textarea>
+          </div>
+          <!-- Edit mode action bar (hidden by default) -->
+          <div id="mudSpecEditActions" class="hidden flex gap-2 mt-3 items-center">
+            <button class="primary text-xs px-4 py-1.5" onclick="saveMudSpecEdit()">✓ Save Changes</button>
+            <button class="secondary text-xs px-3 py-1.5" onclick="cancelMudSpecEdit()">✕ Cancel</button>
+            <span class="text-xs text-slate-400 ml-2">After saving, click "AI Review Spec" in the sidebar to validate your edits.</span>
           </div>
         </div>
       </div>
@@ -2201,8 +2227,15 @@
       loadCoverage();
       enableExportButtons();
       document.getElementById('btnClear').disabled = false;
-      // Reveal tab bar if MUD spec was already generated (allows switching back)
-      _setActiveTab('flowcharts');
+      // Only auto-switch to Flowcharts if user is NOT currently on the MUD Spec panel.
+      // If they're reading the spec, keep them there — tab bar still refreshes.
+      const mudSpecVisible = !document.getElementById('mudSpecPanel').classList.contains('hidden');
+      if (mudSpecVisible) {
+        _setActiveTab(null);   // refresh tab bar + disable states, don't change active panel
+      } else {
+        _setActiveTab('flowcharts');
+        showDiagramPanel();
+      }
 
       const pipelineMode = document.getElementById('pipelineMode').value;
       const nDiags = d.result.diagrams?.length || 0;
@@ -3383,12 +3416,20 @@
     function _setActiveTab(name) {
       const tabsBar = document.getElementById('mainContentTabs');
       if (!tabsBar) return;
-      // Only show tab bar if both spec AND diagrams have content
+      // Show tab bar as soon as EITHER spec OR diagrams exist (not both required)
       const hasDiagrams = Object.keys(state.diagrams || {}).length > 0;
-      const hasSpec = !!(state.mudSpec);
-      if (hasDiagrams && hasSpec) tabsBar.classList.remove('hidden');
+      const hasSpec     = !!(state.mudSpec);
+      if (hasDiagrams || hasSpec) tabsBar.classList.remove('hidden');
       const btnSpec       = document.getElementById('tabBtnSpec');
       const btnFlowcharts = document.getElementById('tabBtnFlowcharts');
+      // Disable (grey out) Flowcharts tab when no diagrams have been generated yet
+      if (btnFlowcharts) {
+        btnFlowcharts.disabled = !hasDiagrams;
+        btnFlowcharts.title    = hasDiagrams ? '' : 'Generate diagrams first';
+        btnFlowcharts.style.opacity = hasDiagrams ? '' : '0.45';
+        btnFlowcharts.style.cursor  = hasDiagrams ? '' : 'not-allowed';
+      }
+      if (name === null) return;  // null = refresh state only, don't change active button
       if (btnSpec)       btnSpec.className       = name === 'spec'       ? _TAB_ACTIVE : _TAB_INACTIVE;
       if (btnFlowcharts) btnFlowcharts.className  = name === 'flowcharts' ? _TAB_ACTIVE : _TAB_INACTIVE;
     }
@@ -3401,6 +3442,10 @@
       _setActiveTab('flowcharts');
     }
     function showModulePickerPanel() {
+      // Exit edit mode if active (so unsaved edits don't linger)
+      if (!document.getElementById('mudSpecEditor').classList.contains('hidden')) {
+        cancelMudSpecEdit();
+      }
       document.getElementById('diagramCanvas').classList.add('hidden');
       document.getElementById('mudSpecPanel').classList.add('hidden');
       document.getElementById('modulePickerPanel').classList.remove('hidden');
@@ -3413,6 +3458,51 @@
       document.getElementById('mudSpecPanel').classList.remove('hidden');
       document.getElementById('diagramTabs').classList.add('hidden');
       _setActiveTab('spec');
+    }
+
+    // ── MUD Spec inline editor (UI-B) ──────────────────────────────────────
+    let _mudSpecEditOriginal = '';
+
+    function toggleMudSpecEdit() {
+      const editor = document.getElementById('mudSpecEditor');
+      const isEditing = !editor.classList.contains('hidden');
+      if (isEditing) {
+        cancelMudSpecEdit();
+      } else {
+        _mudSpecEditOriginal = state.mudSpec || '';
+        editor.value = _mudSpecEditOriginal;
+        document.getElementById('mudSpecContent').classList.add('hidden');
+        editor.classList.remove('hidden');
+        document.getElementById('mudSpecEditActions').classList.remove('hidden');
+        document.getElementById('btnEditMudSpec').textContent = '✕ Cancel Edit';
+        editor.focus();
+      }
+    }
+
+    function saveMudSpecEdit() {
+      const edited = document.getElementById('mudSpecEditor').value.trim();
+      if (!edited) { toast('Cannot save empty spec', true); return; }
+      state.mudSpec = edited;
+      // Re-render the HTML view with the edited markdown
+      const swcName = (state.selectedModule || {}).swc_name || '';
+      renderMudSpec(edited, swcName);
+      _exitMudSpecEditMode();
+      // Enable review so the user can validate their changes
+      document.getElementById('btnReviewMudSpec').disabled = false;
+      toast('MUD spec updated — click "AI Review Spec" in the sidebar to validate your edits');
+    }
+
+    function cancelMudSpecEdit() {
+      // Restore original (discard edits)
+      state.mudSpec = _mudSpecEditOriginal;
+      _exitMudSpecEditMode();
+    }
+
+    function _exitMudSpecEditMode() {
+      document.getElementById('mudSpecContent').classList.remove('hidden');
+      document.getElementById('mudSpecEditor').classList.add('hidden');
+      document.getElementById('mudSpecEditActions').classList.add('hidden');
+      document.getElementById('btnEditMudSpec').textContent = '✏ Edit';
     }
 
     function getRequirementsText() {
@@ -3715,6 +3805,9 @@
 
         addActivityLog(`MUD spec complete for ${m.swc_name} — ${specMd.length.toLocaleString()} chars`, 'ok');
         renderMudSpec(specMd, m.swc_name);
+        // Show tab bar immediately with MUD Spec tab active — tab is always visible from now on
+        _setActiveTab('spec');
+        showMudSpecPanel();
         document.getElementById('mudSpecTitle').textContent = `MUD Spec: ${m.swc_name} (iteration 1)`;
         document.getElementById('mudSpecStatus').textContent = `Iteration 1 — ${specMd.length} chars`;
         document.getElementById('reviewPanel').classList.add('hidden');

@@ -15,6 +15,7 @@ import csv
 import io
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Optional
@@ -27,19 +28,55 @@ _SYSTEM_PROMPT = """You are an expert AUTOSAR software architect.
 Your task is to analyse a set of architectural requirements and produce a
 structured module decomposition — one entry per Software Component (SWC).
 
-RULES:
-1. Identify every distinct SWC mentioned or implied by the requirements.
-2. Use AUTOSAR SWC naming: SWC_PascalCase  (e.g. SWC_SensorFusion)
-3. For each SWC extract:
+DECOMPOSITION RULES — read carefully before responding:
+1. Work at ARCHITECTURE level. Each SWC is a major functional domain
+   (e.g. SWC_SpeedControl, SWC_CurrentControl, SWC_MotorMonitor).
+   Sub-functions (overcurrent protection, overvoltage protection, stall
+   detection, etc.) are RUNNABLES inside a parent SWC — NOT separate SWCs.
+
+2. ❌ WRONG — over-decomposition (never do this):
+     SWC_MtrMonOvercurrent, SWC_MtrMonOvervoltage, SWC_MtrMonOvertemp …
+   ✅ CORRECT — one SWC, multiple runnables:
+     SWC_MtrMon  with runnables [RE_OvercurrentProtection,
+                                  RE_OvervoltageProtection,
+                                  RE_OvertempProtection, …]
+
+3. TARGET COUNT: aim for (total_requirements / 8) SWCs, rounded up.
+   For ≤40 requirements: 2–6 SWCs.
+   For 41–80 requirements: 4–10 SWCs.
+   Never exceed 10 SWCs unless the requirements explicitly describe >10
+   independent architectural components.
+
+4. WHAT IS NOT A SWC — treat these as runnables or notes, never as new SWCs:
+   - Coding/design constraints (no dynamic memory, MISRA rules, no globals)
+     → add as a note; do NOT create a new SWC
+   - Verification/test requirements (integration tests, test scenarios, coverage goals)
+     → skip entirely; do NOT create a new SWC
+   - Signal interface / connectivity specs (units, routing between SWCs)
+     → add the ports to the relevant SWC; do NOT create a new SWC
+   - Top-level architecture descriptions (closed-loop control chain, system flow)
+     → use as context for decomposition; do NOT create SWC_ControlChain or SWC_System
+   - Initialization patterns (initialize all integrators, set safe outputs on startup)
+     → this is RE_Init inside each existing SWC; do NOT create SWC_Initialization
+
+   A SWC must be an independently implementable unit with its own internal state
+   and runnables. If a requirement only describes HOW other SWCs should behave
+   (constraint, test, interface rule), it belongs inside those SWCs — not in a new one.
+
+5. Use AUTOSAR SWC naming: SWC_PascalCase  (e.g. SWC_SensorFusion)
+
+6. For each SWC extract:
    - short_name:    camelCase identifier  (e.g. sensorFusion)
    - description:   one sentence purpose
    - asil:          QM | ASIL-A | ASIL-B | ASIL-C | ASIL-D  (default QM)
-   - runnables:     list of RE_ names (e.g. ["RE_Init","RE_FuseSensorData"])
+   - runnables:     list of RE_ names — include ALL sub-functions as runnables
+                    (e.g. ["RE_Init","RE_OvercurrentProtection","RE_FaultReport"])
    - req_ids:       list of requirement IDs that belong to this SWC
    - port_count:    estimated number of ports
    - calprm_count:  estimated number of calibration parameters
    - complexity:    low | medium | high
-4. Output ONLY valid JSON — no markdown, no prose.
+
+7. Output ONLY valid JSON — no markdown, no prose.
 
 OUTPUT SCHEMA:
 {
@@ -61,9 +98,14 @@ OUTPUT SCHEMA:
 """
 
 _USER_PROMPT_TMPL = """Analyse the following architectural requirements and return the
-module decomposition JSON:
+module decomposition JSON.
 
-DETECTED HINTS:
+CONSTRAINT: {req_count} requirements total — target {target_swc_count} SWC(s).
+Group sub-functions (protection types, control modes, diagnostic checks) as
+RE_* runnables inside their parent SWC. Do NOT create a separate SWC for each
+sub-function.
+
+DETECTED HINTS (architecture-level SWCs only):
 {evidence_summary}
 
 REQUIREMENTS:
@@ -76,6 +118,16 @@ _SWC_RE = re.compile(r"\bSWC_[A-Za-z][A-Za-z0-9_]*\b")
 _RUNNABLE_RE = re.compile(r"\bRE_[A-Za-z][A-Za-z0-9_]*\b")
 _PORT_RE = re.compile(r"\b(?:RP|PP)_[A-Za-z0-9_]+\b")
 _CALPRM_RE = re.compile(r"\bCalPrm_[A-Za-z0-9_]+\b", flags=re.IGNORECASE)
+
+# Requirement types that should NOT generate a new SWC entry.
+# These rows contribute ports/calprms to the existing module hint, but never
+# cause a new SWC to be created from a Module_Hint=System or vague hint.
+_NON_SWC_REQ_TYPES: frozenset[str] = frozenset({
+    "constraint", "design_constraint", "implementation_constraint",
+    "verification", "test", "testing", "validation",
+    "interface", "connectivity", "signal_interface",
+    "system", "architecture",            # top-level arch descriptions
+})
 _ASIL_ORDER = {"QM": 0, "ASIL-A": 1, "ASIL-B": 2, "ASIL-C": 3, "ASIL-D": 4}
 _COMPLEXITY_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -169,9 +221,13 @@ class ModulePlanner:
         """
         backend = self._orchestrator._get_backend()
         evidence_modules = _derive_modules_from_requirements_text(requirements_text)
+        req_count = sum(len(m.req_ids) for m in evidence_modules.values()) or requirements_text.count("\n")
+        target_swc_count = max(1, min(10, math.ceil(req_count / 8)))
         user_prompt = _USER_PROMPT_TMPL.format(
             requirements_text=requirements_text,
             evidence_summary=_build_evidence_summary(evidence_modules),
+            req_count=req_count,
+            target_swc_count=target_swc_count,
         )
 
         try:
@@ -278,10 +334,12 @@ class ModulePlanner:
 
         ai_modules = [_module_from_ai_dict(m) for m in modules_raw]
         modules = _merge_ai_and_evidence(ai_modules, evidence_modules)
+        modules = _consolidate_sub_swcs(modules)
+        modules = _filter_weak_modules(modules)
         if not summary:
             summary = _default_architecture_summary({m.swc_name: m for m in modules})
 
-        logger.info("ModulePlanner: detected %d SWC modules", len(modules))
+        logger.info("ModulePlanner: detected %d SWC modules (after consolidation + filter)", len(modules))
         return PlanResult(modules=modules, architecture_summary=summary, raw_response=raw)
 
 
@@ -388,13 +446,32 @@ def _derive_modules_from_requirements_text(requirements_text: str) -> dict[str, 
 
     grouped: dict[str, dict[str, object]] = {}
     for row in rows:
+        # Classify the requirement type — constraints, tests, and interface-only
+        # requirements do NOT become new SWCs; they contribute to existing SWCs only.
+        req_type = str(row.get("type", "") or "").strip().lower().replace(" ", "_").replace("-", "_")
+
         blob = " ".join(
             str(row.get(k, "") or "")
             for k in ("title", "description", "module_hint", "notes", "safety_level")
         )
+        raw_hint = str(row.get("module_hint") or "").strip()
         swc_name = _normalize_swc_name(
-            str(row.get("module_hint") or "") or _first_match(_SWC_RE, blob) or "SWC_Main"
+            raw_hint or _first_match(_SWC_RE, blob) or "SWC_Main"
         )
+
+        if req_type in _NON_SWC_REQ_TYPES:
+            # Don't create a new SWC for this requirement type.
+            # If a real SWC already exists for this module_hint, add the req_id there;
+            # otherwise just skip it — it will be handled by the AI prompt context.
+            req_id = str(row.get("req_id", "") or "").strip()
+            if swc_name in grouped and req_id:
+                grouped[swc_name]["req_ids"].append(req_id)  # type: ignore[index]
+            logger.debug(
+                "ModulePlanner: skipping req %s (type=%s) from SWC creation",
+                str(row.get("req_id", "")), req_type,
+            )
+            continue
+
         entry = grouped.setdefault(
             swc_name,
             {
@@ -516,6 +593,158 @@ def _default_architecture_summary(evidence_modules: dict[str, ModuleInfo]) -> st
     if len(names) == 1:
         return f"The requirements describe a single AUTOSAR software component: {names[0]}."
     return f"The requirements describe {len(names)} AUTOSAR software components: {', '.join(names)}."
+
+
+_ORPHAN_KEYWORDS: frozenset[str] = frozenset({
+    "test", "verif", "constraint", "avoid", "prevent", "ensure",
+    "signal", "interface", "chain", "init", "system", "architecture",
+})
+
+
+def _name_similarity(a: str, b: str) -> int:
+    """Count characters of common prefix between two SWC names (case-insensitive)."""
+    a_norm = re.sub(r"^SWC_", "", a).lower()
+    b_norm = re.sub(r"^SWC_", "", b).lower()
+    count = 0
+    for ca, cb in zip(a_norm, b_norm):
+        if ca == cb:
+            count += 1
+        else:
+            break
+    return count
+
+
+def _filter_weak_modules(modules: list[ModuleInfo]) -> list[ModuleInfo]:
+    """Remove artifacts (0-req SWCs) and absorb 1-req non-functional orphans.
+
+    A "non-functional orphan" is a SWC with only 1 requirement whose name or
+    description contains constraint/test/interface keywords.  These are absorbed
+    into the most name-similar real SWC so their req_id is not lost.
+    """
+    if len(modules) <= 2:
+        return modules  # nothing to filter — keep all
+
+    strong: list[ModuleInfo] = [m for m in modules if len(m.req_ids) >= 2]
+    one_req: list[ModuleInfo] = [m for m in modules if len(m.req_ids) == 1]
+    zero_req: list[ModuleInfo] = [m for m in modules if len(m.req_ids) == 0]
+
+    for m in zero_req:
+        logger.info("ModulePlanner: dropping %s (0 requirements — artifact)", m.swc_name)
+
+    for orphan in one_req:
+        label = (orphan.swc_name + " " + orphan.description).lower()
+        is_non_functional = any(kw in label for kw in _ORPHAN_KEYWORDS)
+        if not is_non_functional:
+            strong.append(orphan)  # looks like a real SWC — keep it
+            continue
+        # Absorb into the most name-similar strong SWC
+        best = max(strong, key=lambda m: _name_similarity(m.swc_name, orphan.swc_name), default=None)
+        if best:
+            best.req_ids = _dedupe_preserve_order(best.req_ids + orphan.req_ids)
+            best.runnables = _dedupe_preserve_order(best.runnables + orphan.runnables)
+            logger.info(
+                "ModulePlanner: absorbed 1-req orphan %s → %s", orphan.swc_name, best.swc_name
+            )
+        else:
+            strong.append(orphan)  # no good match — keep it rather than lose the req
+
+    return _sort_modules(strong)
+
+
+def _consolidate_sub_swcs(modules: list[ModuleInfo]) -> list[ModuleInfo]:
+    """Merge over-decomposed sub-SWCs back into their architecture-level parent.
+
+    When the AI produces SWC_MtrMonOvercurrent + SWC_MtrMonOvervoltage + …
+    this function detects them by shared prefix and merges them into SWC_MtrMon,
+    converting each child SWC into a runnable of the parent.
+
+    A "parent" is the SWC whose name is a prefix of at least one sibling name.
+    The merge only fires when a cluster of ≥3 SWCs share a common SWC_ prefix
+    (to avoid merging genuinely independent SWCs that happen to share a word).
+    """
+    if len(modules) <= 4:
+        return modules  # small result — nothing to consolidate
+
+    # Build prefix groups: strip SWC_ then take the first PascalCase word
+    def _parent_prefix(swc_name: str) -> str:
+        base = re.sub(r"^SWC_", "", swc_name)
+        # Split on PascalCase boundary: SWC_MtrMonOvercurrent → ["Mtr", "Mon", "Overcurrent"]
+        parts = re.findall(r"[A-Z][a-z0-9]*", base)
+        # Use first 1–2 parts as the canonical parent prefix
+        return "SWC_" + "".join(parts[:2]) if len(parts) >= 2 else swc_name
+
+    from collections import defaultdict
+    prefix_groups: dict[str, list[ModuleInfo]] = defaultdict(list)
+    for m in modules:
+        prefix_groups[_parent_prefix(m.swc_name)].append(m)
+
+    merged: list[ModuleInfo] = []
+    for parent_name, group in prefix_groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        # Only merge when 2+ SWCs share the prefix AND the parent name differs
+        # from each child — avoids merging unrelated short-prefix coincidences.
+        if len(group) < 2:
+            merged.extend(group)
+            continue
+
+        # Check if one of the group members IS already the parent (exact name match)
+        exact_parent = next((m for m in group if m.swc_name == parent_name), None)
+
+        # Merge all children into the parent (or build a new parent)
+        combined_runnables: list[str] = []
+        combined_req_ids: list[str] = []
+        combined_port_count = 0
+        combined_calprm_count = 0
+        asils: list[str] = []
+        descriptions: list[str] = []
+
+        for child in group:
+            # Convert the child SWC itself into a runnable name
+            child_base = re.sub(r"^SWC_", "", child.swc_name)
+            child_as_runnable = "RE_" + child_base
+            if child_as_runnable not in combined_runnables:
+                combined_runnables.append(child_as_runnable)
+            combined_runnables.extend(child.runnables)
+            combined_req_ids.extend(child.req_ids)
+            combined_port_count += child.port_count
+            combined_calprm_count += child.calprm_count
+            asils.append(child.asil)
+            if child.description:
+                descriptions.append(child.description)
+
+        combined_runnables = _dedupe_preserve_order(combined_runnables)
+        combined_req_ids = _dedupe_preserve_order(combined_req_ids)
+
+        base_module = exact_parent or group[0]
+        description = (
+            base_module.description
+            or f"{parent_name} consolidates {len(group)} functional sub-components."
+        )
+
+        merged.append(ModuleInfo(
+            swc_name=parent_name,
+            short_name=_short_name_from_swc(parent_name),
+            description=description,
+            asil=_strongest_asil(asils),
+            runnables=combined_runnables,
+            req_ids=combined_req_ids,
+            port_count=combined_port_count,
+            calprm_count=combined_calprm_count,
+            complexity=_derive_complexity(
+                len(combined_req_ids),
+                len(combined_runnables),
+                combined_port_count,
+                combined_calprm_count,
+            ),
+        ))
+        logger.info(
+            "ModulePlanner: consolidated %d sub-SWCs into %s (%d runnables)",
+            len(group), parent_name, len(combined_runnables),
+        )
+
+    return _sort_modules(merged)
 
 
 def _sort_modules(modules: list[ModuleInfo]) -> list[ModuleInfo]:

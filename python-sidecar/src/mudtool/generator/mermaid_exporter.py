@@ -415,11 +415,11 @@ class MermaidExporter:
                         break
             return f'"{safe}"'
 
-        def _preview_label(text: str) -> str:
+        def _preview_label(text: str, max_chars: int = 48) -> str:
             if not preview:
                 return text
             safe = re.sub(r"\s+", " ", text or "").strip()
-            if len(safe) <= 48:
+            if len(safe) <= max_chars:
                 return safe
             if "(" in safe and ")" in safe:
                 fn_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(", safe)
@@ -435,7 +435,7 @@ class MermaidExporter:
                         return f"{assign.group(1)} = call(...)"
                     return f"{assign.group(1)} = {fn_name}(...)"
                 return f"{assign.group(1)} = ..."
-            return safe[:45].rstrip() + "..."
+            return safe[:max_chars].rstrip() + "…"
 
         def _guard(g: str) -> str:
             """Sanitize a guard string for use in Mermaid -->|guard| edge labels.
@@ -517,7 +517,18 @@ class MermaidExporter:
                 if node.description and not preview:
                     safe_desc = node.description.replace('\r', '').replace('\n', ' ')
                     lines.append(f"    %% decision: {safe_desc}")
-                lines.append(f"    {nid}{{{_q(_preview_label(node.name))}}}")
+                # Decision diamonds use a higher truncation limit (70 chars) so C conditions
+                # like "l_f32TorqueSetpoint > RP_CalPrm_MaxTorque" remain fully readable.
+                # For labels longer than 35 chars, force a <br/> split at the first
+                # comparison/logical operator so text fits inside the narrow diamond.
+                decision_label = _preview_label(node.name, max_chars=70)
+                if len(decision_label) > 35:
+                    _SPLIT_OPS = (' >= ', ' <= ', ' == ', ' != ', ' > ', ' < ', ' && ', ' || ')
+                    for op in _SPLIT_OPS:
+                        if op in decision_label:
+                            decision_label = decision_label.replace(op, f'{op.rstrip()}<br/>', 1)
+                            break
+                lines.append(f"    {nid}{{{_q(decision_label)}}}")
 
             elif node.node_type == ActivityNodeType.CALL:
                 # Prefer node.name if it already contains a C-style call

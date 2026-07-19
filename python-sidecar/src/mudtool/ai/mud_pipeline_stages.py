@@ -46,6 +46,11 @@ from pathlib import Path
 from typing import Optional
 
 from mudtool.ai.mud_element_schemas import SECTION7_RUNNABLE_SCHEMA, SKELETON_SCHEMA
+from mudtool.ai.pseudocode_guideline import (
+    FINAL_REMINDER as _PSEUDO_FINAL_REMINDER,
+    PSEUDO_CODE_GOLDEN_RULE as _PSEUDO_GOLDEN_RULE,
+    BEFORE_AFTER_EXAMPLE as _PSEUDO_BEFORE_AFTER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +166,8 @@ Output ONLY the JSON object. No prose. No fences."""
 
 # ── Stage 3 prompt (per runnable) ─────────────────────────────────────────────
 
-_SECTION7_SYSTEM = """You are an AUTOSAR firmware engineer writing pseudo-code for a runnable.
+_SECTION7_SYSTEM = _PSEUDO_GOLDEN_RULE + """
+You are an AUTOSAR firmware engineer writing pseudo-code for a runnable.
 Output ONLY a single valid JSON object.
 Start with {{ and end with }}.
 
@@ -210,9 +216,22 @@ PSEUDO-CODE RULES:
 9. The code field must be compact pseudo-code, not narrative text.
 10. On early-exit paths, emit an explicit "return;" line.
 
+MANDATORY — every step.code MUST contain at least ONE of the following, or it will be REJECTED:
+  · C assignment operator:                l_var = expr;
+  · Rte_ API call:                        Rte_IRead / Rte_IWrite / Rte_IrvRead / Rte_IrvWrite / Rte_Prm
+  · DEM or watchdog call:                 Dem_ReportErrorStatus / WdgM_UpdateAliveCounter
+  · Explicit C control keyword:           if( / else { / return; / switch( / while( / for(
+
+❌ FORBIDDEN OUTPUT (causes step rejection):
+  · step.code = ""                                      (empty code body)
+  · step.code = "Perform the computation"               (single English sentence)
+  · step.code = "Read speed and validate range"         (narrative, no C syntax)
+  · step.label = "Step 3"                               (no structural keyword)
+  · Any step where code has no operators and no API calls
+
 REFERENCE EXAMPLE (EPS RE_ControlTorque):
 {few_shot_example}
-"""
+""" + _PSEUDO_FINAL_REMINDER
 
 _SECTION7_USER_TMPL = """Generate Section 7 pseudo-code for runnable: {runnable_name}
 
@@ -951,6 +970,68 @@ class MudSpecPipeline:
                     s7[key] = []
             if not s7.get("runnable_name"):
                 s7["runnable_name"] = rname
+
+            # ── Per-runnable prose gate (Phase PSEUDO P-4) ───────────────────
+            # If any step.code is pure prose, retry ONCE with stronger prompt.
+            from mudtool.ai.section7_normalizer import _step_body_is_pure_prose
+            prose_steps = [
+                s for s in (s7.get("steps") or [])
+                if _step_body_is_pure_prose(s.get("code", ""))
+            ]
+            if prose_steps:
+                flagged_labels = ", ".join(
+                    f"step {s.get('step_num', '?')} ({s.get('label', '')})"
+                    for s in prose_steps
+                )
+                logger.warning(
+                    "[Pipeline/Stage3] %d prose step(s) in %s — retrying once: %s",
+                    len(prose_steps), rname, flagged_labels,
+                )
+                retry_system = _PSEUDO_GOLDEN_RULE + _PSEUDO_BEFORE_AFTER + "\n" + system_prompt
+                retry_user = (
+                    f"⚠ PREVIOUS ATTEMPT REJECTED — these step.code bodies were pure prose: "
+                    f"{flagged_labels}.\n"
+                    f"Rewrite EVERY step.code as valid C pseudo-code with Rte_*/Dem_* calls "
+                    f"or C operators (=, ==, if, return).\n\n" + user_prompt
+                )
+                try:
+                    retry_resp = await self._backend.generate(
+                        system_prompt=retry_system,
+                        user_prompt=retry_user,
+                        temperature=min(temperature + 0.05, 0.3),
+                        max_tokens=2048,
+                        response_format="json",
+                    )
+                    retry_s7 = _extract_json(retry_resp.content)
+                    if retry_s7:
+                        for key in ("reads", "writes", "irvs_consumed",
+                                    "irvs_produced", "calparms_used", "steps"):
+                            if key not in retry_s7:
+                                retry_s7[key] = []
+                        if not retry_s7.get("runnable_name"):
+                            retry_s7["runnable_name"] = rname
+                        # Only adopt retry if it has FEWER prose steps than the original
+                        retry_prose = [
+                            s for s in (retry_s7.get("steps") or [])
+                            if _step_body_is_pure_prose(s.get("code", ""))
+                        ]
+                        if len(retry_prose) < len(prose_steps):
+                            logger.info(
+                                "[Pipeline/Stage3] Retry for %s reduced prose %d → %d",
+                                rname, len(prose_steps), len(retry_prose),
+                            )
+                            s7 = retry_s7
+                        else:
+                            logger.warning(
+                                "[Pipeline/Stage3] Retry for %s did not reduce prose "
+                                "(%d → %d) — keeping original",
+                                rname, len(prose_steps), len(retry_prose),
+                            )
+                except Exception as retry_exc:
+                    logger.warning(
+                        "[Pipeline/Stage3] Retry failed for %s: %s — keeping original",
+                        rname, retry_exc,
+                    )
 
             return s7
 
