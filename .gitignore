@@ -13,14 +13,13 @@ __pycache__/
 .eggs/
 build/
 dist/
-.venv/
-.venv-launcher/
+.venv*/
 venv/
 env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
+.coverage*
 htmlcov/
 
 # ── Node / frontend tooling (if any) ────────────────────────────────

@@ -1,0 +1,28 @@
+# cpputest-rag sub-project gitignore
+# (Top-level .gitignore also applies — this adds sub-project-specific rules.)
+
+# Runtime env files — never commit; only *.example templates are tracked
+.env
+.env.local
+.env.auto
+
+# IDE / editor local config
+.vscode/
+.claude/settings.local.json
+
+# Stale backup files
+*.backup
+
+# Runtime data and outputs
+*.db
+*.sqlite
+*.sqlite3
+generated_tests/
+logs/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.coverage*
+htmlcov/

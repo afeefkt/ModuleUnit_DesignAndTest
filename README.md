@@ -76,8 +76,9 @@ ollama pull all-minilm           # test-example RAG embeddings (cpputest-rag)
 # (Swap any of these for models you prefer — just keep .env in sync. The
 #  Control Center's Status tab shows exactly what you have pulled.)
 
-# 2. Copy the fully-local env preset
-cp .env.local.example .env
+# 2. Copy the fully-local env presets
+cp .env.local.example .env                                            # top-level (for docker compose)
+cp mud-tool/python-sidecar/.env.local.example mud-tool/python-sidecar/.env   # for native mud-tool
 
 # 3a. Design half — generate MUD flow charts
 cd mud-tool/python-sidecar && pip install -e . && mudtool-server      # http://localhost:8042
