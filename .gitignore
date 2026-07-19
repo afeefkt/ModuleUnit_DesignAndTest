@@ -1,0 +1,56 @@
+# ── Secrets / local env ─────────────────────────────────────────────
+# NEVER commit real secrets. Only *.example files are tracked.
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.auto.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── Node / frontend tooling (if any) ────────────────────────────────
+node_modules/
+
+# ── Claude / IDE / local worktrees ──────────────────────────────────
+.claude/settings.local.json
+.claude/worktrees/
+.vscode/*
+!.vscode/extensions.json
+
+# ── Generated / cached artifacts ────────────────────────────────────
+# Keep generated_tests/ dirs but drop heavy build outputs
+**/generated_tests/**/*.o
+**/generated_tests/**/*.gcda
+**/generated_tests/**/*.gcno
+**/generated_tests/**/run_tests
+**/generated_tests/**/coverage.info
+**/generated_tests/**/coverage_html/
+graphify-out/cache/
+**/output/
+**/logs/*.log
+
+# ── Databases ───────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── OS cruft ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
