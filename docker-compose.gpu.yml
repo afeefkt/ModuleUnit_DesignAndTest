@@ -1,0 +1,14 @@
+# GPU override for the BUNDLED Ollama container (only relevant with
+# --profile bundled-ollama; a native Ollama uses your GPU by itself):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile bundled-ollama up
+# launch.sh / launch.bat add it automatically when `nvidia-smi` is found.
+# Kept separate so `docker compose up` also works on machines without a GPU.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

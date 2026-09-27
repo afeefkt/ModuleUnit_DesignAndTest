@@ -37,6 +37,8 @@ Use the local backend for development: `cp .env.local.example .env` (no API key 
   model output. See "How we make 7B models reliable" in the [README](README.md).
 - **Never commit secrets.** Only `*.example` env files are tracked. `.env` is git-ignored.
 - **Match the surrounding code** — naming, comment density, and idiom of the file you are editing.
+- **Keep the pipeline diagram current.** If you add/rename a stage, endpoint, port or default model, update the
+  Mermaid diagram in [README → Pipeline at a glance](README.md#pipeline-at-a-glance) in the same PR.
 - **Add tests** for behavioral changes (`pytest` on the mud-tool side; CppUTest samples on the cpputest-rag side).
 
 ## Pull requests

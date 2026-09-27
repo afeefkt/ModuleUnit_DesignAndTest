@@ -125,8 +125,11 @@ with tab_run:
     run_tests = st.checkbox("Also build + run the tests (needs Docker test-runner)")
 
     if st.button("▶ Run pipeline", type="primary", disabled=uploaded is None):
-        if not module.strip():
-            st.error("Please enter a module name.")
+        module = module.strip()
+        try:
+            bridge.validate_module_name(module)
+        except bridge.BridgeError as exc:
+            st.error(str(exc))
             st.stop()
         try:
             with st.status("Running pipeline…", expanded=True) as status:

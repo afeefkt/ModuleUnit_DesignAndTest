@@ -11,8 +11,8 @@ from app.models import GenerateTestRequest, TestGenerationResponse, GenerationHi
 from app.services.test_generator import generate_tests_for_project
 from app.services import rag_engine
 from app.services.report_generator import generate_html_report
-from app.config import config
 from app.database import get_db
+from app.paths import resolve_project_dir
 from fastapi.responses import HTMLResponse
 
 router = APIRouter()
@@ -27,25 +27,8 @@ async def generate_tests_endpoint(
     """Generate CppUTest cases for a project"""
     start_time = time.time()
 
-    if not request.project_path:
-        raise HTTPException(status_code=400, detail="project_path is required")
-
-    project_path_str = request.project_path.strip()
-    project_path = Path(project_path_str)
-
     logger.info(f"Request path: {request.project_path}")
-    logger.info(f"Path exists: {project_path.exists()}")
-
-    if not project_path.exists():
-        alt_path = config.C_PROJECT_DIR / project_path.name
-        if alt_path.exists():
-            project_path = alt_path
-            logger.info(f"Using alternative path: {project_path}")
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Project path not found: {project_path}. Also tried: {alt_path}"
-            )
+    project_path = resolve_project_dir(request.project_path)
 
     try:
         result = await generate_tests_for_project(
@@ -85,6 +68,10 @@ async def generate_tests_endpoint(
             elapsed_seconds=elapsed,
             **result
         )
+    except ValueError as e:
+        # e.g. "Function 'x' not found" / "No functions found" — a client problem
+        logger.warning(f"Test generation rejected: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error(f"Test generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

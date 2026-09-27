@@ -2,19 +2,8 @@
 
 This document walks the full ASPICE-aligned flow end to end and explains the seam between the two halves.
 
-```
- requirements.csv/xlsx
-        │  (mud-tool: import → elaborate → module planning → MUD spec → AI review)
-        ▼
- Activity / Code-Flow diagram  ──(mud-tool: /api/v1/export  format=c_skeleton)──►  <Module>.c
-        │                                                                              │
-        │                                                                              ▼
-        │                                        bridge/mud_to_tests.py  places it in cpputest-rag/c_projects/<Module>/
-        │                                                                              │
-        │                                        (cpputest-rag: /analyze-project → /generate-tests → /run-tests)
-        ▼                                                                              ▼
- requirement IDs  ───────────────── traceability record (bridge/out/<Module>_trace.json) ─────────────── Test_*.cpp
-```
+The pipeline diagram lives in the [README](../README.md#pipeline-at-a-glance) (Mermaid) — one source of truth,
+so keep it updated there.
 
 ## Stage-by-stage
 
@@ -43,7 +32,7 @@ half understands.
 ### 3. Verification (cpputest-rag, port 8000)
 1. **Analyze** (`GET /analyze-project?project_path=<Module>`) — extract function signatures + complexity.
 2. **Generate tests** (`POST /generate-tests {"project_path": "<Module>"}`) — FAISS RAG retrieves similar example
-   tests, CodeLlama-7B writes `Test_*.cpp` + a coverage-enabled `Makefile`.
+   tests, the local generation model (`GEN_MODEL`, default `qwen2.5:7b`) writes `Test_*.cpp` + a coverage-enabled `Makefile`.
 3. **Build & run** (`POST /run-tests?test_directory=<dir>`) — the CppUTest Docker runner compiles, runs, and
    produces LCOV/HTML/JUnit coverage.
 

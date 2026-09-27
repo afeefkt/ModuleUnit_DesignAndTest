@@ -47,6 +47,10 @@ jobs:
           from mud_to_tests import extract_requirements
           reqs = extract_requirements("/* Requirements: REQ_001, REQ_002 */")
           assert reqs == ["REQ_001", "REQ_002"], reqs
+          code = ("/* Requirements: REQ-BMS-001 */\n/* encoding UTF-8, ISO-26262 */\n"
+                  "/* [REQ-BMS-002, BMS-003] */ /* trace: REQ_012 */")
+          reqs = extract_requirements(code)
+          assert reqs == ["BMS-003", "REQ-BMS-001", "REQ-BMS-002", "REQ_012"], reqs
           print("ok", reqs)
           PY
 
@@ -67,3 +71,7 @@ jobs:
           pip install -r requirements.txt
       - name: Import app
         run: python -c "import app.main; print('cpputest-rag backend imports OK')"
+      - name: Unit tests (path confinement, origin guard, parser)
+        run: |
+          pip install pytest "httpx<0.28"
+          python -m pytest -q tests

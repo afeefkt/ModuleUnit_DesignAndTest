@@ -2018,6 +2018,8 @@ async def update_stage_model(request: StageModelUpdateRequest):
     else:
         _remove_env_keys({env_key})
 
+    from mudtool.api.dependencies import reset_orchestrator
+
     get_settings.cache_clear()
     reset_orchestrator()
 
@@ -2682,14 +2684,16 @@ async def review_mud_spec(request: ReviewSpecRequest):
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
+def _settings_env_path() -> Path:
+    """The .env that Settings reads — writing anywhere else would be silently ignored."""
+    from mudtool.config.settings import _find_env_file
+
+    return Path(_find_env_file())
+
+
 def _write_env_updates(updates: dict[str, str]) -> None:
     """Write key=value pairs into the .env file (updating existing keys in-place)."""
-    import os
-    # Find .env relative to cwd (where the server was launched from)
-    env_path = Path(".env")
-    if not env_path.exists():
-        # Fallback: look next to settings.py
-        env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    env_path = _settings_env_path()
 
     lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
 
@@ -2723,9 +2727,7 @@ def _write_env_updates(updates: dict[str, str]) -> None:
 
 def _remove_env_keys(keys: set[str]) -> None:
     """Delete the given keys from the .env file (so they fall back to defaults)."""
-    env_path = Path(".env")
-    if not env_path.exists():
-        env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    env_path = _settings_env_path()
     if not env_path.exists():
         return
     lines = env_path.read_text(encoding="utf-8").splitlines()

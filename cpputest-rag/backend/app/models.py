@@ -12,6 +12,8 @@ class FunctionInfo(BaseModel):
     line_number: int
     source_code: str
     complexity_score: int = 0
+    # static functions have internal linkage: a test can't link to them
+    is_static: bool = False
 
 
 class GenerateTestRequest(BaseModel):
@@ -27,6 +29,8 @@ class TestGenerationResponse(BaseModel):
     output_directory: str
     failed_functions: List[str]
     elapsed_seconds: float
+    # static functions: internal linkage, so no test can link against them
+    skipped_functions: List[str] = []
 
 
 class ProjectAnalysisResponse(BaseModel):

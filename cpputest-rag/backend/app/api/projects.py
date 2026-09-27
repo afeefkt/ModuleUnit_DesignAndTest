@@ -11,6 +11,7 @@ from io import BytesIO
 from app.models import ProjectListResponse
 from app.config import config
 from app.database import get_db
+from app.paths import safe_name, within
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -51,12 +52,13 @@ async def upload_project(
     db=Depends(get_db)
 ):
     """Upload a C project as a zip file"""
-    if not file.filename.endswith('.zip'):
+    filename = Path(file.filename or "").name
+    if not filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Only ZIP files are supported")
 
     content = await file.read()
 
-    project_name = file.filename.replace('.zip', '')
+    project_name = safe_name(filename[: -len('.zip')], "project name")
     project_path = config.C_PROJECT_DIR / project_name
 
     if project_path.exists():
@@ -68,6 +70,12 @@ async def upload_project(
     try:
         # Extract zip to c_projects directory
         with zipfile.ZipFile(BytesIO(content)) as zip_file:
+            # Reject "zip-slip" members (../ or absolute paths) before extracting
+            for member in zip_file.namelist():
+                if not within(project_path, project_path / member):
+                    raise HTTPException(
+                        status_code=400, detail=f"Unsafe path in archive: {member}"
+                    )
             zip_file.extractall(project_path)
 
         # Register in database
@@ -93,6 +101,8 @@ async def upload_project(
         # Cleanup on error
         if project_path.exists():
             shutil.rmtree(project_path)
+        if isinstance(e, HTTPException):
+            raise
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 

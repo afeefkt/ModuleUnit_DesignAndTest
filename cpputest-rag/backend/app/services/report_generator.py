@@ -4,6 +4,7 @@ Generates beautiful HTML reports from CppUTest results
 """
 
 from datetime import datetime
+import html as html_lib
 from pathlib import Path
 from typing import Dict, Optional
 import logging
@@ -58,7 +59,7 @@ def generate_html_report(
         status_color = "#8b5a5a"  # Dark burgundy/brown-red (muted)
         status_icon = "✗"
         status_text = "BUILD FAILED"
-    elif status == "test_failed":
+    elif status in ("test_failed", "failed"):
         status_color = "#9a7545"  # Dark rust/brown-orange (muted)
         status_icon = "⚠"
         status_text = "TESTS FAILED"
@@ -66,6 +67,14 @@ def generate_html_report(
         status_color = "#6b7280"  # Medium grey (unchanged)
         status_icon = "?"
         status_text = "UNKNOWN"
+
+    # Compiler/test output and names are untrusted text (they can contain
+    # model-generated code) — escape everything interpolated into the HTML.
+    esc = lambda v: html_lib.escape(str(v)) if v is not None else ""  # noqa: E731
+    build_output, build_error = esc(build_output), esc(build_error)
+    test_output, test_error = esc(test_output), esc(test_error)
+    test_directory = esc(test_directory)
+    project_path = esc(project_path) if project_path else project_path
 
     # Generate timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

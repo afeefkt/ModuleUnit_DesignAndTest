@@ -1,0 +1,13 @@
+# GPU override for the Ollama service — add it when an NVIDIA GPU is available:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+# launch.sh / launch.bat add it automatically when `nvidia-smi` is found.
+# Kept separate so `docker compose up` also works on machines without a GPU.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

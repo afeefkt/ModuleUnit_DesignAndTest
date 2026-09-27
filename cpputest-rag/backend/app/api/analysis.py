@@ -7,8 +7,8 @@ import json
 
 from app.models import ProjectAnalysisResponse
 from app.services.c_parser import analyze_c_project
-from app.config import config
 from app.database import get_db
+from app.paths import resolve_project_dir
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,21 +20,8 @@ async def analyze_project_endpoint(
     db=Depends(get_db)
 ):
     """Analyze a C project and store results in the database"""
-    path = Path(project_path)
-
     logger.info(f"Analyzing project: {project_path}")
-
-    if not path.exists():
-        # Try alternative path relative to C_PROJECT_DIR
-        alt_path = config.C_PROJECT_DIR / Path(project_path).name
-        if alt_path.exists():
-            path = alt_path
-            logger.info(f"Using alternative path: {path}")
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Project path not found: {path}. Also tried: {alt_path}"
-            )
+    path = resolve_project_dir(project_path)
 
     functions = analyze_c_project(path)
 
@@ -46,7 +33,7 @@ async def analyze_project_endpoint(
     total_lines = 0
     for f in c_files:
         try:
-            with open(f, 'r', errors='ignore') as file:
+            with open(f, 'r', encoding='utf-8', errors='ignore') as file:
                 total_lines += len(file.readlines())
         except Exception:
             pass

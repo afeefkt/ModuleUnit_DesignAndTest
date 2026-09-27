@@ -48,10 +48,18 @@ CPPUTEST_PROJECTS = REPO_ROOT / "cpputest-rag" / "c_projects"
 DEFAULT_MUD_URL = "http://localhost:8042/api/v1"
 DEFAULT_CPPUTEST_URL = "http://localhost:8000"
 
-# Requirement-ID patterns used both in the MUD "Requirements:" header comment
-# and in per-node trace comments emitted by CSkeletonExporter.
+# Requirement IDs appear in exactly three places in a CSkeletonExporter skeleton:
+#   /* Requirements: REQ-BMS-001, REQ-BMS-002 */   (file header)
+#   /* [REQ-BMS-001, REQ-BMS-002] */                 (per-node trace comment)
+#   /* trace: REQ_012 */                             (hand-written trace comment)
+# Only those comments are scanned, so tokens like UTF-8 / ISO-26262 elsewhere
+# in the code are never mistaken for requirements.
+# ID style: letter-led segments joined by '-' or '_', ending in digits —
+# REQ_001, BMS-001, REQ-BMS-001, ARCH-REQ-0100.
 _REQ_HEADER_RE = re.compile(r"Requirements?:\s*([^\*/\n]+)", re.IGNORECASE)
-_REQ_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9]*[-_]?\d+\b")
+_REQ_TRACE_RE = re.compile(r"/\*\s*(?:\[([^\]]*)\]|trace:\s*([^*]*))\s*\*/", re.IGNORECASE)
+_REQ_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9]*(?:[-_][A-Z][A-Z0-9]*)*[-_]\d+\b")
+_MODULE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 # ─────────────────────────── HTTP helpers (stdlib) ──────────────────────────
@@ -107,7 +115,18 @@ def skeleton_from_result(result_json: Path, mud_url: str, out_dir: Path) -> Path
 
 
 # ─────────────────────────── Stage 2: place into cpputest-rag ───────────────
+def validate_module_name(module: str) -> str:
+    """The module name becomes a folder under c_projects/ — keep it a plain C identifier."""
+    if not _MODULE_RE.fullmatch(module or ""):
+        _fail(
+            f"invalid module name {module!r}: use letters, digits and '_' only "
+            "(e.g. SWC_BatteryManagement)"
+        )
+    return module
+
+
 def place_skeleton(module: str, code: str) -> Path:
+    validate_module_name(module)
     project_dir = CPPUTEST_PROJECTS / module
     project_dir.mkdir(parents=True, exist_ok=True)
     target = project_dir / f"{module}.c"
@@ -130,7 +149,13 @@ def analyze_and_generate(module: str, cpputest_url: str, run: bool) -> dict:
     print(f"[bridge]   found {analysis.get('total_functions', '?')} function(s)")
 
     print(f"[bridge] Generating CppUTest tests via {cpputest_url}/generate-tests ...")
-    generation = _post_json(f"{cpputest_url}/generate-tests", {"project_path": module})
+    try:
+        generation = _post_json(f"{cpputest_url}/generate-tests", {"project_path": module})
+    except urllib.error.HTTPError as exc:  # pragma: no cover - network dependent
+        detail = exc.read().decode("utf-8", "replace")[:500]
+        _fail(f"cpputest-rag /generate-tests failed (HTTP {exc.code}): {detail}")
+    except urllib.error.URLError as exc:  # pragma: no cover - network dependent
+        _fail(f"could not reach cpputest-rag /generate-tests: {exc}")
     out_dir = generation.get("output_directory", "")
     print(
         f"[bridge]   generated {generation.get('tests_generated', '?')} test file(s) "
@@ -158,16 +183,10 @@ def analyze_and_generate(module: str, cpputest_url: str, run: bool) -> dict:
 
 # ─────────────────────────── Stage 4: traceability record ──────────────────
 def extract_requirements(code: str) -> list[str]:
-    reqs: set[str] = set()
-    for header in _REQ_HEADER_RE.findall(code):
-        for tok in re.split(r"[,\s]+", header.strip()):
-            tok = tok.strip()
-            if tok and _REQ_TOKEN_RE.fullmatch(tok):
-                reqs.add(tok)
-    # Also catch inline trace comments like  /* trace: REQ_012 */
-    for tok in _REQ_TOKEN_RE.findall(code):
-        if any(c.isdigit() for c in tok) and not tok.isdigit():
-            reqs.add(tok)
+    chunks = list(_REQ_HEADER_RE.findall(code))
+    for bracket, trace in _REQ_TRACE_RE.findall(code):
+        chunks.append(bracket or trace)
+    reqs = {tok for chunk in chunks for tok in _REQ_TOKEN_RE.findall(chunk)}
     return sorted(reqs)
 
 
@@ -175,7 +194,9 @@ def list_test_files(output_directory: str) -> list[str]:
     if not output_directory:
         return []
     out = Path(output_directory)
-    if not out.is_absolute():
+    if not out.is_dir():
+        # The backend may run in Docker and report a container path
+        # (/app/generated_tests/<run>) — map it onto the host bind-mount.
         out = CPPUTEST_PROJECTS.parent / "generated_tests" / out.name
     if not out.is_dir():
         return []

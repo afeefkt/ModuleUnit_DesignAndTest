@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 import logging
+import re
+import uuid
 
 from app.models import FunctionInfo
 from app.config import config
@@ -15,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 async def generate_cpputest(function_info: FunctionInfo, examples: List[Dict]) -> str:
-    """Generate CppUTest case using CodeLlama"""
+    """Generate a CppUTest case with the local generation model (config.GEN_MODEL)"""
 
     # Build context from examples
     examples_context = "\n\n".join([
@@ -71,7 +73,8 @@ Do not include explanations or markdown formatting - just the C++ test code."""
                     "options": {
                         "temperature": 0.3,
                         "top_p": 0.9,
-                        "num_predict": 2000
+                        # 2000 tokens cut longer test files off mid-TEST()
+                        "num_predict": 4096
                     }
                 },
                 timeout=aiohttp.ClientTimeout(total=config.REQUEST_TIMEOUT)
@@ -79,6 +82,11 @@ Do not include explanations or markdown formatting - just the C++ test code."""
                 if response.status == 200:
                     result = await response.json()
                     return result.get("response", "")
+                body = (await response.text())[:500]
+                logger.error(
+                    f"Ollama returned HTTP {response.status} for model "
+                    f"{config.GEN_MODEL}: {body}"
+                )
     except Exception as e:
         logger.error(f"Test generation error: {e}")
 
@@ -121,12 +129,19 @@ async def generate_tests_for_project(
         if not functions:
             raise ValueError(f"Function '{function_name}' not found")
 
+    # static functions have internal linkage — an extern "C" declaration in a
+    # separate test TU can't link to them, so don't burn a model call on them.
+    skipped_functions = [f.name for f in functions if f.is_static]
+    if skipped_functions:
+        logger.info(f"Skipping static (internal-linkage) functions: {skipped_functions}")
+    functions = [f for f in functions if not f.is_static]
+
     logger.info(f"Generating tests for {len(functions)} functions...")
 
-    # Create output directory
+    # Create output directory (suffix avoids collisions within the same second)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = config.OUTPUT_DIR / f"tests_{timestamp}"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = config.OUTPUT_DIR / f"tests_{timestamp}_{uuid.uuid4().hex[:6]}"
+    output_dir.mkdir(parents=True, exist_ok=False)
 
     generated_tests = []
     failed_functions = []
@@ -158,14 +173,22 @@ async def generate_tests_for_project(
                     test_code = '\n'.join(lines)
                 test_code = test_code.strip()
 
-                # Save test file
+                if "TEST_GROUP" not in test_code or "TEST(" not in test_code:
+                    failed_functions.append(func.name)
+                    logger.warning(f"  Model output for {func.name} has no TEST_GROUP/TEST — discarded")
+                    continue
+
+                # Same-named functions in different files must not overwrite each other
                 test_file = output_dir / f"Test_{func.name}.cpp"
+                if test_file.exists():
+                    test_file = output_dir / f"Test_{Path(func.file_path).stem}_{func.name}.cpp"
+                test_code = _unique_test_groups(test_code, test_file.stem[len("Test_"):])
 
                 # Build function signature for extern "C" declaration
                 params_str = ', '.join([f"{p['type']} {p['name']}" for p in func.parameters])
                 func_signature = f"{func.return_type} {func.name}({params_str})"
 
-                with open(test_file, 'w') as f:
+                with open(test_file, 'w', encoding='utf-8') as f:
                     f.write(f"// Auto-generated CppUTest for function: {func.name}\n")
                     f.write(f"// Source: {func.file_path}:{func.line_number}\n")
                     f.write(f"// Generated: {datetime.now().isoformat()}\n\n")
@@ -213,8 +236,30 @@ async def generate_tests_for_project(
         "functions_analyzed": len(functions),
         "tests_generated": len(generated_tests),
         "output_directory": str(output_dir),
-        "failed_functions": failed_functions
+        "failed_functions": failed_functions,
+        "skipped_functions": skipped_functions,
     }
+
+
+_GROUP_DECL_RE = re.compile(r'\bTEST_GROUP\s*\(\s*(\w+)\s*\)')
+
+
+def _unique_test_groups(test_code: str, prefix: str) -> str:
+    """Prefix every TEST_GROUP name with the tested function's name.
+
+    Two model outputs both declaring e.g. TEST_GROUP(MathTests) link into one
+    binary and fail with duplicate symbols; scoping the group name avoids that.
+    """
+    for group in set(_GROUP_DECL_RE.findall(test_code)):
+        if group.startswith(prefix):
+            continue
+        new = f"{prefix}_{group}"
+        test_code = re.sub(
+            rf'\b(TEST_GROUP|TEST_GROUP_BASE|TEST|IGNORE_TEST)(\s*\(\s*){group}\b',
+            rf'\1\2{new}',
+            test_code,
+        )
+    return test_code
 
 
 def create_main_runner(output_dir: Path):
@@ -229,7 +274,7 @@ int main(int argc, char** argv)
 """
 
     runner_path = output_dir / "AllTests.cpp"
-    with open(runner_path, 'w') as f:
+    with open(runner_path, 'w', encoding='utf-8') as f:
         f.write(main_runner_content)
 
     logger.info(f"Created main runner: {runner_path}")
@@ -255,6 +300,8 @@ C_OBJS = $(C_SRC:.c=.o)
 ALL_OBJS = $(TEST_OBJS) $(C_OBJS)
 TEST_TARGET = run_tests
 
+TEST_EXIT_FILE = test-exit-code
+
 # Coverage files
 GCOV_FILES = $(wildcard *.gcda *.gcno *.gcov)
 COVERAGE_INFO = coverage.info
@@ -271,9 +318,10 @@ $(TEST_TARGET): $(ALL_OBJS)
 %.o: %.c
 \t$(CC) $(CFLAGS) -c $< -o $@
 
-# Run tests with JUnit XML output (- prefix allows failures, still generates coverage)
+# Run tests with JUnit XML output. A failing test must not stop coverage
+# generation, so the runner's exit code is saved and re-raised by `coverage`.
 test: $(TEST_TARGET)
-\t-./$(TEST_TARGET) -ojunit -k cpputest
+\t./$(TEST_TARGET) -ojunit -k cpputest; echo $$? > $(TEST_EXIT_FILE)
 \t@echo "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?><testsuites>" > test-results.xml
 \t@for f in cpputest_cpputest_*.xml; do \\
 \t\tif [ -f "$$f" ]; then \\
@@ -292,18 +340,21 @@ coverage: test
 \t@if [ -f $(COVERAGE_INFO) ]; then echo "Coverage reports generated successfully"; fi
 \t@echo "HTML coverage: $(COVERAGE_HTML_DIR)/index.html"
 \t@echo "LCOV file: $(COVERAGE_INFO)"
+\t@status=$$(cat $(TEST_EXIT_FILE) 2>/dev/null || echo 1); \\
+\tif [ "$$status" != "0" ]; then echo "Tests FAILED (exit $$status)"; fi; \\
+\texit $$status
 
 # Clean all build artifacts including coverage files
 clean:
 \trm -f $(ALL_OBJS) $(TEST_TARGET) $(GCOV_FILES) $(COVERAGE_INFO)
 \trm -rf $(COVERAGE_HTML_DIR)
-\trm -f test-results.xml
+\trm -f test-results.xml $(TEST_EXIT_FILE)
 
 .PHONY: all clean test coverage
 """
 
     makefile_path = output_dir / "Makefile"
-    with open(makefile_path, 'w') as f:
+    with open(makefile_path, 'w', encoding='utf-8') as f:
         f.write(makefile_content)
 
     logger.info(f"Created Makefile with coverage support: {makefile_path}")

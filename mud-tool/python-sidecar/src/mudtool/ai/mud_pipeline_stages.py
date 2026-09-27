@@ -654,6 +654,39 @@ def _extract_json(raw: str) -> dict | None:
     return None
 
 
+# Stage 1 prompt budget for raw requirements text. Kept small so the prompt
+# fits a 7B model's context; _focus_requirements decides what goes in.
+_SKELETON_REQ_CHAR_BUDGET = 3000
+
+
+def _focus_requirements(
+    text: str, req_ids: list[str], swc_name: str, budget: int
+) -> str:
+    """Fit requirements_text into ``budget`` chars without blindly cutting the
+    tail: lines naming this SWC or one of its req_ids go first, then the rest
+    in original order. Logs a warning whenever anything is dropped."""
+    if len(text) <= budget:
+        return text
+    keys = [k for k in [*(req_ids or []), swc_name] if k]
+    lines = text.splitlines()
+    is_relevant = [any(k in ln for k in keys) for ln in lines]
+    order = [i for i, r in enumerate(is_relevant) if r] + [
+        i for i, r in enumerate(is_relevant) if not r
+    ]
+    keep: set[int] = set()
+    used = 0
+    for i in order:
+        if used + len(lines[i]) + 1 <= budget:
+            keep.add(i)
+            used += len(lines[i]) + 1
+    logger.warning(
+        "[Pipeline/Stage1] requirements_text is %d chars (budget %d): kept %d/%d lines "
+        "(%d relevant to %s)",
+        len(text), budget, len(keep), len(lines), sum(is_relevant), swc_name,
+    )
+    return "\n".join(lines[i] for i in sorted(keep))
+
+
 # ── Pipeline class ────────────────────────────────────────────────────────────
 
 class MudSpecPipeline:
@@ -803,7 +836,9 @@ class MudSpecPipeline:
             runnables=", ".join(runnables) if runnables else "not yet determined",
             req_ids=", ".join(req_ids) if req_ids else "all",
             hints_block=hints_block,
-            requirements_text=requirements_text[:3000],
+            requirements_text=_focus_requirements(
+                requirements_text, req_ids, swc_name, _SKELETON_REQ_CHAR_BUDGET
+            ),
         )
 
         # Use the dedicated skeleton backend (may differ from generator backend)
@@ -913,15 +948,18 @@ class MudSpecPipeline:
     ) -> dict | None:
         rname = runnable.get("name", "")
 
-        # Build port summary for context
+        # Build port summary for context. Skeleton JSON comes from a 7B model —
+        # tolerate missing keys / non-dict items instead of aborting with KeyError.
         all_ports_summary = "\n".join(
-            f"  {p['name']} ({p['direction']}) — {p.get('data_type','')} [{p.get('range','')} {p.get('unit','')}] — {p.get('description','')}"
+            f"  {p.get('name', '?')} ({p.get('direction', '?')}) — {p.get('data_type','')} [{p.get('range','')} {p.get('unit','')}] — {p.get('description','')}"
             for p in skeleton.get("ports", [])
+            if isinstance(p, dict)
         ) or "  (none)"
 
         dem_events_summary = "\n".join(
-            f"  {ev['event_id']} — {ev.get('description','')} — reaction: {ev.get('safe_state_reaction','')}"
+            f"  {ev.get('event_id', '?')} — {ev.get('description','')} — reaction: {ev.get('safe_state_reaction','')}"
             for ev in skeleton.get("dem_events", [])
+            if isinstance(ev, dict)
         ) or "  (none)"
 
         # Prefer EPS reference few-shot over catalog fallback

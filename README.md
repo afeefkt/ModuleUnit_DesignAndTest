@@ -29,6 +29,61 @@ Every AI step is wrapped in **deterministic guardrail layers** (see [Reliability
 
 ---
 
+## Pipeline at a glance
+
+> Keep this diagram current — update it in the same commit whenever a stage, endpoint, port or model changes.
+
+```mermaid
+flowchart LR
+    REQ[/"📄 Requirements<br/>CSV · XLSX · MD · TXT"/]
+
+    subgraph DESIGN["🧩 mud-tool — DESIGN half (MUD) · :8042"]
+        direction TB
+        IMP["1 · Import<br/>POST /requirements/import"]
+        PLAN["2 · Module plan (SWC split)<br/>POST /modules/plan"]
+        SPEC["3 · MUD spec — 2-stage<br/>POST /modules/mud-spec (SSE)<br/><i>deepseek-r1:7b → qwen3:8b</i>"]
+        REV{"4 · AI review<br/>POST /modules/review<br/><i>deepseek-r1:7b</i>"}
+        REGEN["Regenerate<br/>POST /modules/mud-spec/regenerate"]
+        GEN["5 · Flow charts + UML<br/>POST /generate (activity, mud_spec)<br/><i>qwen3:8b + validators + visual QA</i>"]
+        EXP["6 · C skeleton export<br/>POST /export  format=c_skeleton"]
+        IMP --> PLAN --> SPEC --> REV
+        REV -- "issues" --> REGEN --> REV
+        REV -- "OK" --> GEN --> EXP
+    end
+
+    subgraph BRIDGE["🔗 bridge/mud_to_tests.py"]
+        PLACE["Place .c in<br/>cpputest-rag/c_projects/&lt;SWC&gt;/"]
+    end
+
+    subgraph VERIFY["🧪 cpputest-rag — VERIFICATION half (MUT) · :8000 / UI :3000"]
+        direction TB
+        ANA["7 · Analyze C<br/>GET /analyze-project"]
+        RAG["8 · RAG: similar CppUTest examples<br/>FAISS + <i>all-minilm</i>"]
+        TGEN["9 · Generate Test_*.cpp + Makefile<br/>POST /generate-tests<br/><i>qwen2.5:7b</i>"]
+        RUN["10 · Build + run in Docker runner<br/>POST /run-tests"]
+        ANA --> RAG --> TGEN --> RUN
+    end
+
+    COV[/"📊 Coverage<br/>LCOV · HTML · JUnit"/]
+    TRACE[/"🔗 bridge/out/&lt;SWC&gt;_trace.json<br/>requirement → design → test"/]
+
+    REQ --> IMP
+    EXP --> PLACE --> ANA
+    RUN --> COV
+    RUN --> TRACE
+    REQ -. "req IDs carried as /* [REQ-..] */ comments" .-> TRACE
+
+    OLL[("🦙 Ollama :11434<br/>local 7B models")]
+    OLL -.-> SPEC
+    OLL -.-> GEN
+    OLL -.-> TGEN
+```
+
+**MUD** = Module Unit Design (steps 1–6) · **MUT** = Module Unit Test (steps 7–10) · the bridge links them and writes the
+ASPICE traceability record. Step-by-step commands: [Generate MUD → MUT step by step](#generate-mud--mut-step-by-step).
+
+---
+
 ## The two halves (this is a monorepo)
 
 ```
@@ -90,8 +145,16 @@ cd ../../cpputest-rag && docker compose up                            # http://l
 Or bring the whole pipeline up with the top-level compose:
 
 ```bash
-docker compose up          # Ollama + mud-tool + cpputest-rag + test-runner
+docker compose up          # mud-tool + cpputest-rag + test-runner, using the Ollama already on your host
+DOCKER_OLLAMA_BASE=http://ollama:11434 docker compose --profile bundled-ollama up   # no host Ollama: bundled container
+# add  -f docker-compose.yml -f docker-compose.gpu.yml  to give the bundled Ollama an NVIDIA GPU
 ```
+
+`launch.sh` / `launch.bat` decide for you. They start Docker Desktop if it isn't running. If an Ollama already answers
+on `:11434`, the containers use it through `host.docker.internal`, so the models you pulled natively are reused.
+Otherwise they start the bundled container (with the GPU override when `nvidia-smi` works). Container-side
+Ollama URLs come only from `DOCKER_OLLAMA_BASE`, never from `OLLAMA_URL` / `MUD_OPENAI_BASE_URL`, because
+those are `localhost` values for native runs.
 
 ### Easiest way to launch & test — the Control Center (Streamlit)
 
@@ -112,6 +175,62 @@ Prefer the CLI? Run the bridge directly:
 ```bash
 python bridge/mud_to_tests.py --skeleton path/to/<SWC>.c --module <SWC_Name> --run
 ```
+
+---
+
+## Generate MUD → MUT step by step
+
+The same flow as the [diagram](#pipeline-at-a-glance), by hand. Shown with `curl` + `jq` (Git-Bash on Windows works).
+Start the services first (`docker compose up`, or `mudtool-server` + `cd cpputest-rag && docker compose up`).
+
+```bash
+MUD=http://localhost:8042/api/v1
+REQ=mud-tool/data/sample/bms_requirements.csv
+```
+
+**Design half — MUD (mud-tool)**
+
+```bash
+# 1. Import requirements  → RequirementSet (needed by /generate)
+curl -s -F "file=@$REQ" $MUD/requirements/import | jq .requirement_set > reqset.json
+
+# 2. Plan modules (SWC decomposition) — pick one module from the list
+jq -n --rawfile t "$REQ" '{requirements_text:$t}' \
+  | curl -s -H "Content-Type: application/json" -d @- $MUD/modules/plan > plan.json
+jq '.modules[] | {swc_name, asil, runnables, req_ids}' plan.json
+
+# 3. MUD spec for the chosen SWC (Server-Sent Events; the final `event: complete` carries the markdown)
+jq --rawfile t "$REQ" '.modules[] | select(.swc_name=="SWC_BatteryManagement")
+    | {swc_name, description, asil, runnables, req_ids, requirements_text:$t, spec_pipeline:"two_stage"}' plan.json \
+  | curl -sN -H "Content-Type: application/json" -d @- $MUD/modules/mud-spec \
+  | grep -A1 '^event: complete' | sed -n 's/^data: //p' | jq -r .mud_spec_markdown > mud_spec.md
+
+# 4. AI review (repeat with /modules/mud-spec/regenerate until the coverage/issues are acceptable)
+jq -n --rawfile t "$REQ" --rawfile s mud_spec.md \
+  '{swc_name:"SWC_BatteryManagement", asil:"ASIL-D", requirements_text:$t, mud_spec_markdown:$s}' \
+  | curl -s -H "Content-Type: application/json" -d @- $MUD/modules/review | jq '{coverage_pct, issues}'
+
+# 5. Activity / Code-Flow flow charts from the MUD spec
+jq -n --slurpfile r reqset.json --rawfile s mud_spec.md \
+  '{requirements:$r[0], diagram_types:["activity"], activity_source:"mud_spec", mud_spec_markdown:$s,
+    module_context:"SWC_BatteryManagement", activity_label_style:"call_signature"}' \
+  | curl -s -H "Content-Type: application/json" -d @- $MUD/generate | jq .result > generation_result.json
+```
+
+**The seam + verification half — MUT (bridge → cpputest-rag)**
+
+```bash
+# 6–10. Export C skeleton, place it, analyze, generate CppUTest tests, build + run, write trace JSON
+python bridge/mud_to_tests.py --result generation_result.json --module SWC_BatteryManagement --run
+# → cpputest-rag/generated_tests/<run>/Test_*.cpp, coverage report, bridge/out/SWC_BatteryManagement_trace.json
+```
+
+Or click through it: **mud-tool web UI** (http://localhost:8042) for steps 1–6, then the **Control Center**
+(`./launch.sh` → http://localhost:8501, *Run pipeline* tab) for steps 6–10.
+
+**Local-model tip:** Ollama's default context window (2–4k tokens) is far smaller than these prompts. Set
+`OLLAMA_CONTEXT_LENGTH=16384` (in `.env` for compose, or in your Ollama service environment) or long requirement
+sets are silently truncated.
 
 ---
 
@@ -179,6 +298,15 @@ MUD_MUT/
 - **Localhost only.** `cpputest-rag`'s backend drives a CppUTest Docker container via the host Docker socket and
   runs as root to do so. This is fine on a local dev machine but **must not be exposed to a network**. See
   [cpputest-rag/README.md](cpputest-rag/README.md).
+- **What protects it locally:**
+  - all compose ports bind to `127.0.0.1` only;
+  - every project / test-directory / file name from a request is confined to `c_projects/` or
+    `generated_tests/` (`cpputest-rag/backend/app/paths.py`), and uploaded ZIPs are checked for `../` entries;
+  - `docker exec` gets an argument list, never a shell string;
+  - browser `POST`s from origins other than the bundled UI (`:3000`) or the Control Center (`:8501`) are
+    rejected. Set `CORS_ORIGINS` to change the list.
+- **Native Ollama is the default for Docker.** The bundled `ollama` container only starts with
+  `--profile bundled-ollama`, so it never clashes with an Ollama already running on the host.
 - **Secrets never in git.** `.env` is ignored; ship only `*.example` files with placeholders. If you previously
   used a cloud API key locally, rotate it if there's any chance it was shared.
 
@@ -199,6 +327,20 @@ git push -u origin main
 
 CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml). Your two original
 GitLab repos are untouched and remain a backup.
+
+## Roadmap
+
+1. **MUD drives MUT** — export a compilable skeleton (`<SWC>.h` + `Rte_*` stubs, `call_signature` labels) and a
+   `<SWC>_mut.json` test spec (decision branches, port/CalPrm boundary values, DEM fault cases, each with
+   `trace_reqs`) from the MUD spec; feed it into test generation with CppUMock expectations on Rte calls.
+2. **Per-test traceability** — each generated `TEST()` carries `// REQ-…`; the trace JSON maps requirement → test,
+   not requirement → every file.
+3. **Compile → fix loop** — build in the runner, feed compiler/test errors back to the model (≤3 attempts).
+4. **Local 7B reliability** — `num_ctx`/`seed`/JSON-schema output via Ollama `/api/chat`, no `think` on JSON stages,
+   retry with backoff, cache MUD specs & diagrams, `qwen2.5-coder:7b` for tests, AUTOSAR CppUTest RAG examples,
+   LOCAL/CLOUD/AUTO backends in cpputest-rag.
+5. **Maintainability** — split `routes.py` / `activity_pipeline_stages.py`, strict CI (no `|| true`), untrack
+   generated artifacts, a "Requirements → MUD" tab in the Control Center.
 
 ## License
 

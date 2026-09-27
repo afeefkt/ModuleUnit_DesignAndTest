@@ -2,13 +2,33 @@
 
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
+import asyncio
 import subprocess
 import logging
-from typing import Dict
+from typing import Dict, List
+from app.paths import resolve_file_within, resolve_test_dir, safe_name
 from app.services.report_generator import generate_html_report
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+RUNNER_CONTAINER = "cpputest-runner"
+
+
+async def _make_in_runner(test_dir_name: str, targets: List[str], timeout: int):
+    """Run ``make <targets>`` inside the runner container.
+
+    The command is an argv list (no ``sh -c``), so a directory name can never be
+    interpreted by a shell; it runs in a worker thread so the event loop stays free.
+    """
+    cmd = [
+        "docker", "exec", "-w", f"/tests/{safe_name(test_dir_name, 'test_directory')}",
+        RUNNER_CONTAINER, "make", *targets,
+    ]
+    logger.info(f"Runner: {' '.join(cmd)}")
+    return await asyncio.to_thread(
+        subprocess.run, cmd, capture_output=True, text=True, timeout=timeout
+    )
 
 
 @router.post("/run-tests")
@@ -22,14 +42,7 @@ async def run_tests(test_directory: str) -> Dict:
     Returns:
         Dict with build status, test results, and output
     """
-    # Validate and construct path
-    test_dir = Path(test_directory)
-    if not test_dir.is_absolute():
-        from app.config import config
-        test_dir = config.OUTPUT_DIR / test_directory
-
-    if not test_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Test directory not found: {test_dir}")
+    test_dir = resolve_test_dir(test_directory)
 
     makefile_path = test_dir / "Makefile"
     if not makefile_path.exists():
@@ -38,21 +51,8 @@ async def run_tests(test_directory: str) -> Dict:
     logger.info(f"Building and running tests in: {test_dir}")
 
     try:
-        # Run docker exec to build tests in the test-runner container
-        # Build tests
-        build_cmd = [
-            "docker", "exec", "cpputest-runner",
-            "sh", "-c",
-            f"cd /tests/{test_dir.name} && make clean && make"
-        ]
-
-        logger.info(f"Building tests: {' '.join(build_cmd)}")
-        build_result = subprocess.run(
-            build_cmd,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
+        # Build tests in the test-runner container
+        build_result = await _make_in_runner(test_dir.name, ["clean", "all"], timeout=120)
 
         if build_result.returncode != 0:
             logger.error(f"Build failed: {build_result.stderr}")
@@ -68,21 +68,10 @@ async def run_tests(test_directory: str) -> Dict:
         # 1. Run tests with JUnit XML output
         # 2. Generate LCOV coverage data
         # 3. Generate HTML coverage report
-        coverage_cmd = [
-            "docker", "exec", "cpputest-runner",
-            "sh", "-c",
-            f"cd /tests/{test_dir.name} && make coverage"
-        ]
+        run_result = await _make_in_runner(test_dir.name, ["coverage"], timeout=240)
 
-        logger.info(f"Running tests with coverage: {' '.join(coverage_cmd)}")
-        run_result = subprocess.run(
-            coverage_cmd,
-            capture_output=True,
-            text=True,
-            timeout=120  # Increased timeout for coverage generation
-        )
-
-        # CppUTest returns 0 if all tests pass, non-zero if any fail
+        # The Makefile's coverage target exits with the CppUTest runner's exit
+        # code (0 only if every test passed) after coverage has been generated.
         test_status = "passed" if run_result.returncode == 0 else "failed"
 
         logger.info(f"Tests {test_status}")
@@ -145,6 +134,8 @@ async def run_tests(test_directory: str) -> Dict:
     except subprocess.TimeoutExpired:
         logger.error("Test execution timed out")
         raise HTTPException(status_code=408, detail="Test execution timed out")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Test execution error: {e}")
         raise HTTPException(status_code=500, detail=f"Test execution failed: {str(e)}")
@@ -182,10 +173,9 @@ async def get_test_report(test_directory: str):
     Get HTML report for a test directory
     Returns the HTML report if available
     """
-    from app.config import config
     from fastapi.responses import HTMLResponse
 
-    test_dir = config.OUTPUT_DIR / test_directory
+    test_dir = resolve_test_dir(test_directory)
     report_path = test_dir / "test-report.html"
 
     if not report_path.exists():
@@ -241,14 +231,13 @@ async def get_coverage_html(test_directory: str, file_path: str = "index.html"):
     Get HTML coverage report files
     Serves the entire coverage_html directory
     """
-    from app.config import config
     from fastapi.responses import HTMLResponse, FileResponse
     import mimetypes
 
-    test_dir = config.OUTPUT_DIR / test_directory
-    coverage_file = test_dir / "coverage_html" / file_path
+    coverage_root = resolve_test_dir(test_directory) / "coverage_html"
+    coverage_file = resolve_file_within(coverage_root, file_path)
 
-    if not coverage_file.exists():
+    if not coverage_file.is_file():
         raise HTTPException(status_code=404, detail="Coverage file not found")
 
     # Determine content type
@@ -274,10 +263,9 @@ async def get_coverage_lcov(test_directory: str):
     """
     Get LCOV coverage data file
     """
-    from app.config import config
     from fastapi.responses import FileResponse
 
-    test_dir = config.OUTPUT_DIR / test_directory
+    test_dir = resolve_test_dir(test_directory)
     lcov_file = test_dir / "coverage.info"
 
     if not lcov_file.exists():
@@ -295,10 +283,9 @@ async def get_junit_xml(test_directory: str):
     """
     Get JUnit XML test results
     """
-    from app.config import config
     from fastapi.responses import FileResponse
 
-    test_dir = config.OUTPUT_DIR / test_directory
+    test_dir = resolve_test_dir(test_directory)
     junit_file = test_dir / "test-results.xml"
 
     if not junit_file.exists():

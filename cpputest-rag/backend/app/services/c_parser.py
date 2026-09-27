@@ -64,99 +64,125 @@ if PYCPARSER_AVAILABLE:
             return f"// Function at line {node.coord.line if node.coord else 'unknown'}"
 
 
+# Comments and string/char literals, masked before matching so braces or
+# keywords inside them can't confuse the scanner.
+_MASK_RE = re.compile(
+    r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'',
+    re.DOTALL,
+)
+
+# Function definition: declaration specifiers + name + (params) + '{'.
+# The specifier group allows pointer stars glued to the name (char *foo()).
+_FUNC_DEF_RE = re.compile(
+    r'^[ \t]*((?:[A-Za-z_]\w*[ \t\*]+|\*[ \t]*)+?)\**[ \t]*([A-Za-z_]\w*)\s*\(([^;{}()]*)\)\s*\{',
+    re.MULTILINE,
+)
+
+_CONTROL_KEYWORDS = {'if', 'while', 'for', 'switch', 'do', 'else', 'return', 'case', 'sizeof'}
+_STORAGE_SPECIFIERS = {'static', 'inline', '__inline', '__inline__', 'extern'}
+_DECISION_RE = re.compile(r'\b(?:if|for|while|case)\b|&&|\|\|')
+
+# Source kept per function for the LLM prompt (was 1000 chars, which cut
+# most real functions in half).
+MAX_SOURCE_CHARS = 4000
+
+
+def _mask(content: str) -> str:
+    """Blank out comments/literals, preserving length and newlines so match
+    offsets and line numbers still refer to the original text."""
+    return _MASK_RE.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), content)
+
+
+def _normalize_type(text: str) -> str:
+    """'const  char*' -> 'const char *', 'char**' -> 'char **'."""
+    text = re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r'\s*(\*+)\s*', r' \1', text).strip()
+
+
+def _parse_params(params_str: str) -> List[dict]:
+    params_str = params_str.strip()
+    if not params_str or params_str == 'void':
+        return []
+    params = []
+    for raw in params_str.split(','):
+        raw = raw.strip()
+        if not raw or raw == 'void':
+            continue
+        if raw == '...':
+            params.append({'type': '...', 'name': ''})
+            continue
+        m = re.match(r'^(.*?[\s\*])([A-Za-z_]\w*)\s*((?:\[[^\]]*\])*)$', raw)
+        if m and m.group(1).strip():
+            ptype = _normalize_type(m.group(1))
+            if m.group(3):  # int buf[8] -> int * buf (decays to a pointer)
+                ptype = _normalize_type(ptype + ' *')
+            params.append({'type': ptype, 'name': m.group(2)})
+        else:
+            params.append({'type': _normalize_type(raw), 'name': 'unnamed'})
+    return params
+
+
 def analyze_c_file_simple(file_path: Path) -> List[FunctionInfo]:
-    """Simple regex-based C function analyzer (primary method)"""
+    """Regex-based C function analyzer (primary method)."""
     functions = []
 
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
 
-        # Remove comments to avoid false matches
-        content = re.sub(r'//.*?\n', '\n', content)
-        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
-
-        # Function definition pattern
-        pattern = r'([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\*)*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*\{'
-
-        matches = list(re.finditer(pattern, content))
+        masked = _mask(content)
+        matches = list(_FUNC_DEF_RE.finditer(masked))
         logger.debug(f"Found {len(matches)} potential functions in {file_path.name}")
 
         for match in matches:
-            return_type = match.group(1).strip()
-            func_name = match.group(2).strip()
-            params_str = match.group(3).strip()
+            specifiers = match.group(1)
+            func_name = match.group(2)
+            words = re.findall(r'[A-Za-z_]\w*', specifiers)
 
-            # Skip control structures
-            control_keywords = ['if', 'while', 'for', 'switch', 'do', 'else', 'return']
-            if return_type in control_keywords or func_name in control_keywords:
+            # Skip control structures and macros (ALL_UPPERCASE names)
+            if func_name in _CONTROL_KEYWORDS or any(w in _CONTROL_KEYWORDS for w in words):
                 continue
-
-            # Skip common macros (ALL_UPPERCASE names)
             if func_name.isupper():
                 continue
 
-            # Parse parameters
-            parameters = []
-            if params_str and params_str != 'void' and params_str.strip():
-                for param in params_str.split(','):
-                    param = param.strip()
-                    if param and param != 'void':
-                        parts = re.split(r'\s+', param)
-                        if len(parts) >= 2:
-                            param_name = parts[-1].strip('*')
-                            param_type = ' '.join(parts[:-1])
-                            parameters.append({
-                                'type': param_type,
-                                'name': param_name
-                            })
-                        elif len(parts) == 1:
-                            parameters.append({
-                                'type': parts[0],
-                                'name': 'unnamed'
-                            })
+            is_static = 'static' in words
+            # specifiers + any '*' glued to the name, minus storage-class words
+            type_text = masked[match.start(1):match.start(2)]
+            type_text = re.sub(
+                r'\b(?:' + '|'.join(_STORAGE_SPECIFIERS) + r')\b', ' ', type_text
+            )
+            return_type = _normalize_type(type_text) or 'int'
 
-            # Get line number
-            line_num = content[:match.start()].count('\n') + 1
-
-            # Extract function body
+            # Find the matching closing brace in the masked text
             start = match.end()
-            brace_count = 1
-            end = start
-
-            for i in range(start, len(content)):
-                if content[i] == '{':
-                    brace_count += 1
-                elif content[i] == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
+            depth = 1
+            end = len(masked)
+            for i in range(start, len(masked)):
+                if masked[i] == '{':
+                    depth += 1
+                elif masked[i] == '}':
+                    depth -= 1
+                    if depth == 0:
                         end = i + 1
                         break
 
-            source_code = content[match.start():end]
-
-            # Calculate complexity score
-            complexity = (
-                source_code.count('if') +
-                source_code.count('else') +
-                source_code.count('for') +
-                source_code.count('while') +
-                source_code.count('switch') +
-                source_code.count('case')
-            )
+            # Original text (with comments — they carry /* [REQ-..] */ trace IDs)
+            source_code = content[match.start():end].strip('\n')
+            body = masked[start:end]
 
             func_info = FunctionInfo(
                 name=func_name,
                 return_type=return_type,
-                parameters=parameters,
+                parameters=_parse_params(match.group(3)),
                 file_path=str(file_path),
-                line_number=line_num,
-                source_code=source_code[:1000],
-                complexity_score=complexity
+                line_number=masked.count('\n', 0, match.start(2)) + 1,
+                source_code=source_code[:MAX_SOURCE_CHARS],
+                complexity_score=len(_DECISION_RE.findall(body)),
+                is_static=is_static,
             )
 
             functions.append(func_info)
-            logger.debug(f"  Extracted: {return_type} {func_name}(...) at line {line_num}")
+            logger.debug(f"  Extracted: {return_type} {func_name}(...) at line {func_info.line_number}")
 
     except Exception as e:
         logger.error(f"Error analyzing {file_path}: {e}")

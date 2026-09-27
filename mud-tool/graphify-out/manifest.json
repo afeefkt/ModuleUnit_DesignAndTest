@@ -1,0 +1,732 @@
+{
+  ".claude/launch.json": {
+    "mtime": 1784467434.5148883,
+    "ast_hash": "928288b78d293d0b6e0bff721a2ae18a",
+    "semantic_hash": ""
+  },
+  ".claude/settings.json": {
+    "mtime": 1784467434.5158956,
+    "ast_hash": "ffcf85c6ce9e44383a9db0f95f501c73",
+    "semantic_hash": ""
+  },
+  ".claude/settings.local.json": {
+    "mtime": 1784467434.5158956,
+    "ast_hash": "dc87f0eb1f73099770bde2fb4ab1c3d9",
+    "semantic_hash": ""
+  },
+  "common/schemas/json_uml_schema.json": {
+    "mtime": 1784467434.5178976,
+    "ast_hash": "9fdb8948587741902ca7fe7aee1b5caf",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/pom.xml": {
+    "mtime": 1784467434.6067612,
+    "ast_hash": "4615d8779a855186af8ff6526fba3f17",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/ai/SidecarClient.java": {
+    "mtime": 1784467434.607758,
+    "ast_hash": "51e1c451c0f471d109423b3dfc90c31f",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/config/MUDToolConfig.java": {
+    "mtime": 1784467434.6082633,
+    "ast_hash": "7786641a2c6f811154ca323bf1a838d9",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/generator/DiagramGenerator.java": {
+    "mtime": 1784467434.6082633,
+    "ast_hash": "10064edd5c7cae2f3180b6bcbb02c173",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/import_module/RequirementBrowser.java": {
+    "mtime": 1784467434.6082633,
+    "ast_hash": "2275a1d377662ea7ce92610b6e2f7241",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/plugin/MUDToolModule.java": {
+    "mtime": 1784467434.6092706,
+    "ast_hash": "bf7c37b74923799fd00eac6dc83f5271",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/trace/TraceabilityMatrix.java": {
+    "mtime": 1784467434.6092706,
+    "ast_hash": "829743674735e53341664e0a020021bc",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/ui/MUDToolWorkflow.java": {
+    "mtime": 1784467434.6102698,
+    "ast_hash": "fa413b56b41682408747c377efd3b1cf",
+    "semantic_hash": ""
+  },
+  "modelio-plugin/src/main/java/com/mudtool/validation/ValidationPanel.java": {
+    "mtime": 1784467434.6102698,
+    "ast_hash": "4c47161a26ff2377b99fa0e54a1ce869",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/b7ecd4d2f1fe74c8.json": {
+    "mtime": 1784467434.6122699,
+    "ast_hash": "9a8dc5a32be0b2c5d0319f8827924f40",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_03a3bf83aff5f74b.json": {
+    "mtime": 1784467434.6122699,
+    "ast_hash": "4757ecc1be31e4a964fafd5f3fa4baa8",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_27536566fbbe6b0b.json": {
+    "mtime": 1784467434.6122699,
+    "ast_hash": "55f180288eaea9933454aef5932e6811",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_b7ecd4d2f1fe74c8.json": {
+    "mtime": 1784467434.6137774,
+    "ast_hash": "0c9dfd4ff5500dda0499264ea244ee2a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_c587ca6bc947720f.json": {
+    "mtime": 1784467434.6147864,
+    "ast_hash": "e4d8c481089506386a416fd4a7a6e330",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_dd0c184386de4189.json": {
+    "mtime": 1784467434.6147864,
+    "ast_hash": "b6bea5ce873254571b7c09a33b44cdaf",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_e4fcc15f1ce7c446.json": {
+    "mtime": 1784467434.6157844,
+    "ast_hash": "2d4f88ad85eab9abfd97f9c1bbcd7b65",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_f6139129c12393d0.json": {
+    "mtime": 1784467434.6157844,
+    "ast_hash": "de0eb03df6e6799fab251e9dca57601a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/chunked_fe85074072bbff42.json": {
+    "mtime": 1784467434.6157844,
+    "ast_hash": "3e4f7345ca4dd333dbefad4938c262a6",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/elaborated/e4fcc15f1ce7c446.json": {
+    "mtime": 1784467434.6167843,
+    "ast_hash": "bdb479f3f359755790f3a7d39ab61826",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/guidelines_cache/230d51671911a2d8.json": {
+    "mtime": 1784467434.6167843,
+    "ast_hash": "0501f226e769e44cad4e32f5b2292826",
+    "semantic_hash": ""
+  },
+  "python-sidecar/data/guidelines_cache/b335630551682c19.json": {
+    "mtime": 1784467434.6167843,
+    "ast_hash": "93239c9e226714c837ec74199443a8fc",
+    "semantic_hash": ""
+  },
+  "python-sidecar/demo_offline.py": {
+    "mtime": 1784467434.6177883,
+    "ast_hash": "d2423a77dca7accbe1044724a3a9519f",
+    "semantic_hash": ""
+  },
+  "python-sidecar/knowledge/autosar_catalog.json": {
+    "mtime": 1784467434.6177883,
+    "ast_hash": "a9a2ba352878506378bbb858e453834b",
+    "semantic_hash": ""
+  },
+  "python-sidecar/knowledge/eps_reference.json": {
+    "mtime": 1784467434.6187842,
+    "ast_hash": "382bb68841d1acb1952ab86ab47f6cad",
+    "semantic_hash": ""
+  },
+  "python-sidecar/pyproject.toml": {
+    "mtime": 1784467434.6363397,
+    "ast_hash": "c7f84e62a7fa99a76f63679649b10507",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/__init__.py": {
+    "mtime": 1784467434.637341,
+    "ast_hash": "e49395d07bb40eaaab9d50d8d71884d5",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/__init__.py": {
+    "mtime": 1784467434.637341,
+    "ast_hash": "2a85368d104faa8a996f1fbdf11e3e17",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/activity_pipeline_stages.py": {
+    "mtime": 1784467434.6388404,
+    "ast_hash": "b28500e014aa90f9a7282556b2654a0e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/base_backend.py": {
+    "mtime": 1784467434.6388404,
+    "ast_hash": "9e2098c823e976c3a77d9f4cb91f9465",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/chunked_elaborator.py": {
+    "mtime": 1784467434.6388404,
+    "ast_hash": "c75b939389f5578064f2e6087e33292d",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/cloud_backend.py": {
+    "mtime": 1784467434.639846,
+    "ast_hash": "cc5a947b4000facca8438ad7a5625365",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/elaborator.py": {
+    "mtime": 1784467434.639846,
+    "ast_hash": "9b7e2830febd89673b0275a73c6d9cc7",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/guidelines_reader.py": {
+    "mtime": 1784467434.6408534,
+    "ast_hash": "76738c5e7087b2a2242b1e0c6423cbd2",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/local_backend.py": {
+    "mtime": 1784467434.6408534,
+    "ast_hash": "5ad8a7e8ea53be3bcd4c812e2e1e58a1",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/module_planner.py": {
+    "mtime": 1784467434.6418526,
+    "ast_hash": "edb75a6f69acf4ce8f6d23e139460fd0",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/mud_activity_context.py": {
+    "mtime": 1784467434.6418526,
+    "ast_hash": "d86202872e2920f480d50fb253a762d7",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/mud_element_schemas.py": {
+    "mtime": 1784467434.6428542,
+    "ast_hash": "94ab3219375b8e1268101b74f06db76b",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/mud_pipeline_stages.py": {
+    "mtime": 1790543906.3687336,
+    "ast_hash": "7e06620913417f5dad6769d744f2e06a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/mud_spec_generator.py": {
+    "mtime": 1784467434.6438546,
+    "ast_hash": "ff155c3f8f67e11b13c85fb74e49775d",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/orchestrator.py": {
+    "mtime": 1784467434.6448524,
+    "ast_hash": "1ff89193a636314ac739a5eeff3131a1",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/pipeline.py": {
+    "mtime": 1784467434.6448524,
+    "ast_hash": "e4287b9450367f8591ad4ecc5cb270c4",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/prompt_engine.py": {
+    "mtime": 1784467434.6458535,
+    "ast_hash": "9ec2077c7cfc9dfb42ee1c61d36c7005",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/pseudocode_guideline.py": {
+    "mtime": 1784467434.6463594,
+    "ast_hash": "498d4219a90acef2fd620e0a0c6bfc1b",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/section7_normalizer.py": {
+    "mtime": 1784467434.6463594,
+    "ast_hash": "9b164a43d3b9c26548ad04a880c0d993",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/skill_loader.py": {
+    "mtime": 1784467434.6463594,
+    "ast_hash": "02dac2150fdab3a4ad5563a7d266e33a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/ai/visual_qa.py": {
+    "mtime": 1784467434.6473663,
+    "ast_hash": "81765f79012fd039947dc589948c8bd6",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/api/__init__.py": {
+    "mtime": 1784467434.6473663,
+    "ast_hash": "fc4c5bc409f62235c5cdf9cf996f5d53",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/api/dependencies.py": {
+    "mtime": 1784467434.6473663,
+    "ast_hash": "3b38ee896e521ea67ea711628a2c48bf",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/api/routes.py": {
+    "mtime": 1790543863.2486663,
+    "ast_hash": "de9bd62cf4eee6cf85685ef4ebc13312",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/config/__init__.py": {
+    "mtime": 1784467434.6483665,
+    "ast_hash": "56d764fa7c415281823c1d286137c961",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/config/settings.py": {
+    "mtime": 1790543845.4483368,
+    "ast_hash": "7a53668434a3fefbe8bdd20a57ed7849",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/debug_trace.py": {
+    "mtime": 1784467434.6493661,
+    "ast_hash": "f3468d04cd9eb2150840a466581a7d90",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/__init__.py": {
+    "mtime": 1784467434.650365,
+    "ast_hash": "a134acebe43ad71f1e5580246785998c",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/autosar_mapper.py": {
+    "mtime": 1784467434.650365,
+    "ast_hash": "56a908012e25071bb952c0064da8acae",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/c_skeleton_exporter.py": {
+    "mtime": 1790543985.823687,
+    "ast_hash": "6417fc4cac08a086faf7cc1105575f2d",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/drawio_exporter.py": {
+    "mtime": 1784467434.651366,
+    "ast_hash": "b330c6eb58fb721ea19b394281cea068",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/mermaid_exporter.py": {
+    "mtime": 1784467434.6523662,
+    "ast_hash": "7186a3281aeff060a1fad9a49412ca0e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/plantuml_exporter.py": {
+    "mtime": 1784467434.6523662,
+    "ast_hash": "4e396d3c60191bd19578177e0af6edb6",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/render_service.py": {
+    "mtime": 1784467434.6523662,
+    "ast_hash": "ba5090e35a9cc4b73e58b2d8b7255a32",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/generator/xmi_exporter.py": {
+    "mtime": 1784467434.6533673,
+    "ast_hash": "fe17885b6191675d9b02ccf51899c872",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/__init__.py": {
+    "mtime": 1784467434.6533673,
+    "ast_hash": "a542aafe22f29a806255cb313621c9fb",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/base.py": {
+    "mtime": 1784467434.6533673,
+    "ast_hash": "bbb8a38614e9d07fd658ec357527022a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/csv_importer.py": {
+    "mtime": 1784467434.654367,
+    "ast_hash": "cc8c5f00679c07afd2705ece48d89dfa",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/excel_importer.py": {
+    "mtime": 1784467434.654873,
+    "ast_hash": "cde10159504ccc9991c40d784d1751c9",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/factory.py": {
+    "mtime": 1784467434.654873,
+    "ast_hash": "985c93853ea9c4df274844360082e2a2",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/markdown_importer.py": {
+    "mtime": 1784467434.654873,
+    "ast_hash": "3e02125826997f1a9b079f6aade1f7ad",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/importers/text_importer.py": {
+    "mtime": 1784467434.6558795,
+    "ast_hash": "4dcd2d60b1812278e3675bd6e4fd4533",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/main.py": {
+    "mtime": 1784467434.6558795,
+    "ast_hash": "77a2b8d2d46e3dbe10f823957893c390",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/models/__init__.py": {
+    "mtime": 1784467434.6558795,
+    "ast_hash": "8e5a9e17b345f507183133e911c16ac7",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/models/autosar.py": {
+    "mtime": 1784467434.6568801,
+    "ast_hash": "ab1e410579dd76a2d319ac107c9a5937",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/models/json_uml.py": {
+    "mtime": 1784467434.6568801,
+    "ast_hash": "b3615fb8718f64c51712817ee8cf8f1e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/models/requirements.py": {
+    "mtime": 1784467434.6568801,
+    "ast_hash": "94bb7077b0fdfee0be2c60cc2124ae23",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/models/validation.py": {
+    "mtime": 1784467434.6578796,
+    "ast_hash": "1592d9d3273ca88662c0fa483658770e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/traceability/__init__.py": {
+    "mtime": 1784467434.6578796,
+    "ast_hash": "067e19691db19f2693a3f87c417bd43e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/traceability/store.py": {
+    "mtime": 1784467434.6578796,
+    "ast_hash": "5ceac2635eb54c0db0bd2cbc800fddd3",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/utils/__init__.py": {
+    "mtime": 1784467434.6588805,
+    "ast_hash": "590aca868efa659fa0ca957484f5ef06",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/__init__.py": {
+    "mtime": 1784467434.6588805,
+    "ast_hash": "760731a4cabb09815d5531c8b64d32ca",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/autosar_validator.py": {
+    "mtime": 1784467434.6598794,
+    "ast_hash": "e85f27f0ea6950d59d9ae8a7a073530b",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/consistency_validator.py": {
+    "mtime": 1784467434.6598794,
+    "ast_hash": "64d5034621a32c89c98c54ae4259a5d7",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/engine.py": {
+    "mtime": 1784467434.6598794,
+    "ast_hash": "138eda29494891e5651481d49a678f3a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/mermaid_linter.py": {
+    "mtime": 1784467434.6608806,
+    "ast_hash": "0e2d6ca5030ce939f8283626f7c593d4",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/structural_precheck.py": {
+    "mtime": 1784467434.6608806,
+    "ast_hash": "c9ad72a82c864fa34b48f762e6904d31",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/validation/structural_validator.py": {
+    "mtime": 1784467434.6618795,
+    "ast_hash": "38409de21d1c7239e3d5261f303bc5bb",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/web/__init__.py": {
+    "mtime": 1784467434.6618795,
+    "ast_hash": "676e75b07336e1eb6d18c2c19ca81785",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/web/app.py": {
+    "mtime": 1784467434.6618795,
+    "ast_hash": "3c27494f34bd59f34e2990aba63fa459",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/__init__.py": {
+    "mtime": 1784467434.6643906,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/conftest.py": {
+    "mtime": 1784467434.6643906,
+    "ast_hash": "0c5bc770952a6cb852ccc2a837b634b5",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/test_activity_pipeline.py": {
+    "mtime": 1784467434.6653914,
+    "ast_hash": "80e745df5d669812be4cac049e4b16e8",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/test_elaborator_enhanced.py": {
+    "mtime": 1784467434.6653914,
+    "ast_hash": "9c1b4ed363c92a4ee3e61fe31ccf0f77",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/__init__.py": {
+    "mtime": 1784467434.6653914,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_activity_pipeline_cfg.py": {
+    "mtime": 1784467434.666398,
+    "ast_hash": "631c7ebd7c350165a8ad52b054ef2aa0",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_api_routes.py": {
+    "mtime": 1790544184.5849228,
+    "ast_hash": "942bd0ffc4c94617ea06388daad7f81b",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_autosar_mapper.py": {
+    "mtime": 1784467434.6673903,
+    "ast_hash": "91b8cb7de096a1d8f05363e36e5fadfa",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_c_skeleton_exporter.py": {
+    "mtime": 1790544012.321052,
+    "ast_hash": "fc03167de1317154a1b7a81173bd8c71",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_debug_trace.py": {
+    "mtime": 1784467434.6673903,
+    "ast_hash": "e434b55a47f6554c786b185fe3a411cb",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_diagram_quality_strategies.py": {
+    "mtime": 1784467434.6683917,
+    "ast_hash": "88a77ccf96588591b3a615301e2671dc",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_exporters.py": {
+    "mtime": 1784467434.6683917,
+    "ast_hash": "5bef1d5de7a4ad72361984e0d72598b6",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_framework_contract.py": {
+    "mtime": 1784467434.6683917,
+    "ast_hash": "8ecc88491060e9d97241f475321cc383",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_importers.py": {
+    "mtime": 1784467434.669392,
+    "ast_hash": "8514ae143681946540a057aa346b42fb",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_mermaid_exporter_preview.py": {
+    "mtime": 1784467434.669392,
+    "ast_hash": "41c69176a8faee1b2344cc3653b5be9c",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_models.py": {
+    "mtime": 1784467434.669392,
+    "ast_hash": "b0db5aa1f25e7955d79a4b3b3da4b023",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_module_planner.py": {
+    "mtime": 1784467434.670392,
+    "ast_hash": "da49ca4f1a146481e89c0f22bafa5e4c",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_mud_activity_context.py": {
+    "mtime": 1784467434.670392,
+    "ast_hash": "c656124d01283f0111d3b6e97ad42f6a",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_mud_pipeline_stages.py": {
+    "mtime": 1784467434.670392,
+    "ast_hash": "7774b3c3229fcf6764ce033409e8d309",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_mud_prompt_contracts.py": {
+    "mtime": 1784467434.6716392,
+    "ast_hash": "28345536b008c5e51500a3b34614ec84",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_mud_spec_patch_only.py": {
+    "mtime": 1784467434.6716392,
+    "ast_hash": "c196549d8d1e97461135b02411054912",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_mud_spec_regeneration.py": {
+    "mtime": 1784467434.6716392,
+    "ast_hash": "a98d4ba7a81ba0aa715243f0c05694b8",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_orchestrator_model_overrides.py": {
+    "mtime": 1784467434.6726398,
+    "ast_hash": "e04ceadd016d8300c3ef7bfa02a0070c",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_prompt_profiles.py": {
+    "mtime": 1784467434.6726398,
+    "ast_hash": "159140bc38234fdef8affd267c8aa9e6",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_pseudocode_guideline.py": {
+    "mtime": 1784467434.6726398,
+    "ast_hash": "a1131ac7d1cfd9ffe4ed3421f37e25b7",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_section7_normalizer.py": {
+    "mtime": 1784467434.6736403,
+    "ast_hash": "8415dcea3ac8b4cf115c6fc6089cbd20",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_traceability.py": {
+    "mtime": 1784467434.6736403,
+    "ast_hash": "766d0b11f1d11824ea7c96b753023804",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_validation.py": {
+    "mtime": 1784467434.6736403,
+    "ast_hash": "74f47a037573401fe42a5f4b7d3d30c8",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/unit/test_web_generation_quality_ui.py": {
+    "mtime": 1784467434.6736403,
+    "ast_hash": "fda33369d493412c9b50a3bec002bac4",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tools/csv_to_reference_json.py": {
+    "mtime": 1784467434.6746397,
+    "ast_hash": "c9cbd19913fa01aa435c55c24940a95e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tools/diagnose_eps_flowchart_pipeline.py": {
+    "mtime": 1784467434.6746397,
+    "ast_hash": "ccbee3a1036feaa0cd637846b607a6cf",
+    "semantic_hash": ""
+  },
+  "run.sh": {
+    "mtime": 1784467434.6756437,
+    "ast_hash": "37d473a03792b84be2cb7511e64aed79",
+    "semantic_hash": ""
+  },
+  "run_tests.sh": {
+    "mtime": 1784467434.6766398,
+    "ast_hash": "1908d21c443c9ab9e4063c2796bd806f",
+    "semantic_hash": ""
+  },
+  "setup.sh": {
+    "mtime": 1784467434.6776385,
+    "ast_hash": "21251bbe185da7ad17fdaf591acb4701",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1784467434.5168955,
+    "ast_hash": "2ed67c68f28bc1ef95ac24167431d7e8",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1784467434.5178976,
+    "ast_hash": "f2b0df73cc04d880151c37ff22cf3cdd",
+    "semantic_hash": ""
+  },
+  "data/guidelines/MUD_SKILL_APPENDIX.md": {
+    "mtime": 1784467434.5188944,
+    "ast_hash": "5625bf2c8d5aa2ff51f1abc9de15db11",
+    "semantic_hash": ""
+  },
+  "data/guidelines/README.md": {
+    "mtime": 1784467434.5188944,
+    "ast_hash": "75d600661617b9203ca664b4475c3733",
+    "semantic_hash": ""
+  },
+  "data/guidelines/autosar_mud_flowchart_guideline.html": {
+    "mtime": 1784467434.5198956,
+    "ast_hash": "e6b3a1205b48e55de809551711b7c64e",
+    "semantic_hash": ""
+  },
+  "data/sample/sample_requirements.txt": {
+    "mtime": 1784467434.5254188,
+    "ast_hash": "c6866c0bb61c178d8efd47fbde655fda",
+    "semantic_hash": ""
+  },
+  "data/skills/MUD_SKILL_CORE.md": {
+    "mtime": 1784467434.526419,
+    "ast_hash": "36f0fb871760fd6c1b01709ef586a7f7",
+    "semantic_hash": ""
+  },
+  "graphify-out/converted/PMSM_FOC_Architecture_Requirements_6d06e0b3.md": {
+    "mtime": 1790544698.075956,
+    "ast_hash": "65e33abcf42265188f90523c215e315a",
+    "semantic_hash": ""
+  },
+  "graphify-out/converted/bms_requirements_d466eeee.md": {
+    "mtime": 1790544698.1101885,
+    "ast_hash": "870a6991385d232cede50d82f92ad9ab",
+    "semantic_hash": ""
+  },
+  "prompts/activity_diagram.yaml": {
+    "mtime": 1784467434.6112692,
+    "ast_hash": "d394a3779e4a927242605432c80ed260",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/activity_diagram.yaml": {
+    "mtime": 1784467434.631811,
+    "ast_hash": "4a2c8520fc0cbd6114353f7872e69549",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/activity_diagram_generic.yaml": {
+    "mtime": 1784467434.6328197,
+    "ast_hash": "cbdef4a7af1b3b1032b212e03687631e",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/class_diagram.yaml": {
+    "mtime": 1784467434.6328197,
+    "ast_hash": "5366beaf2e9e319ebe6c7e0f4d9a4d60",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/class_diagram_generic.yaml": {
+    "mtime": 1784467434.6328197,
+    "ast_hash": "dc80d2a4d507b6cb8db184b06a3f9026",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/component_diagram.yaml": {
+    "mtime": 1784467434.6338234,
+    "ast_hash": "46ee23dcd21de94a1ba3df688e5e13d7",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/component_diagram_generic.yaml": {
+    "mtime": 1784467434.6338234,
+    "ast_hash": "62f09cb09dcbccb9cdaefe0cf86c9d27",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/elaboration.yaml": {
+    "mtime": 1784467434.6338234,
+    "ast_hash": "d179a220b97048975ec9afd1cc8c2892",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/sequence_diagram.yaml": {
+    "mtime": 1784467434.6338234,
+    "ast_hash": "3dab9c438db1aa36680b8dcd3334d9d2",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/sequence_diagram_generic.yaml": {
+    "mtime": 1784467434.6353295,
+    "ast_hash": "b777503c778dc429aa210d8b1a16aeda",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/state_machine_diagram.yaml": {
+    "mtime": 1784467434.6353295,
+    "ast_hash": "0c465333dc8e4e01024f98fa77fcc127",
+    "semantic_hash": ""
+  },
+  "python-sidecar/prompts/state_machine_diagram_generic.yaml": {
+    "mtime": 1784467434.6363397,
+    "ast_hash": "596ca275754342fc08e43f90537fe102",
+    "semantic_hash": ""
+  },
+  "python-sidecar/src/mudtool/web/templates/index.html": {
+    "mtime": 1784467434.6633847,
+    "ast_hash": "d5d702ca244e2e99fcecd4d9b43ef78d",
+    "semantic_hash": ""
+  },
+  "python-sidecar/tests/TEST_STRATEGY.md": {
+    "mtime": 1784467434.6643906,
+    "ast_hash": "9d24923bf34e321f2a9d9fac026798d7",
+    "semantic_hash": ""
+  }
+}

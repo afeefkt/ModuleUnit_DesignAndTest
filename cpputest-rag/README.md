@@ -148,7 +148,7 @@ mkdir -p c_projects test_examples generated_tests data logs
 docker-compose up -d
 
 # 5. Pull models
-docker exec ollama ollama pull codellama:latest
+docker exec ollama ollama pull qwen2.5:7b
 docker exec ollama ollama pull all-minilm:latest
 
 # 6. Wait for services to be ready (check health)
@@ -373,7 +373,7 @@ Edit `.env` to customize:
 
 ```bash
 # Models
-GEN_MODEL=codellama:latest        # Code generation model
+GEN_MODEL=qwen2.5:7b              # Code generation model
 EMBED_MODEL=all-minilm:latest     # Embedding model for RAG
 
 # Ports

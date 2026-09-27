@@ -1242,7 +1242,8 @@ class TestEnvWriter:
             "MUD_MAX_RETRIES=3\n",
             encoding="utf-8",
         )
-        monkeypatch.chdir(tmp_path)
+        # Never let this test reach the real python-sidecar/.env
+        monkeypatch.setattr(routes, "_settings_env_path", lambda: env_path)
 
         routes._write_env_updates(
             {
@@ -1256,3 +1257,34 @@ class TestEnvWriter:
         assert "MUD_AI_BACKEND=local" in content
         assert "MUD_MAX_RETRIES=5" in content
         assert "MUD_OPENAI_MODEL=llama3.2" in content
+
+    def test_config_stage_writes_env_and_resets_orchestrator(
+        self, api_client, tmp_path, monkeypatch
+    ):
+        from mudtool.api import dependencies
+
+        env_path = tmp_path / ".env"
+        env_path.write_text("MUD_AI_BACKEND=local\n", encoding="utf-8")
+        monkeypatch.setattr(routes, "_settings_env_path", lambda: env_path)
+        resets: list[bool] = []
+        monkeypatch.setattr(dependencies, "reset_orchestrator", lambda: resets.append(True))
+
+        response = api_client.post(
+            "/api/v1/config/stage",
+            json={"stage_key": "mud_spec_skeleton", "model": "qwen3:8b"},
+        )
+
+        assert response.status_code == 200, response.text
+        assert "MUD_SPEC_SKELETON_MODEL=qwen3:8b" in env_path.read_text(encoding="utf-8")
+        assert resets == [True]
+
+
+class TestSettingsEnvNames:
+    def test_mud_spec_settings_read_documented_env_names(self, monkeypatch):
+        from mudtool.config.settings import Settings
+
+        monkeypatch.setenv("MUD_SPEC_SKELETON_MODEL", "qwen3:8b")
+        monkeypatch.setenv("MUD_SPEC_PIPELINE", "single_pass")
+        s = Settings(_env_file=None)
+        assert s.mud_spec_skeleton_model == "qwen3:8b"
+        assert s.mud_spec_pipeline == "single_pass"

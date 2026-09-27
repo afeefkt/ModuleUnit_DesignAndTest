@@ -1,16 +1,23 @@
 # =====================================================================
 #  MUD_MUT — unified local-AI pipeline
-#  One Ollama + the DESIGN half (mud-tool) + the VERIFICATION half
-#  (cpputest-rag backend/frontend/test-runner), on one network.
+#  The DESIGN half (mud-tool) + the VERIFICATION half (cpputest-rag
+#  backend/frontend/test-runner) on one network, talking to Ollama.
 #
-#    docker compose up
+#  Ollama — two modes (launch.sh / launch.bat pick automatically):
+#    * Native Ollama already running on the host (default):
+#        docker compose up
+#      Containers reach it via host.docker.internal:11434 and use the
+#      models you already pulled.
+#    * Bundled Ollama container (no Ollama on the host):
+#        DOCKER_OLLAMA_BASE=http://ollama:11434 docker compose --profile bundled-ollama up
+#      Models must be pulled into the container once (see README).
 #
 #  mud-tool UI/API : http://localhost:8042
 #  cpputest-rag UI : http://localhost:3000   (API on :8000)
-#  Ollama          : http://localhost:11434
 #
-#  Copy an env preset first:  cp .env.local.example .env
-#  (Ollama models must be pulled once — see README "Quick start".)
+#  Container-side Ollama URLs come only from DOCKER_OLLAMA_BASE — never from
+#  OLLAMA_URL / MUD_OPENAI_BASE_URL in .env, which are for NATIVE runs and
+#  use "localhost" (inside a container that would be the container itself).
 #
 #  ⚠️  Localhost only. The test-runner is driven via the Docker socket;
 #      do NOT expose this stack to a network.
@@ -21,11 +28,11 @@ services:
     build: ./mud-tool
     container_name: mud-tool
     ports:
-      - "${MUD_PORT:-8042}:8042"
+      - "127.0.0.1:${MUD_PORT:-8042}:8042"
     environment:
       - MUD_AI_BACKEND=${MUD_AI_BACKEND:-cloud}
       - MUD_CLOUD_PROVIDER=${MUD_CLOUD_PROVIDER:-openai_compatible}
-      - MUD_OPENAI_BASE_URL=${MUD_OPENAI_BASE_URL:-http://ollama:11434/v1}
+      - MUD_OPENAI_BASE_URL=${DOCKER_OLLAMA_BASE:-http://host.docker.internal:11434}/v1
       - MUD_OPENAI_API_KEY=${MUD_OPENAI_API_KEY:-ollama}
       - MUD_OPENAI_MODEL=${MUD_OPENAI_MODEL:-qwen3:8b}
       - MUD_PIPELINE_MODE=${MUD_PIPELINE_MODE:-two_model}
@@ -33,7 +40,11 @@ services:
       - MUD_GUIDELINES_EMBED_MODEL=${MUD_GUIDELINES_EMBED_MODEL:-nomic-embed-text:latest}
       - MUD_USE_KROKI=${MUD_USE_KROKI:-true}
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
+        required: false   # absent unless --profile bundled-ollama
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # native Ollama on Linux hosts too
     restart: unless-stopped
     networks:
       - mud-mut-network
@@ -43,7 +54,7 @@ services:
     build: ./cpputest-rag/backend
     container_name: cpputest-backend
     ports:
-      - "${PORT:-8000}:8000"
+      - "127.0.0.1:${PORT:-8000}:8000"
     volumes:
       - ./cpputest-rag/c_projects:/app/c_projects
       - ./cpputest-rag/test_examples:/app/test_examples
@@ -52,7 +63,7 @@ services:
       - ./cpputest-rag/logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434/api}
+      - OLLAMA_URL=${DOCKER_OLLAMA_BASE:-http://host.docker.internal:11434}/api
       - EMBED_MODEL=${EMBED_MODEL:-all-minilm:latest}
       - GEN_MODEL=${GEN_MODEL:-qwen2.5:7b}
       - C_PROJECT_DIR=/app/c_projects
@@ -66,7 +77,11 @@ services:
       - HOST=0.0.0.0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
+        required: false   # absent unless --profile bundled-ollama
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # native Ollama on Linux hosts too
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -81,7 +96,7 @@ services:
     build: ./cpputest-rag/frontend
     container_name: cpputest-frontend
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - backend
     restart: unless-stopped
@@ -99,24 +114,20 @@ services:
     networks:
       - mud-mut-network
 
-  # ── Shared local LLM runtime ───────────────────────────────────────
+  # ── Bundled local LLM runtime (opt-in: --profile bundled-ollama) ────
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    profiles: ["bundled-ollama"]
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
     environment:
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+      # Default Ollama context (2-4k tokens) silently truncates MUD prompts
+      - OLLAMA_CONTEXT_LENGTH=${OLLAMA_CONTEXT_LENGTH:-16384}
     healthcheck:
       test: ["CMD-SHELL", "ollama list || exit 1"]
       interval: 30s

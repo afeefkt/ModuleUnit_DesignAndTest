@@ -1,0 +1,74 @@
+2026-07-19 16:28:59,187 - app.main - INFO - Starting CppUTest Generator v2.0...
+2026-07-19 16:28:59,188 - app.main - INFO - Ollama URL: http://localhost:11434/api
+2026-07-19 16:28:59,190 - app.main - INFO - Code Model: qwen2.5:7b
+2026-07-19 16:28:59,191 - app.main - INFO - Database: /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/data/cpputest.db
+2026-07-19 16:28:59,200 - app.database - INFO - Database initialized at /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/data/cpputest.db
+2026-07-19 16:28:59,204 - app.services.rag_engine - INFO - Building index from test examples...
+2026-07-19 16:28:59,219 - app.services.rag_engine - INFO - Added example: example_multiFun_function.cpp
+2026-07-19 16:28:59,222 - app.services.rag_engine - INFO - Added example: example_simple_function.cpp
+2026-07-19 16:28:59,225 - app.services.rag_engine - INFO - Added example: example_string_function.cpp
+2026-07-19 16:28:59,227 - app.services.rag_engine - INFO - Generating embeddings for 3 examples...
+2026-07-19 16:28:59,229 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:28:59,230 - app.services.rag_engine - WARNING - Failed to embed example 0
+2026-07-19 16:28:59,231 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:28:59,232 - app.services.rag_engine - WARNING - Failed to embed example 1
+2026-07-19 16:28:59,233 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:28:59,234 - app.services.rag_engine - WARNING - Failed to embed example 2
+2026-07-19 16:28:59,235 - app.services.rag_engine - ERROR - Failed to generate any embeddings
+2026-07-19 16:28:59,236 - app.main - INFO - Startup complete
+2026-07-19 16:29:46,461 - app.main - INFO - Starting CppUTest Generator v2.0...
+2026-07-19 16:29:46,465 - app.main - INFO - Ollama URL: http://localhost:11434/api
+2026-07-19 16:29:46,469 - app.main - INFO - Code Model: qwen2.5:7b
+2026-07-19 16:29:46,477 - app.main - INFO - Database: /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/data/cpputest.db
+2026-07-19 16:29:46,531 - app.database - INFO - Database initialized at /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/data/cpputest.db
+2026-07-19 16:29:46,545 - app.services.rag_engine - INFO - Building index from test examples...
+2026-07-19 16:29:46,598 - app.services.rag_engine - INFO - Added example: example_multiFun_function.cpp
+2026-07-19 16:29:46,613 - app.services.rag_engine - INFO - Added example: example_simple_function.cpp
+2026-07-19 16:29:46,617 - app.services.rag_engine - INFO - Added example: example_string_function.cpp
+2026-07-19 16:29:46,618 - app.services.rag_engine - INFO - Generating embeddings for 3 examples...
+2026-07-19 16:29:46,622 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:29:46,629 - app.services.rag_engine - WARNING - Failed to embed example 0
+2026-07-19 16:29:46,636 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:29:46,639 - app.services.rag_engine - WARNING - Failed to embed example 1
+2026-07-19 16:29:46,645 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:29:46,653 - app.services.rag_engine - WARNING - Failed to embed example 2
+2026-07-19 16:29:46,656 - app.services.rag_engine - ERROR - Failed to generate any embeddings
+2026-07-19 16:29:46,662 - app.main - INFO - Startup complete
+2026-07-19 16:29:53,032 - app.api.analysis - INFO - Analyzing project: SWC_BatteryManagement
+2026-07-19 16:29:53,035 - app.api.analysis - INFO - Using alternative path: /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/c_projects/SWC_BatteryManagement
+2026-07-19 16:29:53,049 - app.services.c_parser - INFO - Found 3 C/H files in /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/c_projects/SWC_BatteryManagement
+2026-07-19 16:29:53,050 - app.services.c_parser - INFO - Analyzing: BalanceCells.c
+2026-07-19 16:29:53,054 - app.services.c_parser - INFO -   Found 1 functions
+2026-07-19 16:29:53,055 - app.services.c_parser - INFO - Analyzing: EstimateSOC.c
+2026-07-19 16:29:53,060 - app.services.c_parser - INFO -   Found 1 functions
+2026-07-19 16:29:53,061 - app.services.c_parser - INFO - Analyzing: SWC_BatteryManagement.c
+2026-07-19 16:29:53,065 - app.services.c_parser - INFO -   Found 1 functions
+2026-07-19 16:29:53,066 - app.api.analysis - INFO - Analysis complete: found 3 functions
+2026-07-19 16:30:13,141 - app.main - INFO - Starting CppUTest Generator v2.0...
+2026-07-19 16:30:13,146 - app.main - INFO - Ollama URL: http://localhost:11434/api
+2026-07-19 16:30:13,152 - app.main - INFO - Code Model: qwen2.5:7b
+2026-07-19 16:30:13,159 - app.main - INFO - Database: /tmp/cpputest.db
+2026-07-19 16:30:13,164 - app.database - INFO - Database initialized at /tmp/cpputest.db
+2026-07-19 16:30:13,182 - app.services.rag_engine - INFO - Building index from test examples...
+2026-07-19 16:30:13,237 - app.services.rag_engine - INFO - Added example: example_multiFun_function.cpp
+2026-07-19 16:30:13,241 - app.services.rag_engine - INFO - Added example: example_simple_function.cpp
+2026-07-19 16:30:13,245 - app.services.rag_engine - INFO - Added example: example_string_function.cpp
+2026-07-19 16:30:13,246 - app.services.rag_engine - INFO - Generating embeddings for 3 examples...
+2026-07-19 16:30:13,250 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:30:13,256 - app.services.rag_engine - WARNING - Failed to embed example 0
+2026-07-19 16:30:13,263 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:30:13,268 - app.services.rag_engine - WARNING - Failed to embed example 1
+2026-07-19 16:30:13,276 - app.services.rag_engine - ERROR - Embedding error: Cannot connect to host localhost:11434 ssl:default [Connect call failed ('127.0.0.1', 11434)]
+2026-07-19 16:30:13,279 - app.services.rag_engine - WARNING - Failed to embed example 2
+2026-07-19 16:30:13,283 - app.services.rag_engine - ERROR - Failed to generate any embeddings
+2026-07-19 16:30:13,288 - app.main - INFO - Startup complete
+2026-07-19 16:30:18,295 - app.api.analysis - INFO - Analyzing project: SWC_BatteryManagement
+2026-07-19 16:30:18,303 - app.api.analysis - INFO - Using alternative path: /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/c_projects/SWC_BatteryManagement
+2026-07-19 16:30:18,317 - app.services.c_parser - INFO - Found 3 C/H files in /sessions/exciting-determined-wright/mnt/ModuleUnit_DesignAndTest/cpputest-rag/c_projects/SWC_BatteryManagement
+2026-07-19 16:30:18,318 - app.services.c_parser - INFO - Analyzing: BalanceCells.c
+2026-07-19 16:30:18,323 - app.services.c_parser - INFO -   Found 1 functions
+2026-07-19 16:30:18,324 - app.services.c_parser - INFO - Analyzing: EstimateSOC.c
+2026-07-19 16:30:18,329 - app.services.c_parser - INFO -   Found 1 functions
+2026-07-19 16:30:18,330 - app.services.c_parser - INFO - Analyzing: SWC_BatteryManagement.c
+2026-07-19 16:30:18,334 - app.services.c_parser - INFO -   Found 1 functions
+2026-07-19 16:30:18,335 - app.api.analysis - INFO - Analysis complete: found 3 functions
