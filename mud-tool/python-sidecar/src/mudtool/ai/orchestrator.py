@@ -743,7 +743,7 @@ class AIOrchestrator:
 
             except Exception as e:
                 last_error = str(e)
-                logger.error(f"Attempt {attempt} failed with exception: {e}")
+                logger.error(f"Attempt {attempt} failed with exception: {e!r}")  # repr: timeouts have empty str()
                 if attempt >= self.settings.max_retries:
                     break
 

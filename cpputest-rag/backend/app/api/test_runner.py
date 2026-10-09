@@ -2,10 +2,8 @@
 
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
-import subprocess
 import logging
 from typing import Dict
-from app.services.report_generator import generate_html_report
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -14,7 +12,7 @@ logger = logging.getLogger(__name__)
 @router.post("/run-tests")
 async def run_tests(test_directory: str) -> Dict:
     """
-    Build and run CppUTest tests in a generated test directory
+    Build and run CppUTest tests in a generated test directory (natively, no Docker)
 
     Args:
         test_directory: Path to the generated tests directory (e.g., "tests_20260208_153000")
@@ -22,6 +20,8 @@ async def run_tests(test_directory: str) -> Dict:
     Returns:
         Dict with build status, test results, and output
     """
+    from app.services.native_runner import run_tests as _native_run_tests
+
     # Validate and construct path
     test_dir = Path(test_directory)
     if not test_dir.is_absolute():
@@ -38,113 +38,8 @@ async def run_tests(test_directory: str) -> Dict:
     logger.info(f"Building and running tests in: {test_dir}")
 
     try:
-        # Run docker exec to build tests in the test-runner container
-        # Build tests
-        build_cmd = [
-            "docker", "exec", "cpputest-runner",
-            "sh", "-c",
-            f"cd /tests/{test_dir.name} && make clean && make"
-        ]
+        return _native_run_tests(test_dir)
 
-        logger.info(f"Building tests: {' '.join(build_cmd)}")
-        build_result = subprocess.run(
-            build_cmd,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-
-        if build_result.returncode != 0:
-            logger.error(f"Build failed: {build_result.stderr}")
-            return {
-                "status": "build_failed",
-                "build_output": build_result.stdout,
-                "build_error": build_result.stderr,
-                "test_output": None
-            }
-
-        # Run tests with coverage generation
-        # This will:
-        # 1. Run tests with JUnit XML output
-        # 2. Generate LCOV coverage data
-        # 3. Generate HTML coverage report
-        coverage_cmd = [
-            "docker", "exec", "cpputest-runner",
-            "sh", "-c",
-            f"cd /tests/{test_dir.name} && make coverage"
-        ]
-
-        logger.info(f"Running tests with coverage: {' '.join(coverage_cmd)}")
-        run_result = subprocess.run(
-            coverage_cmd,
-            capture_output=True,
-            text=True,
-            timeout=120  # Increased timeout for coverage generation
-        )
-
-        # CppUTest returns 0 if all tests pass, non-zero if any fail
-        test_status = "passed" if run_result.returncode == 0 else "failed"
-
-        logger.info(f"Tests {test_status}")
-
-        # Check if coverage files were generated
-        coverage_info_path = test_dir / "coverage.info"
-        coverage_html_dir = test_dir / "coverage_html"
-        junit_xml_path = test_dir / "test-results.xml"
-
-        coverage_generated = coverage_info_path.exists()
-        html_coverage_generated = coverage_html_dir.exists()
-        junit_generated = junit_xml_path.exists()
-
-        if coverage_generated:
-            logger.info(f"LCOV coverage report generated: {coverage_info_path}")
-        if html_coverage_generated:
-            logger.info(f"HTML coverage report generated: {coverage_html_dir}/index.html")
-        if junit_generated:
-            logger.info(f"JUnit XML report generated: {junit_xml_path}")
-
-        # Prepare test result with coverage information
-        test_result = {
-            "status": test_status,
-            "build_output": build_result.stdout,
-            "build_error": build_result.stderr,
-            "test_output": run_result.stdout,
-            "test_error": run_result.stderr,
-            "exit_code": run_result.returncode,
-            "coverage_available": coverage_generated,
-            "html_coverage_available": html_coverage_generated,
-            "junit_xml_available": junit_generated,
-            "coverage_info_path": str(coverage_info_path) if coverage_generated else None,
-            "coverage_html_path": str(coverage_html_dir / "index.html") if html_coverage_generated else None,
-            "junit_xml_path": str(junit_xml_path) if junit_generated else None
-        }
-
-        # Automatically generate and save HTML report
-        try:
-            html_content = generate_html_report(
-                test_result=test_result,
-                test_directory=test_dir.name,
-                project_path=None  # Could be enhanced to track project path
-            )
-
-            # Save report to the test directory
-            report_path = test_dir / "test-report.html"
-            with open(report_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-
-            logger.info(f"HTML report saved: {report_path}")
-            test_result["report_path"] = str(report_path)
-            test_result["report_available"] = True
-
-        except Exception as e:
-            logger.error(f"Failed to generate HTML report: {e}")
-            test_result["report_available"] = False
-
-        return test_result
-
-    except subprocess.TimeoutExpired:
-        logger.error("Test execution timed out")
-        raise HTTPException(status_code=408, detail="Test execution timed out")
     except Exception as e:
         logger.error(f"Test execution error: {e}")
         raise HTTPException(status_code=500, detail=f"Test execution failed: {str(e)}")

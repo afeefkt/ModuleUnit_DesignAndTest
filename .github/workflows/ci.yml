@@ -67,3 +67,36 @@ jobs:
           pip install -r requirements.txt
       - name: Import app
         run: python -c "import app.main; print('cpputest-rag backend imports OK')"
+
+  mudmut-core:
+    name: mudmut_core (engine + exporter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "mud-tool/python-sidecar[dev]"
+          pip install -r cpputest-rag/backend/requirements-native.txt
+      - name: mudmut_core unit tests
+        run: pytest mudmut_core/tests -q
+      - name: C-skeleton exporter tests
+        run: pytest mud-tool/python-sidecar/tests/unit/test_c_skeleton_exporter.py -q
+
+  agentic:
+    name: agentic spike (mudmut CLI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mudtool (for the CLI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e mud-tool/python-sidecar pytest
+      - name: CLI unit tests
+        run: pytest agentic/tests -q

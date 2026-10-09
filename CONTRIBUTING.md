@@ -24,8 +24,9 @@ pytest                       # unit tests
 ruff check . && mypy src     # lint + types
 
 # Verification half
-cd cpputest-rag
-docker compose up            # backend + frontend + ollama + test-runner
+cd cpputest-rag/backend
+pip install -r requirements-native.txt
+# C/C++ build toolchain (once, in WSL):  wsl -u root -e apt-get install -y cpputest lcov
 ```
 
 Use the local backend for development: `cp .env.local.example .env` (no API key needed).
@@ -48,5 +49,4 @@ Use the local backend for development: `cp .env.local.example .env` (no API key 
 
 ## Reporting security issues
 
-Please do **not** open a public issue for security problems (e.g. the Docker-socket exposure noted in the README).
-Contact the maintainers privately first.
+Please do **not** open a public issue for security problems. Contact the maintainers privately first.

@@ -1,0 +1,249 @@
+"""End-to-end chain: requirements → MUD → C → MUT → trace.
+
+Headless entry point::
+
+    python -m mudmut_core.chain --requirements mud-tool/data/sample/bms_requirements.csv \\
+        --swc SWC_BatteryManagement --quick
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from mudmut_core import aio, compilable, design, env, trace as trace_mod, verify
+from mudmut_core.workspace import (
+    ACTIVITY,
+    COMPILABILITY,
+    FLOW,
+    MUD_SPEC,
+    REQUIREMENTS,
+    RESULTS,
+    REVIEW,
+    SKELETON,
+    TRACE,
+    Run,
+)
+
+
+class ChainError(RuntimeError):
+    pass
+
+
+def _emit(progress, stage: str, message: str, **extra: Any) -> None:
+    if progress:
+        progress({"stage": stage, "message": message, **extra})
+
+
+async def run_full_chain(
+    requirements_file: str | Path,
+    *,
+    swc: Optional[str] = None,
+    quick: bool = False,
+    progress: Optional[Callable[[dict], None]] = None,
+    keep_run: bool = True,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Run the whole MUD → MUT pipeline and return a summary dict.
+
+    ``quick=True`` uses ``single_pass`` spec generation, skips the review and
+    builds the activity flow deterministically from Section 7.
+    """
+    env.ensure_environment()
+    timings: dict[str, float] = {}
+
+    # ── 1. import ─────────────────────────────────────────────────────────────
+    t0 = time.time()
+    imported = design.import_requirements(requirements_file)
+    if not imported.requirement_set.requirements:
+        raise ChainError(f"no requirements imported from {requirements_file}: {imported.errors}")
+    reqs = imported.requirement_set
+    _emit(progress, "import", f"Imported {reqs.count} requirement(s)")
+    timings["import"] = time.time() - t0
+
+    text = design.requirements_text(reqs)
+
+    # ── 2. plan modules ───────────────────────────────────────────────────────
+    t0 = time.time()
+    plan = await design.plan_modules(text)
+    modules = plan.modules
+    if not modules:
+        raise ChainError("module planning returned no SWC modules")
+    timings["plan"] = time.time() - t0
+
+    if swc:
+        chosen = next((m for m in modules if m.swc_name == swc), None)
+        if chosen is None:
+            chosen = modules[0]
+            _emit(progress, "plan", f"SWC '{swc}' not found; using {chosen.swc_name}")
+    else:
+        chosen = modules[0]
+    _emit(progress, "plan", f"Selected {chosen.swc_name} ({len(modules)} module(s) planned)")
+
+    # Create the run workspace only once the SWC is known.
+    run = Run.create(chosen.swc_name, root=root)
+    run.save_json(REQUIREMENTS, design.requirements_to_dicts(reqs))
+    run.save_state(swc=chosen.swc_name, quick=quick)
+    _emit(progress, "workspace", f"Run workspace: {run.folder}")
+
+    # ── 3. generate MUD spec ──────────────────────────────────────────────────
+    mode = "single_pass" if quick else "two_stage"
+    t0 = time.time()
+    spec_md = await design.generate_mud_spec(chosen, text, mode=mode, progress=progress)
+    if not spec_md or len(spec_md.strip()) < 200:
+        raise ChainError(f"MUD spec generation produced too little content ({len(spec_md or '')} chars)")
+    run.save_text(MUD_SPEC, spec_md)
+    timings["spec"] = time.time() - t0
+    _emit(progress, "spec", f"MUD spec generated ({len(spec_md)} chars, mode={mode})")
+
+    # ── 4. review (skip in quick mode) ────────────────────────────────────────
+    if not quick:
+        t0 = time.time()
+        spec_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
+        run.save_json(REVIEW, review.to_dict())
+        run.save_text(MUD_SPEC, spec_md)
+        timings["review"] = time.time() - t0
+        _emit(
+            progress, "review",
+            f"Review: approved={review.approved} coverage={review.coverage_pct}% "
+            f"errors={review.error_count} warnings={review.warning_count}",
+        )
+
+    # ── 5. activity diagram ───────────────────────────────────────────────────
+    t0 = time.time()
+    # quick: build the flow straight from Section 7 — on 7-9B models the AI
+    # activity step routinely times out and ends in this same fallback anyway.
+    activity = await design.generate_activity(
+        reqs, spec_md, chosen.swc_name, use_ai=not quick, progress=progress
+    )
+    if not activity.diagrams:
+        raise ChainError("activity generation produced no diagrams")
+    run.save_json(ACTIVITY, activity.model_dump() if hasattr(activity, "model_dump") else activity.dict())
+    timings["activity"] = time.time() - t0
+    _emit(progress, "activity", f"Generated {len(activity.diagrams)} activity diagram(s)")
+
+    # ── 6. export C + Mermaid ─────────────────────────────────────────────────
+    t0 = time.time()
+    exported = design.export(activity)
+    c_map: dict[str, str] = exported["c"]
+    mermaid_map: dict[str, str] = exported["mermaid"]
+    if not c_map:
+        raise ChainError("no C skeleton produced (no top-level ActivityDiagram)")
+
+    # Persist the mermaid flow (first diagram, for the UI).
+    first_mmd = next(iter(mermaid_map.values()), "")
+    run.save_text(FLOW, first_mmd)
+
+    # Combine all skeleton .c files into one module file for the MUT step.
+    c_code = "\n\n".join(c_map.values())
+    run.save_text(SKELETON, c_code)
+    timings["export"] = time.time() - t0
+
+    # ── 7. make the C compilable ──────────────────────────────────────────────
+    project_dir = run.path("project")
+    project_dir.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
+    rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir)
+    run.save_json(COMPILABILITY, {
+        "swc": chosen.swc_name,
+        "total_statements": rep.total_statements,
+        "kept_statements": rep.kept_statements,
+        "stubbed_statements": rep.stubbed_statements,
+        "rounds": rep.rounds,
+        "compile_ok": rep.compile_ok,
+        "last_error": rep.last_error,
+    })
+    run.save_text(SKELETON, rep.c_code)
+    (project_dir / f"{chosen.swc_name}.c").write_text(rep.c_code, encoding="utf-8")
+    timings["compilable"] = time.time() - t0
+    _emit(progress, "compilable", f"Compilability: {rep.summary()}")
+
+    # ── 8. analyze + generate tests ───────────────────────────────────────────
+    t0 = time.time()
+    generation = await verify.generate_tests(project_dir)
+    run.save_json(RESULTS, {"generation": generation})
+    timings["generate_tests"] = time.time() - t0
+    _emit(
+        progress, "generate_tests",
+        f"Generated {generation.get('tests_generated')} test file(s) "
+        f"({len(generation.get('failed_functions') or [])} function(s) failed)",
+    )
+
+    # ── 9. build + run (+ fix loop) ───────────────────────────────────────────
+    out_dir = Path(generation.get("output_directory", ""))
+    test_result: dict[str, Any] = {"status": "skipped"}
+    if out_dir and out_dir.is_dir():
+        t0 = time.time()
+        test_result = verify.fix_loop(out_dir, max_attempts=2)
+        run.save_json(RESULTS, {"generation": generation, "run": test_result})
+        timings["build_run"] = time.time() - t0
+        junit = test_result.get("junit") or {}
+        quarantined = test_result.get("quarantined_tests") or []
+        _emit(
+            progress, "build_run",
+            f"Tests: {test_result.get('status')} — {junit.get('passed', 0)} passed, "
+            f"{junit.get('failures', 0)} failed (fix_attempts={test_result.get('fix_attempts', 0)}"
+            f", quarantined={len(quarantined)}"
+            f"{', smoke-test fallback' if test_result.get('smoke_fallback') else ''})",
+        )
+
+    # ── 10. traceability ──────────────────────────────────────────────────────
+    t0 = time.time()
+    trace_record = trace_mod.build_trace(chosen.swc_name, rep.c_code, generation)
+    run.save_json(TRACE, trace_record)
+    timings["trace"] = time.time() - t0
+    _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)")
+
+    run.save_state(timings=timings)
+    return {
+        "run_folder": str(run.folder),
+        "swc": chosen.swc_name,
+        "timings": timings,
+        "compilability": {
+            "kept": rep.kept_statements,
+            "stubbed": rep.stubbed_statements,
+            "compile_ok": rep.compile_ok,
+        },
+        "tests": test_result,
+        "trace": trace_record,
+    }
+
+
+def _main() -> int:
+    parser = argparse.ArgumentParser(description="MUD → MUT end-to-end chain (headless)")
+    parser.add_argument("--requirements", required=True, help="Path to the requirements file (csv/txt/md/xlsx)")
+    parser.add_argument("--swc", default=None, help="SWC name to design + test (default: first planned module)")
+    parser.add_argument("--quick", action="store_true", help="single_pass spec, skip review (fast demo)")
+    args = parser.parse_args()
+
+    events: list[dict] = []
+
+    def progress(event: dict) -> None:
+        events.append(event)
+        msg = event.get("message", "")
+        print(f"  [{event.get('stage', '?')}] {msg}")
+
+    print("MUD_MUT chain")
+    print(f"  requirements: {args.requirements}")
+    print(f"  swc: {args.swc or '(auto)'}   quick={args.quick}\n")
+
+    summary = aio.run_sync(
+        run_full_chain(args.requirements, swc=args.swc, quick=args.quick, progress=progress)
+    )
+
+    print("\n=== SUMMARY ===")
+    print(json.dumps({
+        "run_folder": summary["run_folder"],
+        "swc": summary["swc"],
+        "timings": summary["timings"],
+        "compilability": summary["compilability"],
+        "tests": {k: summary["tests"].get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
+    }, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

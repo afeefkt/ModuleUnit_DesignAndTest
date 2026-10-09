@@ -4,6 +4,11 @@
 > **Version**: 2.0
 > **Last Updated**: 2026-02-10
 
+> **Note (Docker removed):** the test-runner now runs **natively** — `make clean all` then `make coverage`
+> inside WSL (see `mudmut_core/toolchain.py` and the [root README](../README.md)). The `docker exec cpputest-runner …`
+> commands in the historical sections below can be replaced with `cd <test_dir> && make <target>`.
+> The Makefile now uses `CPPUTEST_HOME ?= /usr`, records the real test exit code, and uses lcov 2.x flags.
+
 ---
 
 ## Table of Contents

@@ -1,6 +1,11 @@
 # CppUTest Generator with RAG — v2.0
 
-Automatic CppUTest case generation for C projects using CodeLlama and RAG (Retrieval Augmented Generation).
+Automatic CppUTest case generation for C projects using a local model + RAG (Retrieval Augmented Generation).
+
+> **Docker support removed.** This service now runs **natively, in-process** via `mudmut_core` (see the
+> [repo root README](../README.md)). The Docker/compose/frontend files are gone; the backend library
+> (`backend/app/`) is unchanged and is driven directly by the platform. The sections below that reference
+> Docker are historical.
 
 **NEW in v2.0:** Separated frontend, backend API, SQLite persistence, project upload, and generation history!
 
@@ -11,7 +16,6 @@ Automatic CppUTest case generation for C projects using CodeLlama and RAG (Retri
 - 📚 **Example-Based Learning** - Learns from your existing test patterns via RAG
 - 🚀 **Batch Processing** - Handles large projects with hundreds of functions
 - ⚡ **GPU Acceleration** - Auto-detects and uses NVIDIA GPU when available
-- 🐳 **Docker Ready** - Full Docker setup with Ollama integration
 - 💾 **RAG System** - FAISS-based retrieval of similar test examples
 - 📤 **Project Upload** - Upload C projects as ZIP files via web UI
 - 📊 **Generation History** - SQLite database tracks all test generations

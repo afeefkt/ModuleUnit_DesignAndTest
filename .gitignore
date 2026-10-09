@@ -22,6 +22,13 @@ env/
 .coverage*
 htmlcov/
 
+# ── MUD_MUT workspace (runs) ─────────────────────────────────────────
+workspace/
+.cpputest-src/
+.cpputest-prefix/
+.lcov-src/
+.perl5lib/
+
 # ── Node / frontend tooling (if any) ────────────────────────────────
 node_modules/
 
@@ -44,6 +51,18 @@ graphify-out/cache/
 **/logs/*.log
 bridge/out/
 
+# ── Agentic spike (agentic/) ─────────────────────────────────────────
+agentic/runs/
+agentic/eval/.cache/
+.venv-agentic/
+__pycache__/
+*.pyc
+
+# ── OpenCode runtime junk (regenerated on `opencode run`/`serve`) ────
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+
 # ── Databases ───────────────────────────────────────────────────────
 *.db
 *.sqlite
@@ -52,3 +71,11 @@ bridge/out/
 # ── OS cruft ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# RAG index / logs written by the in-process cpputest-rag engine
+test_examples.index
+test_examples_meta.pkl
+**/data/test_examples.index
+**/data/test_examples_meta.pkl
+cpputest_generator.log
+**/generated_tests/tests_*/

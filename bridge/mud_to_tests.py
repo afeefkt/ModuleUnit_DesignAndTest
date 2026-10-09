@@ -50,8 +50,16 @@ DEFAULT_CPPUTEST_URL = "http://localhost:8000"
 
 # Requirement-ID patterns used both in the MUD "Requirements:" header comment
 # and in per-node trace comments emitted by CSkeletonExporter.
+# IDs are read only from the three comment forms the C-skeleton exporter emits:
+#   /* Requirements: REQ-BMS-001, REQ-BMS-002 */   (file header)
+#   /* [REQ-BMS-001, REQ-BMS-002] */                 (per-node trace comment)
+#   /* trace: REQ_012 */                             (hand-written trace comment)
+# so tokens like UTF-8 / ISO-26262 elsewhere in the code are never mistaken
+# for requirements. ID shape: letter-led segments joined by '-' or '_',
+# ending in digits — REQ_001, BMS-001, REQ-BMS-001, ARCH-REQ-0100.
 _REQ_HEADER_RE = re.compile(r"Requirements?:\s*([^\*/\n]+)", re.IGNORECASE)
-_REQ_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9]*[-_]?\d+\b")
+_REQ_TRACE_RE = re.compile(r"/\*\s*(?:\[([^\]]*)\]|trace:\s*([^*]*))\s*\*/", re.IGNORECASE)
+REQ_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9]*(?:[-_][A-Z][A-Z0-9]*)*[-_]\d+\b")
 
 
 # ─────────────────────────── HTTP helpers (stdlib) ──────────────────────────
@@ -86,23 +94,36 @@ def skeleton_from_file(path: Path) -> str:
 
 
 def skeleton_from_result(result_json: Path, mud_url: str, out_dir: Path) -> Path:
-    """Call mud-tool /export (format=c_skeleton) and return the first .c produced."""
+    """Export a GenerationResult JSON to a C skeleton (in-process, no HTTP).
+
+    ``mud_url`` is accepted for backward compatibility but ignored; the export
+    runs against the local mud-tool library.
+    """
     if not result_json.is_file():
         _fail(f"result JSON not found: {result_json}")
     result = json.loads(result_json.read_text(encoding="utf-8"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"[bridge] Requesting C skeleton from mud-tool at {mud_url}/export ...")
+
+    c_map: dict[str, str] = {}
     try:
-        resp = _post_json(
-            f"{mud_url}/export",
-            {"format": "c_skeleton", "result": result, "output_path": str(out_dir)},
-        )
-    except urllib.error.URLError as exc:  # pragma: no cover - network dependent
-        _fail(f"could not reach mud-tool ({mud_url}). Is `mudtool-server` running? {exc}")
-    paths = resp.get("paths") or []
-    if not paths:
-        _fail("mud-tool returned no C-skeleton files (no ActivityDiagram in result?)")
-    print(f"[bridge] mud-tool wrote {len(paths)} skeleton file(s): {paths}")
+        sys.path.insert(0, str(REPO_ROOT))
+        from mudmut_core import env as _env
+        _env.ensure_environment()
+        from mudtool.models.json_uml import GenerationResult
+        from mudtool.generator.c_skeleton_exporter import CSkeletonExporter
+        gr = GenerationResult.model_validate(result)
+        c_map = CSkeletonExporter().export_result(gr)
+    except Exception as exc:  # pragma: no cover - environment dependent
+        _fail(f"could not export C skeleton in-process: {exc}")
+
+    if not c_map:
+        _fail("no C-skeleton files (no top-level ActivityDiagram in result)")
+    paths: list[str] = []
+    for name, code in c_map.items():
+        p = out_dir / f"{name}.c"
+        p.write_text(code, encoding="utf-8")
+        paths.append(str(p))
+    print(f"[bridge] exported {len(paths)} skeleton file(s): {paths}")
     return Path(paths[0])
 
 
@@ -116,59 +137,51 @@ def place_skeleton(module: str, code: str) -> Path:
     return project_dir
 
 
-# ─────────────────────────── Stage 3: generate tests ───────────────────────
-def analyze_and_generate(module: str, cpputest_url: str, run: bool) -> dict:
-    # The cpputest-rag API resolves a bare project name against its C_PROJECT_DIR,
-    # so we send the module name (works whether the backend runs on host or in Docker).
-    print(f"[bridge] Analyzing project '{module}' via {cpputest_url}/analyze-project ...")
-    try:
-        analysis = _get_json(
-            f"{cpputest_url}/analyze-project?project_path={urllib.request.quote(module)}"
-        )
-    except urllib.error.URLError as exc:  # pragma: no cover - network dependent
-        _fail(f"could not reach cpputest-rag ({cpputest_url}). Is it running? {exc}")
-    print(f"[bridge]   found {analysis.get('total_functions', '?')} function(s)")
+# ─────────────────────────── Stage 3: generate tests (in-process) ────────────
+def analyze_and_generate_native(module: str, code: str, run: bool) -> dict:
+    """Place the skeleton, make it compilable, generate + (optionally) run tests.
 
-    print(f"[bridge] Generating CppUTest tests via {cpputest_url}/generate-tests ...")
-    generation = _post_json(f"{cpputest_url}/generate-tests", {"project_path": module})
-    out_dir = generation.get("output_directory", "")
+    Runs the cpputest-rag library in-process via ``mudmut_core`` (no HTTP).
+    """
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from mudmut_core import aio, compilable, verify
+
+    project_dir = place_skeleton(module, code)
+    report = compilable.make_compilable(code, module, project_dir)
+    (project_dir / f"{module}.c").write_text(report.c_code, encoding="utf-8")
+    print(f"[bridge] C skeleton made compilable: {report.summary()}")
+
+    print(f"[bridge] Analyzing + generating CppUTest tests in-process ...")
+    generation = aio.run_sync(verify.generate_tests(project_dir))
     print(
         f"[bridge]   generated {generation.get('tests_generated', '?')} test file(s) "
-        f"in {out_dir}"
+        f"in {generation.get('output_directory', '')}"
     )
     failed = generation.get("failed_functions") or []
     if failed:
         print(f"[bridge]   WARNING: {len(failed)} function(s) failed: {failed}")
 
-    if run and out_dir:
-        test_dir_name = Path(out_dir).name
-        print(f"[bridge] Building + running tests ({test_dir_name}) ...")
-        try:
-            run_res = _post_json(
-                f"{cpputest_url}/run-tests?test_directory="
-                f"{urllib.request.quote(test_dir_name)}",
-                {},
-            )
-            print(f"[bridge]   build/run: {run_res.get('status', run_res)}")
-            generation["run_result"] = run_res
-        except urllib.error.URLError as exc:
-            print(f"[bridge]   WARNING: run-tests failed ({exc}); skipping.")
+    if run and generation.get("output_directory"):
+        out_dir = Path(generation["output_directory"])
+        print(f"[bridge] Building + running tests ({out_dir.name}) ...")
+        run_res = verify.fix_loop(out_dir, max_attempts=2)
+        print(f"[bridge]   build/run: {run_res.get('status', run_res)}")
+        generation["run_result"] = run_res
     return generation
 
 
 # ─────────────────────────── Stage 4: traceability record ──────────────────
+def requirement_ids_in(code: str) -> list[str]:
+    """Requirement IDs in ``code``'s trace comments, in order of first appearance."""
+    chunks = list(_REQ_HEADER_RE.findall(code))
+    for bracket, trace in _REQ_TRACE_RE.findall(code):
+        chunks.append(bracket or trace)
+    return list(dict.fromkeys(tok for chunk in chunks for tok in REQ_TOKEN_RE.findall(chunk)))
+
+
 def extract_requirements(code: str) -> list[str]:
-    reqs: set[str] = set()
-    for header in _REQ_HEADER_RE.findall(code):
-        for tok in re.split(r"[,\s]+", header.strip()):
-            tok = tok.strip()
-            if tok and _REQ_TOKEN_RE.fullmatch(tok):
-                reqs.add(tok)
-    # Also catch inline trace comments like  /* trace: REQ_012 */
-    for tok in _REQ_TOKEN_RE.findall(code):
-        if any(c.isdigit() for c in tok) and not tok.isdigit():
-            reqs.add(tok)
-    return sorted(reqs)
+    return sorted(requirement_ids_in(code))
 
 
 def list_test_files(output_directory: str) -> list[str]:
@@ -233,8 +246,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=None,
         help="Traceability JSON output path (default: bridge/out/<module>_trace.json)",
     )
-    parser.add_argument("--mud-url", default=DEFAULT_MUD_URL)
-    parser.add_argument("--cpputest-url", default=DEFAULT_CPPUTEST_URL)
+    parser.add_argument("--mud-url", default=DEFAULT_MUD_URL, help=argparse.SUPPRESS)
+    parser.add_argument("--cpputest-url", default=DEFAULT_CPPUTEST_URL, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     try:
@@ -246,11 +259,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             c_file = skeleton_from_result(args.result, args.mud_url, export_dir)
             code = c_file.read_text(encoding="utf-8")
 
-        # Stage 2 — place into cpputest-rag
-        place_skeleton(args.module, code)
-
-        # Stage 3 — analyze + generate (+ optional run)
-        generation = analyze_and_generate(args.module, args.cpputest_url, args.run)
+        # Stage 2 + 3 — place, compile, analyze + generate (+ optional run), in-process
+        generation = analyze_and_generate_native(args.module, code, args.run)
 
         # Stage 4 — traceability
         out_path = args.out or (REPO_ROOT / "bridge" / "out" / f"{args.module}_trace.json")

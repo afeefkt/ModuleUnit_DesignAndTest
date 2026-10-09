@@ -40,12 +40,12 @@ The emitted `.c` preserves requirement traceability as header/inline comments
 (`/* Requirements: ... */`, per-node trace comments) and RTE call structure — exactly the input the verification
 half understands.
 
-### 3. Verification (cpputest-rag, port 8000)
-1. **Analyze** (`GET /analyze-project?project_path=<Module>`) — extract function signatures + complexity.
-2. **Generate tests** (`POST /generate-tests {"project_path": "<Module>"}`) — FAISS RAG retrieves similar example
-   tests, CodeLlama-7B writes `Test_*.cpp` + a coverage-enabled `Makefile`.
-3. **Build & run** (`POST /run-tests?test_directory=<dir>`) — the CppUTest Docker runner compiles, runs, and
-   produces LCOV/HTML/JUnit coverage.
+### 3. Verification (cpputest-rag, in-process)
+1. **Analyze** — extract function signatures + complexity.
+2. **Generate tests** — FAISS RAG retrieves similar example tests, the local generation model writes
+   `Test_*.cpp` + a coverage-enabled `Makefile`.
+3. **Build & run** — `make clean all` then `make coverage` (natively, or via WSL on Windows), producing
+   LCOV/HTML/JUnit coverage.
 
 ### 4. Traceability (the bridge)
 `bridge/mud_to_tests.py` ties it together and writes `bridge/out/<Module>_trace.json`:
@@ -68,12 +68,13 @@ That JSON is the ASPICE artifact the two tools couldn't produce separately: **re
 # Mode A — from an already-exported skeleton (no mud-tool server needed):
 python bridge/mud_to_tests.py --skeleton path/to/SWC_MyModule.c --module SWC_MyModule --run
 
-# Mode B — from a mud-tool GenerationResult JSON (bridge calls /export for you):
+# Mode B — from a mud-tool GenerationResult JSON (bridge exports the skeleton in-process):
 python bridge/mud_to_tests.py --result path/to/generation_result.json --module SWC_MyModule --run
 ```
 
-Prerequisites: Ollama running with the models from the [README](../README.md#quick-start-100-local); the
-cpputest-rag backend up (`docker compose up`); for Mode B, `mudtool-server` running on 8042.
+Prerequisites: Ollama running with the models from the [README](../README.md#quick-start-100-local-no-docker),
+and the C/C++ toolchain available (run `wsl -u root -e apt-get install -y cpputest lcov` once). The bridge now
+runs the cpputest-rag library **in-process** — no FastAPI server, no Docker.
 
 ## Roadmap — backend parity & test-side guardrails
 - Give `cpputest-rag` the same `LOCAL | CLOUD | AUTO` backend abstraction as `mud-tool`, so the test half also
