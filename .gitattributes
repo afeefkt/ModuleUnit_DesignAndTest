@@ -1,0 +1,16 @@
+# Normalize line endings to LF in the repo (the project is developed in WSL/Linux).
+* text=auto
+
+# Windows batch files stay CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary formats — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xmi binary
+*.pkl binary

@@ -106,7 +106,9 @@ class PromptEngine:
         try:
             diagram_type = DiagramType(data["diagram_type"])
         except ValueError:
-            logger.warning(f"Unknown diagram_type '{data['diagram_type']}' in {path}")
+            # Non-diagram templates (e.g. elaboration.yaml) are loaded elsewhere;
+            # skip them quietly rather than warning on every startup.
+            logger.debug(f"Skipping non-diagram template '{data['diagram_type']}' in {path}")
             return
 
         template = PromptTemplate(

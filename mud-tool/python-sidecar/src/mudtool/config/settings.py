@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     ai_backend: AIBackend = AIBackend.CLOUD
     confidence_threshold: float = 0.8
     max_retries: int = 3
+    # HTTP request timeout (seconds) for LLM calls — thinking models can take
+    # minutes on a large prompt; the previous hard-coded 600 s caused ReadTimeout.
+    request_timeout: int = 1800
 
     # Cloud AI - Anthropic
     anthropic_api_key: Optional[str] = None
@@ -161,7 +164,12 @@ class Settings(BaseSettings):
     # MUD_SPEC_SKELETON_MODEL: separate model for Stage 1 skeleton in the
     # two-stage pipeline. Recommended: deepseek-r1:7b — a reasoning model gives
     # better structured-JSON completeness on 7b GPUs. Empty = use generator model.
-    mud_spec_skeleton_model: str = "deepseek-r1:7b"
+    mud_spec_skeleton_model: str = Field(
+        "deepseek-r1:7b",
+        validation_alias=AliasChoices(
+            "MUD_SPEC_SKELETON_MODEL", "MUD_MUD_SPEC_SKELETON_MODEL"
+        ),
+    )
 
     # ── MUD Spec Generation Pipeline ─────────────────────────────────────────
     # MUD_SPEC_PIPELINE controls the generation mode for /modules/mud-spec:
@@ -171,7 +179,10 @@ class Settings(BaseSettings):
     #                    CalPrm/DEM events), then Stage 3 expands Section 7 pseudo-code
     #                    per runnable using exact port names from the skeleton.
     #                    Better quality, ~3× slower.  Falls back to single_pass on error.
-    mud_spec_pipeline: str = "two_stage"
+    mud_spec_pipeline: str = Field(
+        "two_stage",
+        validation_alias=AliasChoices("MUD_SPEC_PIPELINE", "MUD_MUD_SPEC_PIPELINE"),
+    )
 
     # ── Activity Diagram Pipeline (multi-stage) ──────────────────────────────
     # MUD_ACTIVITY_PIPELINE_ENABLED=true → use 5-stage pipeline:

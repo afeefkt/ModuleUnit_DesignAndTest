@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from mudmut_core import aio, compilable, design, env, trace as trace_mod, verify
+from mudmut_core.llm import ollama_unload
 from mudmut_core.workspace import (
     ACTIVITY,
     COMPILABILITY,
@@ -36,6 +37,37 @@ class ChainError(RuntimeError):
 def _emit(progress, stage: str, message: str, **extra: Any) -> None:
     if progress:
         progress({"stage": stage, "message": message, **extra})
+
+
+def _mud_models() -> list[str]:
+    """Collect the distinct MUD-stage model names currently configured (best-effort)."""
+    try:
+        env.ensure_environment()
+        from mudtool.config.settings import get_settings
+        s = get_settings()
+        return list(dict.fromkeys([
+            n for n in (
+                s.openai_model,
+                getattr(s, "pipeline_generator_model", ""),
+                getattr(s, "pipeline_reviewer_model", ""),
+                getattr(s, "mud_spec_skeleton_model", ""),
+                getattr(s, "activity_pipeline_skeleton_model", ""),
+                getattr(s, "activity_pipeline_reviewer_model", ""),
+            ) if n
+        ]))
+    except Exception:
+        return []
+
+
+def _unload_models(models: list[str]) -> None:
+    for m in models:
+        ollama_unload(m)
+
+
+def _test_model() -> str:
+    """The current MUT test-generation model name (best-effort)."""
+    import os
+    return os.environ.get("GEN_MODEL", "")
 
 
 async def run_full_chain(
@@ -161,6 +193,10 @@ async def run_full_chain(
     timings["compilable"] = time.time() - t0
     _emit(progress, "compilable", f"Compilability: {rep.summary()}")
 
+    # Free VRAM before the MUT stage: unload every MUD-stage model so the
+    # (different) test-generation model can load without the "Stopping…" hang.
+    _unload_models(_mud_models())
+
     # ── 8. analyze + generate tests ───────────────────────────────────────────
     t0 = time.time()
     generation = await verify.generate_tests(project_dir)
@@ -196,6 +232,9 @@ async def run_full_chain(
     run.save_json(TRACE, trace_record)
     timings["trace"] = time.time() - t0
     _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)")
+
+    # Unload the test-generation model too, so Ollama ends the run idle.
+    _unload_models([m for m in [_test_model()] if m])
 
     run.save_state(timings=timings)
     return {

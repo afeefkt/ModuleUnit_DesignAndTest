@@ -64,6 +64,9 @@ def ensure_environment() -> str:
     os.environ.setdefault("DATABASE_PATH", str(REPO_ROOT / "cpputest-rag" / "data" / "cpputest.db"))
     os.environ.setdefault("EMBED_MODEL", root_env.get("EMBED_MODEL", "all-minilm:latest"))
     os.environ.setdefault("GEN_MODEL", root_env.get("GEN_MODEL", "qwen2.5:7b"))
+    # Request timeouts: cpputest-rag reads REQUEST_TIMEOUT; mud-tool reads MUD_REQUEST_TIMEOUT.
+    os.environ.setdefault("REQUEST_TIMEOUT", root_env.get("REQUEST_TIMEOUT", "1800"))
+    os.environ.setdefault("MUD_REQUEST_TIMEOUT", root_env.get("MUD_REQUEST_TIMEOUT", "1800"))
 
     _LOADED = True
     return ollama_url
