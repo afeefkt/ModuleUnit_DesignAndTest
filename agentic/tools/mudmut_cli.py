@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -47,7 +48,7 @@ from mudtool.models.json_uml import (                              # noqa: E402
 from mudtool.validation.engine import ValidationEngine             # noqa: E402
 from mudtool.validation.mermaid_linter import MermaidLinter        # noqa: E402
 
-RUNS_DIR = _REPO_ROOT / "outputs"
+RUNS_DIR = Path(os.environ.get("MUDMUT_RUNS_DIR") or (_REPO_ROOT / "outputs"))
 
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -59,9 +60,18 @@ def _emit(obj: dict) -> None:
     print(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
 
 
+def _sanitize_run_id(run_id: str) -> str:
+    """Restrict a run id to a safe path segment (no traversal outside outputs/)."""
+    import re
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", run_id).strip("._")
+    if not safe or safe in (".", ".."):
+        raise ValueError(f"invalid run id: {run_id!r}")
+    return safe
+
+
 def make_run_dir(run_id: str) -> Path:
     """Create (if needed) and return the run's artifact directory."""
-    d = RUNS_DIR / run_id
+    d = RUNS_DIR / _sanitize_run_id(run_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -276,10 +286,20 @@ def _find_c(run_dir: Path, swc: str) -> Path:
 
 def handle_make_compilable(args) -> dict:
     from mudmut_core import compilable
+    import json as _json
     run_dir = make_run_dir(args.run)
     code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
     project_dir = run_dir / "code"
     rep = compilable.make_compilable(code, args.swc, project_dir)
+    (project_dir / "compilability.json").write_text(_json.dumps({
+        "swc": args.swc,
+        "total_statements": rep.total_statements,
+        "kept_statements": rep.kept_statements,
+        "stubbed_statements": rep.stubbed_statements,
+        "rounds": rep.rounds,
+        "compile_ok": rep.compile_ok,
+        "last_error": rep.last_error,
+    }, indent=2), encoding="utf-8")
     return {
         "ok": True, "summary": rep.summary(), "compile_ok": rep.compile_ok,
         "kept": rep.kept_statements, "stubbed": rep.stubbed_statements,

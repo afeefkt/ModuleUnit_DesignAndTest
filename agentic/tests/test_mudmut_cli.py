@@ -66,9 +66,15 @@ BROKEN_ACTIVITY = {
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:
+    import os
+    import tempfile
+    if not hasattr(_run, "_tmp"):
+        _run._tmp = tempfile.mkdtemp(prefix="mudmut_cli_test_")  # type: ignore[attr-defined]
+    env = dict(os.environ)
+    env["MUDMUT_RUNS_DIR"] = _run._tmp  # type: ignore[attr-defined]
     return subprocess.run(
         [sys.executable, str(TOOLS), *args],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, timeout=120, env=env,
     )
 
 
