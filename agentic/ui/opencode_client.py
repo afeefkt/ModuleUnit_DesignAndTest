@@ -1,29 +1,29 @@
-"""Minimal client for `opencode serve` (headless HTTP API).
+"""Client for `opencode serve` (headless HTTP API).
 
-The OpenCode HTTP API is experimental, so endpoint paths are discovered from the
-server's OpenAPI document at runtime (served at ``/doc``) with documented fallbacks —
-the client never hard-codes guesses.
+`opencode serve` exposes an OpenAI-schema OpenAPI at ``/doc``.  The chat flow is:
 
-Exposes the three operations a chat UI needs:
-    create_session()  -> {"id": "ses_..."}
-    send_prompt(id, message) -> response bytes
-    stream_events(id) -> iterator of event dicts (SSE)
+    POST /session                       → { id: "ses_…" }
+    POST /session/{id}/message          body: { parts: [{type:"text",text}], agent, model:{providerID,modelID} }
+    GET  /event                         SSE stream; filter by sessionID
+
+Tool actions stream as ``message.part.updated`` events whose part carries
+``tool``, ``state.status``, ``state.input`` and ``state.output``.
 """
 
 from __future__ import annotations
 
 import json
 import urllib.request
-from typing import Iterator
+from typing import Iterator, Optional
 
 DEFAULT_BASE_URL = "http://127.0.0.1:4096"
 
-# Fallback endpoint templates (stable, non-experimental routes seen in the spec).
-_FALLBACK = {
+# Stable routes (verified against the `opencode serve` OpenAPI doc).
+ROUTES = {
     "spec": "/doc",
     "create_session": ("POST", "/session"),
-    "send_prompt": ("POST", "/session/{id}/prompt"),
-    "session_events": ("GET", "/session/{id}/event"),
+    "send_message": ("POST", "/session/{id}/message"),
+    "events": ("GET", "/event"),
 }
 
 
@@ -40,48 +40,26 @@ class OpenCodeClient:
         with urllib.request.urlopen(req, timeout=120) as r:
             return r.read()
 
-    def discover(self) -> dict:
-        """Return an endpoint map, discovered from the OpenAPI doc if possible."""
-        endpoints = dict(_FALLBACK)
-        try:
-            raw = self._request("GET", _FALLBACK["spec"])
-            spec = json.loads(raw)
-            for path, ops in (spec.get("paths") or {}).items():
-                for method, op in ops.items():
-                    if not isinstance(op, dict):
-                        continue
-                    summary = (op.get("summary") or "").lower()
-                    if method == "post" and "send message" in summary:
-                        endpoints["send_prompt"] = ("POST", path)
-                    if method == "post" and "session" in path and "create" in summary:
-                        endpoints["create_session"] = ("POST", path)
-                    if method == "get" and "session" in path and "subscribe" in summary:
-                        endpoints["session_events"] = ("GET", path)
-        except Exception:
-            pass  # fall back to defaults
-        return endpoints
+    def create_session(self, title: str = "mudmut") -> dict:
+        raw = self._request(*ROUTES["create_session"], {"title": title})
+        return json.loads(raw) if raw else {}
 
-    def create_session(self) -> dict:
-        method, path = self.discover()["create_session"]
-        raw = self._request(method, path, {"title": "agentic"})
-        body = json.loads(raw) if raw else {}
-        # Session id may be nested; accept a few shapes.
-        if isinstance(body, dict):
-            if "id" in body:
-                return body
-            for v in body.values():
-                if isinstance(v, dict) and v.get("id"):
-                    return v
-        return body
+    def send_message(self, session_id: str, message: str, *,
+                     agent: Optional[str] = None,
+                     model: Optional[dict] = None) -> bytes:
+        """Send a text part to a session. ``model`` is ``{providerID, modelID}``."""
+        payload: dict = {"parts": [{"type": "text", "text": message}]}
+        if agent:
+            payload["agent"] = agent
+        if model:
+            payload["model"] = model
+        return self._request(
+            "POST", ROUTES["send_message"][1].replace("{id}", session_id), payload,
+        )
 
-    def send_prompt(self, session_id: str, message: str) -> bytes:
-        method, path = self.discover()["send_prompt"]
-        return self._request(method, path.replace("{id}", session_id),
-                             {"message": message})
-
-    def stream_events(self, session_id: str) -> Iterator[dict]:
-        method, path = self.discover()["session_events"]
-        url = self.base_url + path.replace("{id}", session_id)
+    def stream_events(self, session_id: Optional[str] = None) -> Iterator[dict]:
+        """Yield event dicts from the SSE feed, optionally filtered to a session."""
+        url = self.base_url + ROUTES["events"][1]
         with urllib.request.urlopen(url, timeout=3600) as r:
             for raw_line in r:
                 line = raw_line.decode("utf-8", "replace").strip()
@@ -90,6 +68,31 @@ class OpenCodeClient:
                 payload = line[len("data:"):].strip()
                 if payload and payload != "[DONE]":
                     try:
-                        yield json.loads(payload)
+                        event = json.loads(payload)
                     except json.JSONDecodeError:
                         continue
+                    if session_id and event.get("sessionID", event.get("session_id")) != session_id:
+                        continue
+                    yield event
+
+
+# ── Event helpers (used by the UI timeline) ───────────────────────────────────
+def event_type(event: dict) -> str:
+    return event.get("type", "")
+
+
+def is_tool_event(event: dict) -> bool:
+    part = event.get("part") or {}
+    return part.get("tool") is not None
+
+
+def tool_state(event: dict) -> dict:
+    part = event.get("part") or {}
+    state = part.get("state") or {}
+    return {
+        "tool": part.get("tool"),
+        "status": state.get("status"),
+        "input": state.get("input"),
+        "output": state.get("output"),
+        "title": state.get("title"),
+    }

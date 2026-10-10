@@ -23,14 +23,15 @@ import json
 import sys
 from pathlib import Path
 
-# ── Bootstrap: make the mudtool library importable in-process ────────────────
-# The mudtool package lives at mud-tool/python-sidecar/src. If it isn't already
-# importable (e.g. running from a fresh checkout without `pip install -e`), add
-# it to sys.path so the deterministic library is usable directly.
+# ── Bootstrap: make the mudtool + cpputest-rag libraries importable in-process ─
+# Reuse mudmut_core's environment bootstrap (adds both halves to sys.path and
+# sets absolute paths) — no duplicate path juggling here.
 _REPO_ROOT = Path(__file__).resolve().parents[2]          # agentic/tools → repo root
-_MUDTOOL_SRC = _REPO_ROOT / "mud-tool" / "python-sidecar" / "src"
-if str(_MUDTOOL_SRC) not in sys.path:
-    sys.path.insert(0, str(_MUDTOOL_SRC))
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from mudmut_core import env as _env                                   # noqa: E402
+_env.ensure_environment()
 
 from pydantic import ValidationError                                  # noqa: E402
 
@@ -46,7 +47,7 @@ from mudtool.models.json_uml import (                              # noqa: E402
 from mudtool.validation.engine import ValidationEngine             # noqa: E402
 from mudtool.validation.mermaid_linter import MermaidLinter        # noqa: E402
 
-RUNS_DIR = _REPO_ROOT / "agentic" / "runs"
+RUNS_DIR = _REPO_ROOT / "outputs"
 
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 
@@ -261,6 +262,98 @@ def handle_render(args) -> dict:
     return {"ok": True, "files": written}
 
 
+# ── MUT-stage subcommands (delegate to mudmut_core) ───────────────────────────
+
+def _find_c(run_dir: Path, swc: str) -> Path:
+    """Locate the C skeleton for ``swc`` (written by export-c)."""
+    p = run_dir / f"{swc}.c"
+    if p.is_file():
+        return p
+    for c in sorted(run_dir.glob("*.c")):
+        return c
+    raise ValueError(f"no C skeleton for '{swc}' in {run_dir}; run export-c first")
+
+
+def handle_make_compilable(args) -> dict:
+    from mudmut_core import compilable
+    run_dir = make_run_dir(args.run)
+    code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
+    project_dir = run_dir / "code"
+    rep = compilable.make_compilable(code, args.swc, project_dir)
+    return {
+        "ok": True, "summary": rep.summary(), "compile_ok": rep.compile_ok,
+        "kept": rep.kept_statements, "stubbed": rep.stubbed_statements,
+        "run_dir": str(run_dir),
+    }
+
+
+def handle_gen_tests(args) -> dict:
+    from mudmut_core import aio, verify
+    run_dir = make_run_dir(args.run)
+    project_dir = run_dir / "code"
+    if not project_dir.is_dir():
+        raise ValueError(f"no code/ dir in {run_dir}; run make-compilable first")
+    out_dir = run_dir / "tests"
+    generation = aio.run_sync(verify.generate_tests(project_dir, output_dir=out_dir))
+    return {
+        "ok": True,
+        "tests_generated": generation.get("tests_generated"),
+        "failed_functions": generation.get("failed_functions") or [],
+        "output_directory": generation.get("output_directory", ""),
+        "run_dir": str(run_dir),
+    }
+
+
+def handle_build_run(args) -> dict:
+    from mudmut_core import verify
+    run_dir = make_run_dir(args.run)
+    out_dir = run_dir / "tests"
+    if not out_dir.is_dir():
+        raise ValueError(f"no tests/ dir in {run_dir}; run gen-tests first")
+    result = verify.fix_loop(out_dir, max_attempts=2)
+    (run_dir / "run_result.json").write_text(
+        json.dumps(result, indent=2, default=str), encoding="utf-8"
+    )
+    return {"ok": True, "status": result.get("status"), "junit": result.get("junit"), "run_dir": str(run_dir)}
+
+
+def handle_trace(args) -> dict:
+    from mudmut_core import trace as trace_mod
+    run_dir = make_run_dir(args.run)
+    code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
+    generation = {"output_directory": str(run_dir / "tests")}
+    record = trace_mod.build_trace(args.swc, code, generation)
+    (run_dir / "trace.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return {
+        "ok": True,
+        "requirements": len(record.get("source_requirements", [])),
+        "summary": record.get("summary"),
+        "run_dir": str(run_dir),
+    }
+
+
+def handle_report(args) -> dict:
+    from mudmut_core import report as report_mod
+    from mudmut_core.workspace import Run
+    run_dir = make_run_dir(args.run)
+    run = Run.load(run_dir)
+
+    def _load(name: str, default=None):
+        p = run_dir / name
+        return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else default
+
+    summary = {
+        "swc": args.swc or run.swc or args.run,
+        "preset": getattr(run, "preset", "agentic"),
+        "quick": True,
+        "compilability": _load("code/compilability.json", {}),
+        "tests": _load("run_result.json", {}),
+        "trace": _load("trace.json", {}),
+    }
+    p = report_mod.write_run_report(run, summary)
+    return {"ok": True, "report": str(p), "run_dir": str(run_dir)}
+
+
 # ── CLI entry point ───────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
@@ -294,6 +387,29 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("activity_json")
     sp.add_argument("--run", required=True)
     sp.set_defaults(func=handle_render)
+
+    sp = sub.add_parser("make-compilable", help="Make an exported C skeleton compile (Rte stubs + gcc loop).")
+    sp.add_argument("swc", help="SWC name (matches the .c file from export-c)")
+    sp.add_argument("--run", required=True)
+    sp.set_defaults(func=handle_make_compilable)
+
+    sp = sub.add_parser("gen-tests", help="Generate CppUTest tests into <run>/tests/.")
+    sp.add_argument("--run", required=True)
+    sp.set_defaults(func=handle_gen_tests)
+
+    sp = sub.add_parser("build-run", help="Build + run the tests in <run>/tests/ (with fix loop).")
+    sp.add_argument("--run", required=True)
+    sp.set_defaults(func=handle_build_run)
+
+    sp = sub.add_parser("trace", help="Write requirement -> test traceability to <run>/trace.json.")
+    sp.add_argument("swc")
+    sp.add_argument("--run", required=True)
+    sp.set_defaults(func=handle_trace)
+
+    sp = sub.add_parser("report", help="Write RUN_REPORT.md + run.json for the run.")
+    sp.add_argument("--swc", default="")
+    sp.add_argument("--run", required=True)
+    sp.set_defaults(func=handle_report)
 
     return p
 
