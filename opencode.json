@@ -33,7 +33,9 @@
       }
     }
   },
+  "watcher": { "ignore": ["Tools/**"] },
   "permission": {
+    "read": { "*": "allow", "Tools/**": "deny" },
     "edit": "ask",
     "bash": "ask",
     "webfetch": "deny",

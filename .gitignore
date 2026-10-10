@@ -24,6 +24,8 @@ htmlcov/
 
 # ── MUD_MUT outputs & config ─────────────────────────────────────────
 # Runs live under outputs/<run>/; only the .gitkeep is tracked.
+# Third-party tool checkouts (e.g. a CppUTest clone + its build/install) — never tracked.
+Tools/
 outputs/*
 !outputs/.gitkeep
 config/stages.json

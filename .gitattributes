@@ -14,3 +14,6 @@
 *.pdf binary
 *.xmi binary
 *.pkl binary
+
+# Shell scripts must stay LF (they run in WSL/Linux; CRLF breaks bash).
+*.sh text eol=lf

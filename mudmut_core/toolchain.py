@@ -95,6 +95,7 @@ _FIND_CPPUTEST = r"""
 cands=""
 [ -n "$1" ] && cands="$1"
 [ -n "$CPPUTEST_HOME" ] && cands="$cands $CPPUTEST_HOME"
+[ -n "$2" ] && cands="$cands $2/Tools/cpputest-install"
 cands="$cands /usr /usr/local /opt/cpputest $HOME/cpputest $HOME/cpputest-install $HOME/.local"
 for h in $cands; do
   [ -f "$h/include/CppUTest/TestHarness.h" ] || continue
@@ -119,7 +120,9 @@ def find_cpputest(home: str = "") -> CppUTestInfo:
     if home:
         home = wsl_path(home).rstrip("/") or home
     try:
-        proc = _shell("set -- " + shlex.quote(home) + "\n" + _FIND_CPPUTEST)
+        from mudmut_core import env
+        repo = wsl_path(env.REPO_ROOT)
+        proc = _shell("set -- " + shlex.quote(home) + " " + shlex.quote(repo) + "\n" + _FIND_CPPUTEST)
     except Exception as exc:  # noqa: BLE001 - e.g. no WSL installed
         return CppUTestInfo(detail=f"could not run the CppUTest probe: {exc}")
     found = dict(line.split("=", 1) for line in proc.stdout.splitlines() if "=" in line)
