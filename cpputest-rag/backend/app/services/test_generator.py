@@ -404,3 +404,46 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         f.write("\n".join(L) + "\n")
 
     logger.info(f"Created Makefile with coverage support: {makefile_path}")
+    write_run_scripts(output_dir)
+
+
+_RUN_SH = """#!/usr/bin/env bash
+# Auto-generated: compile and run the CppUTest suite in this folder (with coverage).
+#   ./build_and_run.sh            -> make clean all coverage
+#   ./build_and_run.sh test       -> any make targets: all, test, coverage, clean
+# Windows: double-click or run build_and_run.bat (it calls this script inside WSL).
+cd "$(dirname "$0")" || exit 1
+if [ "$#" -eq 0 ]; then set -- clean all coverage; fi
+echo "== make $* in $(pwd)"
+make "$@"
+rc=$?
+echo "== exit code: $rc"
+[ -f test-results.xml ] && echo "JUnit XML : $(pwd)/test-results.xml"
+[ -f coverage_html/index.html ] && echo "Coverage  : $(pwd)/coverage_html/index.html"
+exit $rc
+"""
+
+_RUN_BAT = """@echo off
+REM Auto-generated: compile and run the CppUTest suite in this folder via WSL.
+REM   build_and_run.bat            -> make clean all coverage
+REM   build_and_run.bat test       -> any make targets
+wsl.exe --cd "%~dp0." -e bash ./build_and_run.sh %*
+exit /b %ERRORLEVEL%
+"""
+
+
+def write_run_scripts(output_dir: Path) -> None:
+    """Write ``build_and_run.sh`` (LF) and ``build_and_run.bat`` (CRLF) next to the Makefile.
+
+    They let anyone re-compile and re-run the generated tests without the UI or an agent.
+    """
+    output_dir = Path(output_dir)
+    with open(output_dir / "build_and_run.sh", "w", encoding="utf-8", newline="\n") as f:
+        f.write(_RUN_SH)
+    with open(output_dir / "build_and_run.bat", "w", encoding="utf-8", newline="\r\n") as f:
+        f.write(_RUN_BAT)
+    try:
+        (output_dir / "build_and_run.sh").chmod(0o755)
+    except OSError:
+        pass
+    logger.info(f"Created build_and_run.sh / .bat in {output_dir}")

@@ -76,3 +76,13 @@ def test_build_reports_missing_cpputest(tmp_path, monkeypatch):
     result = verify.build_and_run(tmp_path)
     assert result["status"] == "build_failed" and result["cpputest_missing"] is True
     assert "Settings" in result["build_error"] and not called
+
+
+def test_run_scripts_written_next_to_makefile(tmp_path):
+    tg = _test_generator()
+    tg.create_makefile(tmp_path)
+    sh = (tmp_path / "build_and_run.sh").read_bytes()
+    bat = (tmp_path / "build_and_run.bat").read_bytes()
+    assert sh.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in sh
+    assert b"make \"$@\"" in sh and b"clean all coverage" in sh
+    assert b"\r\n" in bat and b"wsl.exe --cd \"%~dp0.\" -e bash ./build_and_run.sh %*" in bat

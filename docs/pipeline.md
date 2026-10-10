@@ -13,7 +13,7 @@ Everything runs in-process (`mudmut_core`) inside WSL; no Docker, no services re
 | 4 | Review (full mode) | `design.review_and_improve` | `mud_spec_reviewer` | `01_mud/review.json` |
 | 5 | Activity / code flow | `design.generate_activity` (AI, or deterministic from Section 7 in quick mode / on placeholder) | `activity_*` | `01_mud/activity.json`, `flow.mmd` |
 | 6 | C skeleton + compilable | `design.export` → `compilable.make_compilable` (gcc in WSL) | — | `02_code/<SWC>.c/.h`, `Rte_*`, `compilability.json` |
-| 7 | Generate tests | `verify.generate_tests` (RAG + LLM per function) | `test_generator`, `rag_embed` | `03_mut/Test_*.cpp`, `Makefile` |
+| 7 | Generate tests | `verify.generate_tests` (RAG + LLM per function) | `test_generator`, `rag_embed` | `03_mut/Test_*.cpp`, `Makefile`, `build_and_run.sh`, `build_and_run.bat` |
 | 8 | Build, run, fix (Makefile generated per run from the CppUTest folder in **Settings**) | `verify.fix_loop` (make in WSL, fix loop, quarantine, smoke fallback) | `test_fixer` | `03_mut/test-results.xml`, `coverage_html/`, `test-report.html`, `quarantined/` |
 | 9 | Traceability | `trace.build_trace` | — | `04_trace/trace.json` |
 | 10 | Report | `report.write_run_report` | — | `RUN_REPORT.md`, `run.json` |
@@ -21,6 +21,14 @@ Everything runs in-process (`mudmut_core`) inside WSL; no Docker, no services re
 `RUN_REPORT.md` gives a ✅ / ⚠️ / ❌ verdict per stage (a failed run marks the failing stage ❌ and
 later stages "—"), the provider + model used by every stage, timings, compile ratio, JUnit counts,
 coverage, the trace summary, and **"Data sent to cloud: …"**.
+
+## Re-running the tests by hand
+
+Every run's `03_mut/` folder gets a generated `Makefile` plus `build_and_run.sh` (WSL/Linux) and
+`build_and_run.bat` (Windows, calls the `.sh` through `wsl.exe`). They are written by every path —
+UI, Full Chain, CLI and the OpenCode agent — and use the CppUTest folder from Settings. Run
+`build_and_run.bat` (or `./build_and_run.sh`) to compile, run and produce coverage; pass make targets
+(`test`, `clean`, …) as arguments.
 
 ## Running it
 
