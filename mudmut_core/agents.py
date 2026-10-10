@@ -130,7 +130,8 @@ def apply_stages_to_env(stages: dict[str, dict[str, str]]) -> None:
         model = cfg.get("model") or ""
         os.environ[stage.model_env] = model
         if stage.provider_env:
-            os.environ[stage.provider_env] = provider
+            # Local ollama is the default → empty override (use global backend).
+            os.environ[stage.provider_env] = "" if provider == "ollama" else provider
 
 
 # ── env writing ───────────────────────────────────────────────────────────────
@@ -229,9 +230,13 @@ def set_stage(key: str, provider: str, model: str) -> dict[str, Any]:
     save_stages(stages)
 
     if stage.side == "mud":
+        # Local ollama is the *default* provider — write an empty override so the
+        # stage falls back to the global backend (avoids locking the mud-tool to
+        # "ollama" and breaking the deepseek global path). Cloud providers write
+        # their id so the orchestrator swaps base URL + key.
         updates: dict[str, str] = {stage.model_env: model}
         if stage.provider_env:
-            updates[stage.provider_env] = provider
+            updates[stage.provider_env] = "" if provider == "ollama" else provider
         _write_env(MUD_ENV, updates)
         for k, v in updates.items():
             os.environ[k] = v
