@@ -1,4 +1,3 @@
 # MUD_MUT Control Center (Streamlit launcher)
-# The app itself only needs Streamlit; it talks to the services over HTTP
-# using the standard library (via bridge/mud_to_tests.py).
+# The pages run the engine in-process (mudmut_core); this file only adds Streamlit.
 streamlit>=1.40,<2

@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from mudtool.importers.base import BaseImporter, ImportResult
+from mudtool.importers.base import BaseImporter, ImportResult, read_text_file
 from mudtool.models.requirements import RequirementSet
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class MarkdownImporter(BaseImporter):
         rows_skipped = 0
 
         try:
-            text = file_path.read_text(encoding="utf-8")
+            text, _enc = read_text_file(file_path)
         except Exception as e:
             return ImportResult(
                 requirement_set=RequirementSet(

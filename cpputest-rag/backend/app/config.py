@@ -35,7 +35,7 @@ class Config(BaseModel):
 
     # Performance settings
     BATCH_SIZE: int = int(os.getenv("BATCH_SIZE", "5"))
-    REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", "180"))
+    REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", "1800"))
 
     @validator('C_PROJECT_DIR', 'TEST_EXAMPLES_DIR', 'OUTPUT_DIR')
     def ensure_dirs_exist(cls, v):

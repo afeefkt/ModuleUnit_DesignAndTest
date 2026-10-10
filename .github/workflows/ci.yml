@@ -23,28 +23,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Lint
-        run: ruff check . || true
+        run: ruff check .
       - name: Unit tests
-        run: pytest -q -m "not live" || true
+        run: pytest -q -m "not live"
 
-  bridge-and-launcher:
-    name: bridge + launcher (smoke)
+  launcher:
+    name: launcher (smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Byte-compile bridge + launcher
+      - name: Byte-compile launcher
         run: |
-          python -m py_compile bridge/mud_to_tests.py launcher/streamlit_app.py
-      - name: Bridge CLI help
-        run: python bridge/mud_to_tests.py --help
+          python -m py_compile launcher/streamlit_app.py launcher/_common.py
       - name: Traceability extraction self-check
         run: |
           python - <<'PY'
-          import sys; sys.path.insert(0, "bridge")
-          from mud_to_tests import extract_requirements
+          import sys; sys.path.insert(0, ".")
+          from mudmut_core.trace import extract_requirements
           reqs = extract_requirements("/* Requirements: REQ_001, REQ_002 */")
           assert reqs == ["REQ_001", "REQ_002"], reqs
           print("ok", reqs)
@@ -67,3 +65,36 @@ jobs:
           pip install -r requirements.txt
       - name: Import app
         run: python -c "import app.main; print('cpputest-rag backend imports OK')"
+
+  mudmut-core:
+    name: mudmut_core (engine + exporter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "mud-tool/python-sidecar[dev]"
+          pip install -r cpputest-rag/backend/requirements-native.txt
+      - name: mudmut_core unit tests
+        run: pytest mudmut_core/tests -q
+      - name: C-skeleton exporter tests
+        run: pytest mud-tool/python-sidecar/tests/unit/test_c_skeleton_exporter.py -q
+
+  agentic:
+    name: agentic spike (mudmut CLI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mudtool (for the CLI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e mud-tool/python-sidecar pytest
+      - name: CLI unit tests
+        run: pytest agentic/tests -q

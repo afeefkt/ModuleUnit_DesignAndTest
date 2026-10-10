@@ -1,0 +1,8 @@
+# Native (no-Docker) dependencies for the cpputest-rag in-process engine.
+# Unpinned so Python 3.12+ resolves compatible wheels.
+aiohttp
+faiss-cpu
+numpy
+pycparser
+# app.config / app.models use pydantic models at import time.
+pydantic

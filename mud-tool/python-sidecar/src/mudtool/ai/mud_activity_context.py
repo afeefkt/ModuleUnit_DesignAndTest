@@ -183,17 +183,23 @@ def synthesize_activity_diagrams_from_context(
             continue
         helper_call_counts = _count_helper_calls(steps, helper_names)
 
+        # Trace each runnable to the requirement IDs its own Section 7 text
+        # names; only when it names none fall back to the module's full list.
+        own_text = f"{runnable.summary}\n{runnable.functional_description}"
+        own_reqs = [r for r in trace_reqs if r in own_text]
+        runnable_reqs = own_reqs or trace_reqs
+
         builder = _ActivityGraphBuilder(
             swc_name=context.swc_name,
             runnable_name=runnable.name,
-            req_ids=trace_reqs,
+            req_ids=runnable_reqs,
             helper_names=helper_names,
             helper_call_counts=helper_call_counts,
         )
         start_id = builder.add_node(
             name="Start",
             node_type=ActivityNodeType.INITIAL,
-            trace_reqs=trace_reqs[:1] if trace_reqs else [],
+            trace_reqs=runnable_reqs[:1] if runnable_reqs else [],
             description=f"Entry point for {runnable.name}",
             confidence=0.9,
             node_id="N_00",
@@ -209,7 +215,7 @@ def synthesize_activity_diagrams_from_context(
         final_id = builder.add_node(
             name="End",
             node_type=ActivityNodeType.FINAL,
-            trace_reqs=trace_reqs[:1] if trace_reqs else [],
+            trace_reqs=runnable_reqs[:1] if runnable_reqs else [],
             description=f"Exit point for {runnable.name}",
             confidence=0.9,
         )
@@ -220,7 +226,7 @@ def synthesize_activity_diagrams_from_context(
                 name=f"{runnable.name} Code Flow",
                 owner_swc=context.swc_name or None,
                 owner_runnable=runnable.name,
-                source_requirements=trace_reqs,
+                source_requirements=runnable_reqs,
                 nodes=builder.nodes,
                 edges=builder.edges,
                 sub_diagrams=builder.sub_diagrams,
@@ -780,6 +786,10 @@ def _parse_numbered_step_entries(text: str) -> list[NumberedStep]:
     current_depth = 1
     for raw_line in (text or "").splitlines():
         if not raw_line.strip():
+            continue
+        # Markdown code fences (```c / ```) wrap the pseudo-code in many specs;
+        # they are formatting, not steps, and would otherwise become nodes.
+        if raw_line.strip().startswith("```"):
             continue
         numbered = re.match(r"^(\s*)(\d+(?:\.\d+)*)(?:[.)])\s*(.+)$", raw_line)
         if numbered:

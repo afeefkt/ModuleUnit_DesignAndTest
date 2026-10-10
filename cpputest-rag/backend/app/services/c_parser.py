@@ -167,10 +167,13 @@ def analyze_c_file_simple(file_path: Path) -> List[FunctionInfo]:
 
 
 def analyze_c_project(project_path: Path) -> List[FunctionInfo]:
-    """Analyze all C files in a project"""
+    """Analyze all C files in a project (skipping generated Rte_* stub files)."""
     all_functions = []
 
     c_files = list(project_path.rglob("*.c")) + list(project_path.rglob("*.h"))
+    # Rte_Stubs.c (and any other generated Rte_* stub) is compile-support only,
+    # not a function-under-test — skip it so no bogus tests are generated for it.
+    c_files = [f for f in c_files if not f.name.startswith("Rte_")]
 
     logger.info(f"Found {len(c_files)} C/H files in {project_path}")
 

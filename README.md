@@ -1,12 +1,12 @@
 # MUD_MUT — Local-AI AUTOSAR Module Unit Design → Unit Tests
 
 > **From architectural requirements → validated MUD flow charts → AUTOSAR CppUTest unit tests.**
-> One ASPICE-aligned pipeline. Runs entirely on **local 7B models** — your requirements, designs, and code
-> never leave your machine. An optional cloud/API backend is available when you want it.
+> One ASPICE-aligned pipeline. Runs entirely on **local models** — your requirements, designs, and code
+> never leave your machine. One Streamlit platform, **no Docker**.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-green)
-![Local--first](https://img.shields.io/badge/AI-Local--first%207B-orange)
+![Streamlit](https://img.shields.io/badge/Streamlit-red)
+![Local--first](https://img.shields.io/badge/AI-Local--first-orange)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
 
 ---
@@ -19,132 +19,223 @@ paperwork and skip the design-driven step. **MUD_MUT closes that gap with local 
 **Module Unit Design flow charts** from requirements *and* the **unit tests** from those same designs, keeping a
 requirement → design → test trace throughout.
 
-It is built **local-first on 7B models** for two reasons that are also its selling points:
+It is built **local-first** for two reasons that are also its selling points:
 
 - **Performance & cost** — runs offline on a single workstation/GPU; no per-token API bill.
 - **Privacy** — proprietary automotive requirements and code stay on-prem, which matters under NDA/ASPICE.
 
-A small 7B model on its own is not trustworthy enough for safety work — so MUD_MUT never trusts it blindly.
-Every AI step is wrapped in **deterministic guardrail layers** (see [Reliability](#how-we-make-7b-models-reliable)).
+A small local model on its own is not trustworthy enough for safety work — so MUD_MUT never trusts it blindly.
+Every AI step is wrapped in **deterministic guardrail layers** (see [Reliability](#how-we-make-local-models-reliable)).
 
 ---
 
-## The two halves (this is a monorepo)
+## Pipeline at a glance
+
+> Keep this diagram current — update it in the same change whenever a stage, fallback or default model changes.
+
+```mermaid
+flowchart LR
+    REQ[/"📄 inputs/requirements/<br/>DOORS · Polarion · Jira exports<br/>CSV · XLSX · ReqIF · MD · TXT"/]
+
+    subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
+        direction TB
+        SET["⚙️ Providers & Keys · Workflow & Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
+        P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain"]
+        RR["📊 Runs & Reports<br/>verdicts · compare runs"]
+        OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
+    end
+
+    subgraph MUD["🧩 MUD — mud-tool library (in-process)"]
+        direction TB
+        IMP["Import"] --> PLAN["Plan modules (SWC)<br/><i>stage: planner</i>"]
+        PLAN --> SPEC["MUD spec<br/>single_pass · two_stage + review<br/><i>stages: skeleton · generator · reviewer</i>"]
+        SPEC --> ACT{"Activity flow"}
+        ACT -- "quick mode / AI placeholder" --> FB["Deterministic Section 7<br/>flow builder"]
+        ACT --> EXP["Export C skeleton + Mermaid"]
+        FB --> EXP
+    end
+
+    subgraph C["🔧 compilable.py — gcc in WSL"]
+        CMP["Declare missing symbols (TODO(design))<br/>→ comment only what still fails<br/>→ Rte stubs + &lt;SWC&gt;.h"]
+    end
+
+    subgraph MUT["🧪 MUT — cpputest-rag library (in-process)"]
+        direction TB
+        GEN["Generate CppUTest per runnable<br/>RAG examples · <i>stage: test_generator</i>"]
+        GEN --> FIX["Build (make in WSL) → fix loop:<br/>define invented constants → LLM fix ×2<br/><i>stage: test_fixer</i>"]
+        FIX -- "still red" --> Q["quarantined/ (+ smoke test if none compile)"]
+        FIX --> RUN["Run → JUnit · lcov coverage · HTML report"]
+        Q --> RUN
+    end
+
+    OUT[/"📁 outputs/&lt;run&gt;/<br/>00_input · 01_mud · 02_code · 03_mut · 04_trace<br/>RUN_REPORT.md · run.json (verdicts, models, cloud notice)"/]
+
+    subgraph LLM["🧠 mudmut_core/llm — one client, per-stage provider"]
+        OLL[("🦙 Ollama (local)<br/>localhost:11434")]
+        CLOUD[("☁️ OpenRouter · NVIDIA · DeepSeek · Google<br/>keys from Windows user env")]
+    end
+
+    AG["🤖 opencode serve + mud-designer agent<br/>→ agentic/tools/mudmut_cli.py"]
+
+    REQ --> IMP
+    UI -.-> MUD
+    EXP --> CMP --> GEN
+    RUN --> OUT
+    OCP --> AG -.-> MUD
+    AG -.-> OUT
+    RR -.-> OUT
+    SET -.-> LLM
+    LLM -.-> PLAN
+    LLM -.-> SPEC
+    LLM -.-> GEN
+```
+
+Every run is saved in `outputs/<YYYYMMDD_HHMMSS>_<SWC>_<preset>/` with one folder per stage and a
+`RUN_REPORT.md` (✅/⚠️/❌ per stage, the provider + model used for every stage, and whether any data
+was sent to a cloud provider). `outputs/LATEST` names the most recent run.
+
+## One platform, two halves
 
 ```
-requirements.csv/xlsx
-        │
-        ▼
-┌──────────────────────────┐         C skeleton (.c)         ┌──────────────────────────┐
-│   mud-tool/              │  ───────────────────────────▶   │   cpputest-rag/          │
-│   DESIGN half            │   (Activity/Code-Flow diagram    │   VERIFICATION half      │
-│                          │    exported as C code)           │                          │
-│  requirements → MUD spec │                                  │  C code → RAG → CppUTest │
-│  → UML + FLOW CHARTS     │                                  │  tests → build → coverage│
-│  (Sequence/State/Class/  │                                  │                          │
-│   Component/Activity)    │   ◀───────────────────────────   │                          │
-│  FastAPI :8042           │      requirement→test trace      │  FastAPI :8000 / UI :3000│
-└──────────────────────────┘                                  └──────────────────────────┘
-              └───────────────── bridge/mud_to_tests.py ─────────────────┘
-                        (glues the two + emits the traceability record)
+requirements.csv
+      │
+      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         Streamlit platform  (launcher/)                       │
+│                                                                               │
+│  ① Design (MUD)                     ② Unit Tests (MUT)        ③ Full Chain   │
+│  import → plan → MUD spec            C → RAG → CppUTest tests   one-click     │
+│  → activity flow → C skeleton        → build/run → coverage     end-to-end    │
+│  → compilability report              → requirement↔test trace                 │
+│                                                                               │
+│        └──────── mudmut_core/  (shared in-process engine) ────────┘           │
+└──────────────────────────────────────────────────────────────────────────────┘
+        │                                       │
+        ▼                                       ▼
+  mud-tool/  (design lib)              cpputest-rag/  (verify lib)
+  Ollama on localhost:11434            C/C++ build via WSL (make/gcc/lcov)
 ```
 
-| Folder | What it is | Port | Docs |
-|---|---|---|---|
-| [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR UML **flow charts** (incl. Activity/Code-Flow) → C-skeleton export | 8042 | [mud-tool/README.md](mud-tool/README.md) |
-| [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage (LCOV/HTML/JUnit) | 8000 / 3000 | [cpputest-rag/README.md](cpputest-rag/README.md) |
-| [`bridge/`](bridge/) | End-to-end glue: MUD C-skeleton → test generation → requirement-to-test traceability | — | [docs/pipeline.md](docs/pipeline.md) |
-
-Both halves share the same stack — Python + FastAPI + Pydantic v2 + aiosqlite + **Ollama** — which is what makes
-them merge cleanly into one pipeline.
+| Folder | What it is | Notes |
+|---|---|---|
+| [`launcher/`](launcher/) | The Streamlit platform (Home · Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent · Settings) | `./launch.sh` / `launch.bat` |
+| [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry) | used by the UI, the CLI, the agent and the tests |
+| [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR flow charts → C-skeleton export | in-process library |
+| [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage | in-process library |
+| [`agentic/`](agentic/) | OpenCode agent layer (`mudmut_cli.py` tools on `mudmut_core`) | [agentic/README.md](agentic/README.md) |
+| `inputs/` · `outputs/` | Requirements, guidelines, skills, test examples · one folder per run | `config/` holds presets + your stage selection |
 
 ---
 
-## Quick start (100% local)
+## Quick start (100% local, no Docker)
 
-**Prerequisites:** [Ollama](https://ollama.com), Python 3.10+, Docker (for the CppUTest runner), and an NVIDIA GPU
-recommended (CPU works, slower).
+**Prerequisites:** [Ollama](https://ollama.com) and Linux, or **WSL (Ubuntu) on Windows**. The platform
+(Python venv, Streamlit, gcc/make/CppUTest/lcov) runs inside Linux/WSL; on Windows, `setup.bat` and
+`launch.bat` just start `setup.sh` / `launch.sh` in WSL, and you open http://localhost:8501 in your
+Windows browser. Ollama can run natively on Windows (WSL reaches it at `localhost:11434`).
 
 ```bash
-# 1. Pull the local model set (one time) — matches the .env.local.example preset
-ollama pull qwen3:8b             # diagram / MUD generation (mud-tool)
-ollama pull deepseek-r1:7b       # reasoning / reviewer (mud-tool)
+# 1. Pull the local model set (one time)
+ollama pull qwen3:8b             # diagram / MUD generation
+ollama pull deepseek-r1:7b       # reasoning / reviewer
+ollama pull qwen2.5-coder:7b     # code generation
 ollama pull qwen2.5:7b           # test generation (cpputest-rag)
-ollama pull nomic-embed-text     # guidelines RAG embeddings (mud-tool)
-ollama pull all-minilm           # test-example RAG embeddings (cpputest-rag)
-# optional: ollama pull llava:7b     # visual QA of rendered diagrams
-# (Swap any of these for models you prefer — just keep .env in sync. The
-#  Control Center's Status tab shows exactly what you have pulled.)
+ollama pull all-minilm           # test-example RAG embeddings
+ollama pull nomic-embed-text     # guidelines RAG embeddings (MUD_GUIDELINES_EMBED_MODEL)
 
-# 2. Copy the fully-local env presets
-cp .env.local.example .env                                            # top-level (for docker compose)
-cp mud-tool/python-sidecar/.env.local.example mud-tool/python-sidecar/.env   # for native mud-tool
+# 2. Copy the env preset (native, localhost Ollama)
+cp .env.local.example .env
 
-# 3a. Design half — generate MUD flow charts
-cd mud-tool/python-sidecar && pip install -e . && mudtool-server      # http://localhost:8042
+# 3. One-time setup: creates .venv + installs the engine + Streamlit
+./setup.sh                       # Windows: setup.bat
 
-# 3b. Verification half — generate & run unit tests
-cd ../../cpputest-rag && docker compose up                            # http://localhost:3000
-```
+# 4. Install the C/C++ toolchain inside WSL (once, as root)
+wsl -u root -e apt-get install -y build-essential cpputest lcov
 
-Or bring the whole pipeline up with the top-level compose:
-
-```bash
-docker compose up          # Ollama + mud-tool + cpputest-rag + test-runner
-```
-
-### Easiest way to launch & test — the Control Center (Streamlit)
-
-A one-page dashboard to check service health, see which Ollama models are pulled, and run the whole
-requirements → flow chart → tests pipeline with a couple of clicks:
-
-```bash
-./launch.sh        # macOS/Linux/Git-Bash   (Windows: launch.bat)
+# 5. Launch the platform
+./launch.sh                      # Windows: launch.bat
 # → opens http://localhost:8501
 ```
 
-It auto-creates a small venv, installs Streamlit, and starts the UI. Use the **Status** tab to confirm
-mud-tool (8042), cpputest-rag (8000) and Ollama (11434) are up, then the **Run pipeline** tab to feed a C
-skeleton (or a mud-tool GenerationResult) and get generated tests plus a traceability record.
+Then use the pages:
 
-Prefer the CLI? Run the bridge directly:
+1. **Status** — confirm Ollama + the WSL toolchain are green (copy-paste install hints if not).
+2. **Setup ▸ Providers** — test each provider connection (Ollama / OpenRouter / NVIDIA / DeepSeek) and check key status.
+3. **Setup ▸ Workflow & Models** — see every workflow as a flow chart, and pick a **provider + model per stage** (with presets: *Local-recommended*, *Local-fast*, *OpenRouter-free*, *NVIDIA*, *DeepSeek*).
+4. **Pipeline ▸ Design (MUD)** — import → plan → spec → flow → compilable C skeleton.
+5. **Pipeline ▸ Unit Tests (MUT)** — generate → build/run → coverage → trace.
+6. **Pipeline ▸ Full Chain** — one click end-to-end (with a preset picker), writing `outputs/<run>/RUN_REPORT.md`.
+
+Each run writes to `outputs/<run>/` (see below).
+
+Prefer the CLI?
 
 ```bash
-python bridge/mud_to_tests.py --skeleton path/to/<SWC>.c --module <SWC_Name> --run
+python -m mudmut_core.chain --requirements inputs/requirements/samples/bms_requirements.csv \
+    --swc SWC_BatteryManagement --quick --preset local-fast
 ```
 
+## Models & providers
+
+Every pipeline stage has a **provider** (Ollama / OpenRouter / NVIDIA NIM / DeepSeek) and a **model**.
+Change them on the *Workflow & Models* page or apply a preset (`config/presets.json`); the current
+selection persists in `config/stages.json` (gitignored). Cloud providers send your data off-machine and
+are recorded in every `RUN_REPORT.md`.
+
+API keys are read from your environment (Windows user variables / repo `.env` / process) — never written
+to disk; the Providers page only ever shows "✓ found" / "✗ missing".
+
+### Outputs
+
+```
+outputs/
+  LATEST                         ← name of the most recent run
+  <YYYYMMDD_HHMMSS>_<SWC>_<preset>/
+    RUN_REPORT.md                ← per-stage verdict ✅/⚠️/❌, models, cloud notice, timings
+    run.json                     ← same, machine-readable
+    00_input/  01_mud/  02_code/  03_mut/  04_trace/
+```
+
+### What to expect from local 7B models
+
+On an RTX 4060 (8 GB) with `qwen3:8b-ctx16384`, a `--quick` run of the BMS sample takes about
+25–30 minutes, most of it spec and activity generation. Use the `-ctx16384` model variants: the plain
+`qwen3:8b` loads with a 40k context, spills half onto the CPU, and is about 2× slower. Set both
+`MUD_OPENAI_MODEL` and `MUD_PIPELINE_GENERATOR_MODEL` in `mud-tool/python-sidecar/.env`.
+
+Every stage is guarded, so the chain always finishes with a truthful report rather than a fake pass:
+
+- **Activity diagrams:** if the model's diagram is a placeholder, the deterministic Section 7 builder
+  takes over and the log says so.
+- **C skeleton:** symbols the MUD never defines are declared as `TODO(design)` placeholders. Only
+  statements that still can't compile are commented out, as `/* TODO(design): … */`. The report states
+  how many statements were kept as C.
+- **Unit tests:** a fix loop first defines constants the model invented (`TODO(test)`), then asks the
+  model to fix the remaining errors.
+  - Test files that still don't compile are moved to `quarantined/` and listed.
+  - If none compile, a deterministic smoke test runs every runnable once (clearly labelled).
+  - Test failures are real results: compare them with the design before trusting either side.
+- **Traceability:** a requirement is marked `verified_by_test` only when a test exercises a function
+  whose design carries its ID. Everything else is reported as `not_verified`.
+
+All output is an AI-assisted draft, not certified tooling (see `AGENTS.md`).
+
 ---
 
-## Choosing your backend: local vs. API
-
-Both halves support two backends via a single toggle (`AIBackend` in `mud-tool`'s settings):
-
-| Preset file | Mode | Meaning |
-|---|---|---|
-| `.env.local.example` | `LOCAL` | 100% offline, 7B models via Ollama/llama.cpp. **Default & recommended.** |
-| `.env.auto.example` | `AUTO`  | Local primary, cloud API fallback for hard cases. |
-| (set `MUD_AI_BACKEND=cloud`) | `CLOUD` | Anthropic / OpenAI-compatible / DeepSeek. Requires an API key. |
-
-> ⚠️ Never commit real API keys. Only `*.example` files are tracked; `.env` is git-ignored.
-
----
-
-## How we make 7B models reliable
+## How we make local models reliable
 
 The moat isn't the model — it's the **guardrail layers** wrapped around it. These make a small local model's
 output trustworthy enough to work with:
 
-- **Generator ↔ Reviewer pipeline** — one local model generates, a second reviews & corrects
-  (`pipeline_mode: two_model`).
+- **Generator ↔ Reviewer pipeline** — one local model generates, a second reviews & corrects.
 - **AI reviewer pass** — coverage %, issues by section, ASIL-C/D safety & naming-convention checks.
-- **Visual QA** — a local vision model renders each diagram and critiques it, refining until a quality score is met.
-- **Grounding** — AUTOSAR vocabulary catalog + design "skills" + RAG over your design guidelines, injected into
-  every prompt so the model stays on-domain.
+- **Grounding** — AUTOSAR vocabulary catalog + design "skills" + RAG over your design guidelines.
 - **Deterministic validators** — structural + AUTOSAR + consistency checks, Mermaid linting, JSON-schema
   validation with automatic repair/retry on low confidence.
+- **Compilability guardrail** — the C skeleton is compiled with `gcc -std=c99 -fsyntax-only` in a loop; each
+  statement the compiler rejects is turned into `/* TODO(design): … */`, and the kept/stubbed count is reported.
+- **Test-side guardrails** — generate → compile/run → feed failures back to a model → regenerate (fix loop).
 - **Provenance** — every AI output carries model id, prompt version, and a confidence score.
-- **Test-side guardrails** (roadmap) — generate → compile/run in the CppUTest runner → feed failures back to a
-  reviewer model → regenerate.
 
 ---
 
@@ -156,29 +247,28 @@ MUD_MUT/
 ├── LICENSE                   ← Apache-2.0
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
-├── docker-compose.yml        ← one Ollama + both services + test-runner
-├── .env.example              ← full variable reference
-├── .env.local.example        ← 100%-offline preset
-├── .env.auto.example         ← local-primary + API-fallback preset
-├── docs/
-│   └── pipeline.md           ← end-to-end MUD → C-skeleton → tests walkthrough
+├── setup.sh / setup.bat      ← one-time setup (venv + deps)
+├── launch.sh / launch.bat    ← launch the Streamlit platform
+├── .env.example / .env.local.example / .env.auto.example
+├── docs/                     ← pipeline.md · providers.md
+├── config/                   ← presets.json (tracked) · stages.json (your selection, git-ignored)
+├── inputs/                   ← requirements/ (samples/) · guidelines/ · skills/ · test_examples/
+├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
-│   └── streamlit_app.py      ← Control Center UI (launch & test)
-├── launch.sh / launch.bat    ← one-command Control Center launch
-├── .github/workflows/ci.yml  ← GitHub Actions CI
+│   ├── streamlit_app.py      ← Home / Status page
+│   └── pages/                ← Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent · Settings
+├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
+├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)
-├── cpputest-rag/             ← VERIFICATION half (history-preserved subtree)
-└── bridge/
-    └── mud_to_tests.py       ← the pipeline glue + traceability
+└── cpputest-rag/             ← VERIFICATION half (history-preserved subtree)
 ```
 
 ---
 
 ## Security notes (read before exposing anything)
 
-- **Localhost only.** `cpputest-rag`'s backend drives a CppUTest Docker container via the host Docker socket and
-  runs as root to do so. This is fine on a local dev machine but **must not be exposed to a network**. See
-  [cpputest-rag/README.md](cpputest-rag/README.md).
+- **Localhost only.** Everything runs locally; the C/C++ build runs inside WSL. This is fine on a local dev
+  machine but **must not be exposed to a network**.
 - **Secrets never in git.** `.env` is ignored; ship only `*.example` files with placeholders. If you previously
   used a cloud API key locally, rotate it if there's any chance it was shared.
 
@@ -186,19 +276,26 @@ MUD_MUT/
 
 ## Publishing to GitHub
 
-This repo is a fresh local monorepo with **no remote yet**. To publish it on GitHub:
-
 ```bash
-# with the GitHub CLI (creates the repo and pushes main):
 gh repo create MUD_MUT --public --source=. --remote=origin --push
-
-# or manually, after creating an empty repo on github.com:
-git remote add origin https://github.com/<you>/MUD_MUT.git
-git push -u origin main
 ```
 
-CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml). Your two original
-GitLab repos are untouched and remain a backup.
+CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+## Agentic mode (OpenCode layer)
+
+An optional extra layer: the **OpenCode Agent** page starts `opencode serve` inside WSL and lets the
+`mud-designer` agent drive the same engine through `agentic/tools/mudmut_cli.py`. Every tool call is shown
+live in a timeline, permission requests can be approved inline, and the agent's run lands in
+`outputs/<run>/` like any other run (visible in Runs & Reports). Needs a native OpenCode in WSL:
+
+```bash
+curl -fsSL https://opencode.ai/install | bash      # inside WSL; installs ~/.opencode/bin/opencode
+```
+
+See [agentic/README.md](agentic/README.md).
+
+---
 
 ## License
 

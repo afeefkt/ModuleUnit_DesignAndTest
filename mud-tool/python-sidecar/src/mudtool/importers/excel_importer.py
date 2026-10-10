@@ -89,13 +89,13 @@ class ExcelImporter(BaseImporter):
 
             # Auto-detect header row: scan first 30 rows, pick the row that has
             # req_id (or the most alias matches overall, minimum 2).
-            from mudtool.importers.base import DEFAULT_COLUMN_MAPPING
+            from mudtool.importers.base import DEFAULT_COLUMN_MAPPING, normalize_header
             all_aliases = {
-                alias.lower(): field
+                normalize_header(alias): field
                 for field, aliases in DEFAULT_COLUMN_MAPPING.items()
                 for alias in aliases
             }
-            req_id_aliases = {a.lower() for a in DEFAULT_COLUMN_MAPPING.get("req_id", [])}
+            req_id_aliases = {normalize_header(a) for a in DEFAULT_COLUMN_MAPPING.get("req_id", [])}
 
             best_row = self.header_row
             best_headers: list[str] = []
@@ -106,8 +106,8 @@ class ExcelImporter(BaseImporter):
                     candidate = [str(cell.value or "").strip() for cell in ws[scan_row]]
                 except Exception:
                     break
-                has_req_id = any(h.lower() in req_id_aliases for h in candidate if h)
-                match_count = sum(1 for h in candidate if h and h.lower() in all_aliases)
+                has_req_id = any(normalize_header(h) in req_id_aliases for h in candidate if h)
+                match_count = sum(1 for h in candidate if h and normalize_header(h) in all_aliases)
                 # Prefer rows that have req_id; break immediately when found
                 if has_req_id:
                     best_row = scan_row
@@ -147,16 +147,19 @@ class ExcelImporter(BaseImporter):
 
             # Validate required columns
             mapped_fields = set(col_map.values())
-            if "req_id" not in mapped_fields:
-                return ImportResult(
-                    requirement_set=RequirementSet(
-                        source_file=str(file_path), source_format="xlsx"
-                    ),
-                    errors=[
-                        "Required column 'Req_ID' not found in headers. "
-                        f"Found: {headers}"
-                    ],
-                )
+            generate_ids = "req_id" not in mapped_fields
+            if generate_ids:
+                if not ({"title", "description"} & mapped_fields):
+                    return ImportResult(
+                        requirement_set=RequirementSet(
+                            source_file=str(file_path), source_format="xlsx"
+                        ),
+                        errors=[
+                            "No ID, title or description column recognised in headers. "
+                            f"Found: {headers}. Map the columns manually."
+                        ],
+                    )
+                self._warnings.append("No ID column found: generated REQ-001, REQ-002, ...")
 
             # Read data rows (start after the auto-detected header row)
             for row_idx, row in enumerate(
@@ -174,6 +177,8 @@ class ExcelImporter(BaseImporter):
                 if not any(v.strip() for v in row_data.values()):
                     rows_skipped += 1
                     continue
+                if generate_ids:
+                    row_data["req_id"] = f"REQ-{rows_processed:03d}"
 
                 req = self._build_requirement(row_data, row_idx)
                 if req:

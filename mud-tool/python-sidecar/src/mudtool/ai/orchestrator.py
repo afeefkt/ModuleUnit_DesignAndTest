@@ -17,7 +17,7 @@ from mudtool.ai.base_backend import AIResponse, BaseAIBackend
 from mudtool.ai.cloud_backend import CloudBackend
 from mudtool.ai.local_backend import LocalBackend
 from mudtool.ai.prompt_engine import PromptEngine
-from mudtool.config.settings import AIBackend, Settings
+from mudtool.config.settings import AIBackend, CloudProvider, Settings
 from mudtool.validation.structural_validator import StructuralValidator
 from mudtool.validation.autosar_validator import AUTOSARValidator
 from mudtool.models.json_uml import (
@@ -165,147 +165,94 @@ class AIOrchestrator:
         )
 
     def _get_reviewer_backend(self) -> BaseAIBackend:
-        """Return a backend configured for the reviewer/critic model.
-
-        Uses ``settings.pipeline_reviewer_model`` (e.g. ``deepseek-r1:7b``) so
-        that MUD spec review is performed by a reasoning-capable model rather
-        than the same generation model.  Falls back to ``_get_backend()`` when:
-          - ``pipeline_reviewer_model`` is empty / not configured
-          - The active backend is a local model (no per-model override supported)
-        """
-        reviewer_model = _normalize_provider_model(
-            self.settings,
-            self.settings.pipeline_reviewer_model,
-        )
-        if not reviewer_model:
-            logger.debug("Reviewer: no pipeline_reviewer_model configured, using generator backend")
-            return self._get_backend()
-
-        gen_backend = self._get_backend()
-        if not isinstance(gen_backend, CloudBackend):
-            logger.info("Reviewer: local backend active — reviewer model override not supported, using generator")
-            return gen_backend
-
-        # Build a CloudBackend instance with the reviewer model name substituted.
-        # DeepSeek uses the same OpenAI-compatible client path, but CloudBackend
-        # resolves its active model from settings.deepseek_model.
-        model_field = _provider_model_field(self.settings)
-        try:
-            reviewer_settings = self.settings.model_copy(
-                update={model_field: reviewer_model}
-            )
-        except AttributeError:
-            # Pydantic v1 fallback
-            reviewer_settings = self.settings.copy(
-                update={model_field: reviewer_model}
-            )
-
-        reviewer = CloudBackend(reviewer_settings)
-        logger.info(
-            "Reviewer backend: %s (model=%s)", reviewer.backend_name, reviewer_model
-        )
-        return reviewer
+        """Backend for the reviewer/critic model (``pipeline_reviewer_*``)."""
+        model = _normalize_provider_model(self.settings, self.settings.pipeline_reviewer_model)
+        backend = self._make_backend_with_model(model, provider=self.settings.pipeline_reviewer_provider)
+        logger.info("Reviewer backend: %s (provider=%s model=%s)",
+                    backend.backend_name, self.settings.pipeline_reviewer_provider, model)
+        return backend
 
     def _get_skeleton_backend(self) -> BaseAIBackend:
-        """Return a backend configured for MUD-spec Stage 1 skeleton generation.
+        """Backend for MUD-spec Stage 1 skeleton generation (``mud_spec_skeleton_*``)."""
+        model = _normalize_provider_model(self.settings, self.settings.mud_spec_skeleton_model)
+        backend = self._make_backend_with_model(model, provider=self.settings.mud_spec_skeleton_provider)
+        logger.info("Skeleton backend: %s (provider=%s model=%s)",
+                    backend.backend_name, self.settings.mud_spec_skeleton_provider, model)
+        return backend
 
-        Uses ``settings.mud_spec_skeleton_model`` (e.g. ``deepseek-r1:7b``) when
-        set so that Stage 1 of the two-stage pipeline runs through a stronger
-        reasoning model.  Falls back to ``_get_backend()`` when:
-          - ``mud_spec_skeleton_model`` is empty / not configured
-          - The active backend is local (no per-model override supported)
-          - The configured skeleton model equals the generator model
+    def _make_backend_with_model(self, model_name: str, provider: Optional[str] = None) -> BaseAIBackend:
+        """Build a CloudBackend variant with a per-stage provider + model override.
+
+        ``provider`` ('' = no override) selects the OpenAI-compatible endpoint +
+        key (ollama / openrouter / nvidia / deepseek / google); ``model_name``
+        overrides the model.  When no provider override is set, the global
+        backend/provider is kept and only the model field is swapped.
         """
-        skeleton_model = _normalize_provider_model(
-            self.settings,
-            self.settings.mud_spec_skeleton_model,
-        )
-        if not skeleton_model:
-            return self._get_backend()
+        provider = (provider or "").strip()
 
-        gen_backend = self._get_backend()
-        if not isinstance(gen_backend, CloudBackend):
-            logger.info(
-                "Skeleton: local backend active — skeleton model override not supported"
-            )
-            return gen_backend
+        if not provider:
+            # No per-stage provider override → keep the global provider + model field.
+            gen_backend = self._get_backend()
+            if not isinstance(gen_backend, CloudBackend):
+                return gen_backend
+            model_name = _normalize_provider_model(self.settings, model_name)
+            active_model = _active_provider_model(self.settings)
+            if not model_name or model_name == active_model:
+                return gen_backend
+            model_field = _provider_model_field(self.settings)
+            try:
+                new_settings = self.settings.model_copy(update={model_field: model_name})
+            except AttributeError:
+                new_settings = self.settings.copy(update={model_field: model_name})
+            return CloudBackend(new_settings)
 
-        active_model = _active_provider_model(self.settings)
-        if skeleton_model == active_model:
-            return gen_backend
-
-        model_field = _provider_model_field(self.settings)
+        # Explicit per-stage provider → build a fresh backend without requiring
+        # the global one (its key may be missing), and do NOT rewrite the model
+        # name (it is already the provider's model id).
+        conn = self.settings.provider_connection(provider)
+        update = {
+            "cloud_provider": CloudProvider.OPENAI_COMPATIBLE,
+            "openai_base_url": conn["base_url"],
+            "openai_api_key": conn["api_key"],
+            "openai_model": (model_name or "").strip() or _active_provider_model(self.settings),
+        }
         try:
-            skeleton_settings = self.settings.model_copy(
-                update={model_field: skeleton_model}
-            )
+            new_settings = self.settings.model_copy(update=update)
         except AttributeError:
-            skeleton_settings = self.settings.copy(
-                update={model_field: skeleton_model}
-            )
-
-        skeleton = CloudBackend(skeleton_settings)
-        logger.info(
-            "Skeleton backend: %s (model=%s)", skeleton.backend_name, skeleton_model
-        )
-        return skeleton
-
-    def _make_backend_with_model(self, model_name: str) -> BaseAIBackend:
-        """Build a CloudBackend variant with the active provider model overridden.
-
-        Falls back to the generator backend when the active backend is local
-        or when ``model_name`` matches the generator (no swap needed).
-        """
-        gen_backend = self._get_backend()
-        if not isinstance(gen_backend, CloudBackend):
-            return gen_backend
-        model_name = _normalize_provider_model(self.settings, model_name)
-        active_model = _active_provider_model(self.settings)
-        if not model_name or model_name == active_model:
-            return gen_backend
-        model_field = _provider_model_field(self.settings)
-        try:
-            new_settings = self.settings.model_copy(update={model_field: model_name})
-        except AttributeError:
-            new_settings = self.settings.copy(update={model_field: model_name})
+            new_settings = self.settings.copy(update=update)
         return CloudBackend(new_settings)
 
     def _get_generator_backend(self) -> BaseAIBackend:
         """Backend for the code-generation stages (MUD Spec Stage 3 + Activity
-        per-runnable Stage 3).
-
-        Uses ``settings.pipeline_generator_model`` (e.g. ``qwen2.5-coder:7b``)
-        so the pseudo-code generation stages can run through a code-specialized
-        model that differs from the global/reasoning model. Falls back to the
-        global backend when the override is empty or the active backend is local.
-        """
+        per-runnable Stage 3), using ``pipeline_generator_*``."""
         model = (getattr(self.settings, "pipeline_generator_model", "") or "").strip()
-        if not model:
-            return self._get_backend()
-        backend = self._make_backend_with_model(model)
-        logger.info("Generator backend: %s (model=%s)", backend.backend_name, model)
+        backend = self._make_backend_with_model(model, provider=self.settings.pipeline_generator_provider)
+        logger.info("Generator backend: %s (provider=%s model=%s)",
+                    backend.backend_name, self.settings.pipeline_generator_provider, model)
         return backend
 
     def _get_activity_skeleton_backend(self) -> BaseAIBackend:
-        """Backend for ActivityPipeline Stage 1 (skeleton extraction).
-
-        Uses ``settings.activity_pipeline_skeleton_model`` (e.g.
-        ``deepseek-r1:7b``) when set; falls back to the generator backend.
-        """
+        """Backend for ActivityPipeline Stage 1 (skeleton extraction)."""
         model = (getattr(self.settings, "activity_pipeline_skeleton_model", "") or "").strip()
-        if not model:
-            return self._get_backend()
-        backend = self._make_backend_with_model(model)
-        logger.info("Activity skeleton backend: %s (model=%s)", backend.backend_name, model)
+        backend = self._make_backend_with_model(model, provider=self.settings.activity_pipeline_skeleton_provider)
+        logger.info("Activity skeleton backend: %s (provider=%s model=%s)",
+                    backend.backend_name, self.settings.activity_pipeline_skeleton_provider, model)
         return backend
 
     def _get_activity_reviewer_backend(self) -> BaseAIBackend:
         """Backend for ActivityPipeline Stage 4 (cross-runnable review)."""
         model = (getattr(self.settings, "activity_pipeline_reviewer_model", "") or "").strip()
-        if not model:
-            return self._get_backend()
-        backend = self._make_backend_with_model(model)
-        logger.info("Activity reviewer backend: %s (model=%s)", backend.backend_name, model)
+        backend = self._make_backend_with_model(model, provider=self.settings.activity_pipeline_reviewer_provider)
+        logger.info("Activity reviewer backend: %s (provider=%s model=%s)",
+                    backend.backend_name, self.settings.activity_pipeline_reviewer_provider, model)
+        return backend
+
+    def _get_planner_backend(self) -> BaseAIBackend:
+        """Backend for module planning (``planner_*``)."""
+        model = (getattr(self.settings, "planner_model", "") or "").strip()
+        backend = self._make_backend_with_model(model, provider=self.settings.planner_provider)
+        logger.info("Planner backend: %s (provider=%s model=%s)",
+                    backend.backend_name, self.settings.planner_provider, model)
         return backend
 
     async def _run_activity_pipeline(
@@ -743,7 +690,7 @@ class AIOrchestrator:
 
             except Exception as e:
                 last_error = str(e)
-                logger.error(f"Attempt {attempt} failed with exception: {e}")
+                logger.error(f"Attempt {attempt} failed with exception: {e!r}")  # repr: timeouts have empty str()
                 if attempt >= self.settings.max_retries:
                     break
 

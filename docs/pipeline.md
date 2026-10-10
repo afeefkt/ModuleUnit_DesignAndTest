@@ -1,83 +1,49 @@
 # The MUD_MUT pipeline: requirements → flow charts → unit tests
 
-This document walks the full ASPICE-aligned flow end to end and explains the seam between the two halves.
+The pipeline diagram lives in the [README](../README.md#pipeline-at-a-glance) — keep it current there.
+Everything runs in-process (`mudmut_core`) inside WSL; no Docker, no services required.
 
-```
- requirements.csv/xlsx
-        │  (mud-tool: import → elaborate → module planning → MUD spec → AI review)
-        ▼
- Activity / Code-Flow diagram  ──(mud-tool: /api/v1/export  format=c_skeleton)──►  <Module>.c
-        │                                                                              │
-        │                                                                              ▼
-        │                                        bridge/mud_to_tests.py  places it in cpputest-rag/c_projects/<Module>/
-        │                                                                              │
-        │                                        (cpputest-rag: /analyze-project → /generate-tests → /run-tests)
-        ▼                                                                              ▼
- requirement IDs  ───────────────── traceability record (bridge/out/<Module>_trace.json) ─────────────── Test_*.cpp
-```
+## Stage by stage — and where each output lands
 
-## Stage-by-stage
+| # | Stage | Engine call | Model stage (Workflow & Models) | Output in `outputs/<run>/` |
+|---|---|---|---|---|
+| 1 | Import requirements (CSV/XLSX/ReqIF/MD/TXT; DOORS, Polarion, Jira column names recognised, HTML text cleaned, odd IDs normalised) | `design.import_requirements` | — | `00_input/requirements.json` |
+| 2 | Plan modules (SWC split) | `design.plan_modules` | `planner` | (selected SWC in `state.json`) |
+| 3 | MUD spec | `design.generate_mud_spec` (`single_pass` / `two_stage`) | `mud_spec_skeleton`, `mud_spec_generator` | `01_mud/mud_spec.md` |
+| 4 | Review (full mode) | `design.review_and_improve` | `mud_spec_reviewer` | `01_mud/review.json` |
+| 5 | Activity / code flow | `design.generate_activity` (AI, or deterministic from Section 7 in quick mode / on placeholder) | `activity_*` | `01_mud/activity.json`, `flow.mmd` |
+| 6 | C skeleton + compilable | `design.export` → `compilable.make_compilable` (gcc in WSL) | — | `02_code/<SWC>.c/.h`, `Rte_*`, `compilability.json` |
+| 7 | Generate tests | `verify.generate_tests` (RAG + LLM per function) | `test_generator`, `rag_embed` | `03_mut/Test_*.cpp`, `Makefile` |
+| 8 | Build, run, fix (Makefile generated per run from the CppUTest folder in **Settings**) | `verify.fix_loop` (make in WSL, fix loop, quarantine, smoke fallback) | `test_fixer` | `03_mut/test-results.xml`, `coverage_html/`, `test-report.html`, `quarantined/` |
+| 9 | Traceability | `trace.build_trace` | — | `04_trace/trace.json` |
+| 10 | Report | `report.write_run_report` | — | `RUN_REPORT.md`, `run.json` |
 
-### 1. Design (mud-tool, port 8042)
-1. **Import** requirements (`/api/v1/requirements/import`).
-2. **Module planning** (`/api/v1/modules/plan`) — AI proposes the SWC decomposition; you pick one module.
-3. **MUD spec** (`/api/v1/modules/mud-spec`) — detailed Markdown spec for the module.
-4. **AI review** (`/api/v1/modules/review`) — coverage %, issues, ASIL checks.
-5. **Generate** (`/api/v1/generate`) — produces a `GenerationResult` containing the diagrams, including the
-   **Activity/Code-Flow** flow chart. Each element carries `source_requirements` / `trace_req` for traceability.
+`RUN_REPORT.md` gives a ✅ / ⚠️ / ❌ verdict per stage (a failed run marks the failing stage ❌ and
+later stages "—"), the provider + model used by every stage, timings, compile ratio, JUnit counts,
+coverage, the trace summary, and **"Data sent to cloud: …"**.
 
-Everything above runs on local 7B models when `MUD_AI_BACKEND` points at Ollama/llama.cpp.
+## Running it
 
-### 2. The seam — C skeleton export
-`mud-tool` turns the Activity/Code-Flow diagram into a `.c` skeleton via `CSkeletonExporter`, exposed at:
+- **UI:** `launch.bat` / `./launch.sh` → http://localhost:8501 → *Full Chain* (or step by step via
+  *Design MUD* and *Unit Tests MUT*).
+- **CLI:**
+  ```bash
+  python -m mudmut_core.chain --requirements inputs/requirements/samples/bms_requirements.csv \
+      --swc SWC_BatteryManagement --quick
+  ```
+  Without `--preset` the run uses your current per-stage selection (Workflow & Models) and does not
+  change it. `--preset <id>` (from `config/presets.json`) applies that preset first.
+- **Agent:** the *OpenCode Agent* page drives `mud-designer`, which calls `agentic/tools/mudmut_cli.py`
+  (same engine, same `outputs/<run>/` layout). See [agentic/README.md](../agentic/README.md).
 
-```
-POST /api/v1/export
-{ "format": "c_skeleton", "result": <GenerationResult>, "output_path": "<dir>" }
-```
+## Models and providers
 
-The emitted `.c` preserves requirement traceability as header/inline comments
-(`/* Requirements: ... */`, per-node trace comments) and RTE call structure — exactly the input the verification
-half understands.
+Each stage has a provider (Ollama local, OpenRouter, NVIDIA, DeepSeek, Google) and a model; see
+[providers.md](providers.md). Embedding stages and visual QA are Ollama-only. Cloud providers receive
+requirement text and designs — the run report always says which ones did.
 
-### 3. Verification (cpputest-rag, port 8000)
-1. **Analyze** (`GET /analyze-project?project_path=<Module>`) — extract function signatures + complexity.
-2. **Generate tests** (`POST /generate-tests {"project_path": "<Module>"}`) — FAISS RAG retrieves similar example
-   tests, CodeLlama-7B writes `Test_*.cpp` + a coverage-enabled `Makefile`.
-3. **Build & run** (`POST /run-tests?test_directory=<dir>`) — the CppUTest Docker runner compiles, runs, and
-   produces LCOV/HTML/JUnit coverage.
+## Traceability rule
 
-### 4. Traceability (the bridge)
-`bridge/mud_to_tests.py` ties it together and writes `bridge/out/<Module>_trace.json`:
-
-```json
-{
-  "module": "SWC_MyModule",
-  "source_requirements": ["REQ_012", "REQ_045"],
-  "design_artifact": "SWC_MyModule.c (MUD Activity/Code-Flow skeleton)",
-  "generated_tests": { "test_files": ["Test_Foo.cpp", "Test_Bar.cpp"], "...": "..." },
-  "trace": [ { "requirement": "REQ_012", "verified_by": ["Test_Foo.cpp"] } ]
-}
-```
-
-That JSON is the ASPICE artifact the two tools couldn't produce separately: **requirement → design → test**.
-
-## Running the bridge
-
-```bash
-# Mode A — from an already-exported skeleton (no mud-tool server needed):
-python bridge/mud_to_tests.py --skeleton path/to/SWC_MyModule.c --module SWC_MyModule --run
-
-# Mode B — from a mud-tool GenerationResult JSON (bridge calls /export for you):
-python bridge/mud_to_tests.py --result path/to/generation_result.json --module SWC_MyModule --run
-```
-
-Prerequisites: Ollama running with the models from the [README](../README.md#quick-start-100-local); the
-cpputest-rag backend up (`docker compose up`); for Mode B, `mudtool-server` running on 8042.
-
-## Roadmap — backend parity & test-side guardrails
-- Give `cpputest-rag` the same `LOCAL | CLOUD | AUTO` backend abstraction as `mud-tool`, so the test half also
-  offers a cloud/API option (today it is Ollama-only).
-- Wrap `test_generator.py` in a **generate → compile/run → reviewer → regenerate** guardrail loop (the
-  `/run-tests` compile step already exists — feed failures back to a reviewer model), mirroring `mud-tool`'s
-  generator↔reviewer pipeline so 7B test output is self-correcting.
+A requirement is `verified_by_test` only when the test file of a function whose design carries its ID
+ran and every case passed; `failing_test` if it ran with failures; `test_not_run` if the test exists
+but produced no results; `not_verified` otherwise.

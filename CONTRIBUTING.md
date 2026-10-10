@@ -5,11 +5,14 @@ validated Module Unit Design flow charts and CppUTest unit tests. Contributions 
 
 ## Repository structure
 
-This is a **monorepo** of two independently-runnable services plus glue:
+This is a **monorepo**: one Streamlit platform on one in-process engine, plus two libraries:
 
+- `launcher/` — the Streamlit platform (all pages).
+- `mudmut_core/` — the shared engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry).
 - `mud-tool/` — the design half (requirements → MUD spec → UML/flow charts → C-skeleton). Python package `mudtool`.
-- `cpputest-rag/` — the verification half (C code → RAG → CppUTest → coverage). FastAPI + static frontend.
-- `bridge/` — end-to-end glue and requirement→test traceability.
+- `cpputest-rag/` — the verification half (C code → RAG → CppUTest → coverage), used as a library.
+- `agentic/` — the OpenCode agent layer (`mudmut_cli.py` tools on top of `mudmut_core`).
+- `inputs/` (requirements, guidelines, skills, test examples) and `outputs/<run>/` (one folder per run).
 
 Both halves were imported with full git history via `git subtree`. Keep changes scoped to one half per PR where
 possible.
@@ -24,8 +27,9 @@ pytest                       # unit tests
 ruff check . && mypy src     # lint + types
 
 # Verification half
-cd cpputest-rag
-docker compose up            # backend + frontend + ollama + test-runner
+cd cpputest-rag/backend
+pip install -r requirements-native.txt
+# C/C++ build toolchain (once, in WSL):  wsl -u root -e apt-get install -y cpputest lcov
 ```
 
 Use the local backend for development: `cp .env.local.example .env` (no API key needed).
@@ -48,5 +52,4 @@ Use the local backend for development: `cp .env.local.example .env` (no API key 
 
 ## Reporting security issues
 
-Please do **not** open a public issue for security problems (e.g. the Docker-socket exposure noted in the README).
-Contact the maintainers privately first.
+Please do **not** open a public issue for security problems. Contact the maintainers privately first.

@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     ai_backend: AIBackend = AIBackend.CLOUD
     confidence_threshold: float = 0.8
     max_retries: int = 3
+    # HTTP request timeout (seconds) for LLM calls — thinking models can take
+    # minutes on a large prompt; the previous hard-coded 600 s caused ReadTimeout.
+    request_timeout: int = 1800
 
     # Cloud AI - Anthropic
     anthropic_api_key: Optional[str] = None
@@ -161,7 +164,12 @@ class Settings(BaseSettings):
     # MUD_SPEC_SKELETON_MODEL: separate model for Stage 1 skeleton in the
     # two-stage pipeline. Recommended: deepseek-r1:7b — a reasoning model gives
     # better structured-JSON completeness on 7b GPUs. Empty = use generator model.
-    mud_spec_skeleton_model: str = "deepseek-r1:7b"
+    mud_spec_skeleton_model: str = Field(
+        "deepseek-r1:7b",
+        validation_alias=AliasChoices(
+            "MUD_SPEC_SKELETON_MODEL", "MUD_MUD_SPEC_SKELETON_MODEL"
+        ),
+    )
 
     # ── MUD Spec Generation Pipeline ─────────────────────────────────────────
     # MUD_SPEC_PIPELINE controls the generation mode for /modules/mud-spec:
@@ -171,7 +179,10 @@ class Settings(BaseSettings):
     #                    CalPrm/DEM events), then Stage 3 expands Section 7 pseudo-code
     #                    per runnable using exact port names from the skeleton.
     #                    Better quality, ~3× slower.  Falls back to single_pass on error.
-    mud_spec_pipeline: str = "two_stage"
+    mud_spec_pipeline: str = Field(
+        "two_stage",
+        validation_alias=AliasChoices("MUD_SPEC_PIPELINE", "MUD_MUD_SPEC_PIPELINE"),
+    )
 
     # ── Activity Diagram Pipeline (multi-stage) ──────────────────────────────
     # MUD_ACTIVITY_PIPELINE_ENABLED=true → use 5-stage pipeline:
@@ -189,6 +200,59 @@ class Settings(BaseSettings):
     #   Phase B: fill in C-expression labels given the locked topology
     # Produces more consistent diagrams at the cost of one extra AI call per runnable.
     activity_pipeline_stage3_two_phase: bool = False
+
+    # ── Multi-provider per-stage selection ────────────────────────────────────
+    # Each pipeline stage picks a provider (ollama | openrouter | nvidia |
+    # deepseek).  Empty = no override → use the global backend/provider.
+    planner_model: str = ""
+    planner_provider: str = ""
+    mud_spec_skeleton_provider: str = Field(
+        "", validation_alias=AliasChoices("MUD_SPEC_SKELETON_PROVIDER", "MUD_MUD_SPEC_SKELETON_PROVIDER")
+    )
+    pipeline_generator_provider: str = ""
+    pipeline_reviewer_provider: str = ""
+    activity_pipeline_skeleton_provider: str = ""
+    activity_pipeline_reviewer_provider: str = ""
+    visual_qa_provider: str = ""
+
+    # Cloud provider base URLs + keys.  Keys are read from the shared env names
+    # (OPENROUTER_API_KEY, NVIDIA_API_KEY, DEEPSEEK_API_KEY) via alias.
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("OPENROUTER_API_KEY", "MUD_OPENROUTER_API_KEY")
+    )
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("NVIDIA_API_KEY", "MUD_NVIDIA_API_KEY")
+    )
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("DEEPSEEK_API_KEY", "MUD_DEEPSEEK_API_KEY")
+    )
+    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    google_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("GOOGLE_GENERATIVE_AI_API_KEY", "MUD_GOOGLE_API_KEY")
+    )
+
+    def provider_connection(self, provider: str) -> dict[str, str]:
+        """Return ``{base_url, api_key}`` for a provider id (ollama default)."""
+        if provider == "openrouter":
+            return {"base_url": self.openrouter_base_url, "api_key": self.openrouter_api_key or ""}
+        if provider == "nvidia":
+            return {"base_url": self.nvidia_base_url, "api_key": self.nvidia_api_key or ""}
+        if provider == "deepseek":
+            return {"base_url": self.deepseek_base_url, "api_key": self.deepseek_api_key or ""}
+        if provider == "google":
+            return {"base_url": self.google_base_url, "api_key": self.google_api_key or ""}
+        # ollama (or unset) → the global OpenAI-compatible endpoint.
+        return {
+            "base_url": self.openai_base_url or "http://localhost:11434/v1",
+            "api_key": self.openai_api_key or "ollama",
+        }
+
+    def stage_model(self, stage: str, default: str = "") -> str:
+        """Best-effort model for a stage key (planner / mud_spec_skeleton / …)."""
+        return getattr(self, f"{stage}_model", "") or default
 
     def get_skills_dir(self) -> Path:
         if self.skills_dir:

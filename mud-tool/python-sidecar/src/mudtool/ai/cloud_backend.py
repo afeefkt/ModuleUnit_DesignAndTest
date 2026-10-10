@@ -83,13 +83,14 @@ class CloudBackend(BaseAIBackend):
         if self._openai_client is None:
             try:
                 import httpx
+                timeout = float(getattr(self.settings, "request_timeout", 1800) or 1800)
                 self._openai_client = httpx.AsyncClient(
                     base_url=self._active_openai_base_url(),
                     headers={
                         "Authorization": f"Bearer {self._active_openai_api_key() or ''}",
                         "Content-Type": "application/json",
                     },
-                    timeout=600.0,
+                    timeout=timeout,
                 )
             except ImportError:
                 raise RuntimeError("httpx package not installed. Run: pip install httpx")
@@ -234,10 +235,12 @@ class CloudBackend(BaseAIBackend):
         # Enable thinking for reasoning models (deepseek-r1, qwen3, qwq, etc.) automatically,
         # or for any model when MUD_OPENAI_ENABLE_THINKING=true is set explicitly.
         # qwen3 models natively support think/no_think toggle — always enable for best quality.
+        # `think` is an Ollama extension; only send it to a local Ollama endpoint
+        # (remote OpenAI-compatible APIs reject unknown fields).
         _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking", "qwen3")
         model_lower = payload["model"].lower()
         is_reasoning_model = any(kw in model_lower for kw in _REASONING_KEYWORDS)
-        if self.settings.openai_enable_thinking or is_reasoning_model:
+        if self._is_local_ollama() and (self.settings.openai_enable_thinking or is_reasoning_model):
             payload["think"] = True    # Ollama extension: enables chain-of-thought reasoning
 
         # Inject format:json when caller explicitly requests JSON output (review, analysis, etc.).
@@ -362,11 +365,13 @@ class CloudBackend(BaseAIBackend):
             ],
         }
 
-        # Enable reasoning for deepseek-r1 / qwen3 / qwq style models
-        # qwen3 models natively support think/no_think toggle — always enable for best quality.
+        # Enable reasoning for deepseek-r1 / qwen3 / qwq style models.
+        # `think` is an Ollama extension — only send it to local Ollama.
         _REASONING_KEYWORDS = ("deepseek-r1", ":r1-", "qwq", "thinking", "qwen3")
-        if self.settings.openai_enable_thinking or any(
-            kw in payload["model"].lower() for kw in _REASONING_KEYWORDS
+        if self._is_local_ollama() and (
+            self.settings.openai_enable_thinking or any(
+                kw in payload["model"].lower() for kw in _REASONING_KEYWORDS
+            )
         ):
             payload["think"] = True
 
