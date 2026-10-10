@@ -135,13 +135,12 @@ if reqs is not None:
                 code = "\n\n".join(c_map.values())
                 if st.button("Make compilable"):
                     run = workspace.Run.create(module.swc_name)
-                    project_dir = run.path("project")
-                    project_dir.mkdir(parents=True, exist_ok=True)
+                    project_dir = run.dir("code")
                     rep = compilable.make_compilable(code, module.swc_name, project_dir)
-                    run.save_text(workspace.MUD_SPEC, spec_md)
-                    run.save_text(workspace.SKELETON, rep.c_code)
-                    run.save_text(workspace.FLOW, flow)
-                    run.save_json(workspace.COMPILABILITY, {
+                    run.save_in("mud", "mud_spec.md", spec_md)
+                    run.save_in("code", f"{module.swc_name}.c", rep.c_code)
+                    run.save_in("mud", "flow.mmd", flow)
+                    run.save_json_in("code", "compilability.json", {
                         "total": rep.total_statements, "kept": rep.kept_statements,
                         "stubbed": rep.stubbed_statements, "compile_ok": rep.compile_ok,
                     })

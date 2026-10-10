@@ -60,7 +60,8 @@ else:
 st.divider()
 st.header("③ Get started")
 st.markdown(
-    "- **Design MUD** → `pages/1_Design_MUD` (import → plan → spec → flow → C skeleton)\n"
-    "- **Unit Tests MUT** → `pages/2_Unit_Tests_MUT` (generate → build → coverage → trace)\n"
-    "- **Full Chain** → `pages/3_Full_Chain` (one-click end-to-end)"
+    "- **Setup** → `pages/5_Providers` (keys + test connections) · `pages/4_Workflow_Models` (flow charts + per-stage provider/model)\n"
+    "- **Pipeline** → `pages/1_Design_MUD` (import → plan → spec → flow → C skeleton)\n"
+    "                 `pages/2_Unit_Tests_MUT` (generate → build → coverage → trace)\n"
+    "                 `pages/3_Full_Chain` (one-click end-to-end)"
 )

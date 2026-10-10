@@ -30,6 +30,10 @@ with col1:
 with col2:
     quick = st.checkbox("Quick mode (single-pass, skip review)", value=True)
 
+from mudmut_core import agents  # noqa: E402
+preset_names = list(agents.load_presets().keys())
+preset = st.selectbox("Model preset", preset_names, index=0)
+
 if st.button("▶ Run full chain", type="primary"):
     steps = st.empty()
     log = []
@@ -41,13 +45,14 @@ if st.button("▶ Run full chain", type="primary"):
         ))
 
     try:
-        summary = aio.run_sync(chain.run_full_chain(req_path, quick=quick, progress=progress))
+        summary = aio.run_sync(chain.run_full_chain(req_path, quick=quick, preset=preset, progress=progress))
         steps.markdown("\n".join(f"- ✅ {e['stage']}: {e['message']}" for e in log))
         st.session_state["current_run_folder"] = summary["run_folder"]
         st.success("Chain complete.")
         st.json({
             "run_folder": summary["run_folder"],
             "swc": summary["swc"],
+            "preset": summary["preset"],
             "timings": summary["timings"],
             "compilability": summary["compilability"],
             "tests": {k: summary["tests"].get(k) for k in ("status", "junit", "fix_attempts")},

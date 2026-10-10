@@ -112,6 +112,16 @@ class Run:
     def save_json_in(self, section: str, name: str, obj: Any) -> Path:
         return self.save_in(section, name, json.dumps(obj, indent=2, default=str))
 
+    def read_in(self, section: str, name: str, default: str = "") -> str:
+        p = self.dir(section) / name
+        return p.read_text(encoding="utf-8") if p.is_file() else default
+
+    def read_json_in(self, section: str, name: str, default: Any = None) -> Any:
+        p = self.dir(section) / name
+        if not p.is_file():
+            return default
+        return json.loads(p.read_text(encoding="utf-8"))
+
     # ── run-level persistence helpers ─────────────────────────────────────────
     def path(self, name: str) -> Path:
         return self.folder / name

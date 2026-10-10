@@ -39,21 +39,24 @@ run = next(r for r in runs if r.folder.name == choice)
 
 st.caption(f"Folder: `{run.folder}`")
 
-project_dir = run.path("project")
+project_dir = run.dir("code")
 if not project_dir.is_dir():
-    st.error("No `project/` directory (C skeleton) found for this run.")
+    st.error("No `02_code/` directory (C skeleton) found for this run.")
     st.stop()
 
 st.subheader("C skeleton (compilable)")
-st.code(run.read_text(workspace.SKELETON, "(none)"), language="c")
+_stub_c = run.read_in("code", f"{run.swc}.c", "")
+if not _stub_c:
+    _stub_c = run.read_text("skeleton.c", "(none)")
+st.code(_stub_c or "(none)", language="c")
 
 if st.button("Generate tests", type="primary"):
     with st.status("Analyzing + generating tests…", expanded=True) as status:
-        generation = aio.run_sync(verify.generate_tests(project_dir))
-        run.save_json(workspace.RESULTS, {"generation": generation})
+        generation = aio.run_sync(verify.generate_tests(project_dir, output_dir=run.dir("mut")))
+        run.save_json_in("mut", "results.json", {"generation": generation})
         status.update(label="Tests generated", state="complete")
 
-generation = (run.read_json(workspace.RESULTS) or {}).get("generation")
+generation = (run.read_json_in("mut", "results.json") or {}).get("generation")
 if generation:
     st.success(
         f"{generation.get('tests_generated')} test(s) for "
@@ -64,9 +67,9 @@ if generation:
         if st.button("Build & run (+ fix loop)"):
             with st.status("Building + running…", expanded=True) as status:
                 result = verify.fix_loop(out_dir, max_attempts=2)
-                run.save_json(workspace.RESULTS, {"generation": generation, "run": result})
+                run.save_json_in("mut", "results.json", {"generation": generation, "run": result})
                 status.update(label="Done", state="complete")
-        result = (run.read_json(workspace.RESULTS) or {}).get("run")
+        result = (run.read_json_in("mut", "results.json") or {}).get("run")
         if result:
             junit = result.get("junit") or {}
             m1, m2, m3, m4 = st.columns(4)
@@ -95,11 +98,11 @@ if generation:
                     st.link_button(f"Open {label}", f"file://{p}")
             # traceability
             if st.button("Write traceability"):
-                code = run.read_text(workspace.SKELETON, "")
+                code = run.read_in("code", f"{run.swc}.c", "")
                 record = trace_mod.build_trace(run.swc, code, generation)
-                run.save_json(workspace.TRACE, record)
+                run.save_json_in("trace", "trace.json", record)
                 st.session_state["trace"] = record
-            trace_record = st.session_state.get("trace") or run.read_json(workspace.TRACE)
+            trace_record = st.session_state.get("trace") or run.read_json_in("trace", "trace.json")
             if trace_record:
                 st.subheader("Traceability (requirement → tests)")
                 summary = trace_record.get("summary")
