@@ -1,8 +1,11 @@
 # MUD_MUT — Local-AI AUTOSAR Module Unit Design → Unit Tests
 
 > **From architectural requirements → validated MUD flow charts → AUTOSAR CppUTest unit tests.**
-> One ASPICE-aligned pipeline. Runs entirely on **local models** — your requirements, designs, and code
-> never leave your machine. One Streamlit platform, **no Docker**.
+> One ASPICE-aligned pipeline. Runs on **local models by default** — your requirements, designs, and code
+> stay on your machine. Cloud models (Ollama Cloud, OpenRouter, NVIDIA, DeepSeek, Google) are optional, switched
+> on per stage, and every run report says whether any data left the machine. One Streamlit platform, **no Docker**.
+>
+> **New here? Read the step-by-step guide: [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md).**
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-red)
@@ -131,7 +134,17 @@ requirements.csv
 
 ---
 
-## Quick start (100% local, no Docker)
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md) | **Step-by-step guide to every stage and page**, reading results, troubleshooting |
+| [docs/pipeline.md](docs/pipeline.md) | The stages, their outputs, re-running tests by hand, the traceability rule |
+| [docs/providers.md](docs/providers.md) | Providers, free models, the probe, capping the local context window |
+| [agentic/README.md](agentic/README.md) | The OpenCode agent layer |
+| [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | Project background, learnings and honest limits |
+
+## Quick start (local, no Docker)
 
 **Prerequisites:** [Ollama](https://ollama.com) and Linux, or **WSL (Ubuntu) on Windows**. The platform
 (Python venv, Streamlit, gcc/make/CppUTest/lcov) runs inside Linux/WSL; on Windows, `setup.bat` and
@@ -140,12 +153,14 @@ Windows browser. Ollama can run natively on Windows (WSL reaches it at `localhos
 
 ```bash
 # 1. Pull the local model set (one time)
-ollama pull qwen3:8b             # diagram / MUD generation
-ollama pull deepseek-r1:7b       # reasoning / reviewer
-ollama pull qwen2.5-coder:7b     # code generation
+ollama pull qwen3:8b             # design / MUD generation
 ollama pull qwen2.5:7b           # test generation (cpputest-rag)
 ollama pull all-minilm           # test-example RAG embeddings
 ollama pull nomic-embed-text     # guidelines RAG embeddings (MUD_GUIDELINES_EMBED_MODEL)
+
+# Capped 16k-context copy used by the presets (fits an 8 GB GPU; shares the weights, no extra download)
+printf 'FROM qwen3:8b\nPARAMETER num_ctx 16384\n' > /tmp/Modelfile
+ollama create qwen3:8b-ctx16384 -f /tmp/Modelfile
 
 # 2. Copy the env preset (native, localhost Ollama)
 cp .env.local.example .env
@@ -155,20 +170,26 @@ cp .env.local.example .env
 
 # 4. Install the C/C++ toolchain inside WSL (once, as root)
 wsl -u root -e apt-get install -y build-essential cpputest lcov
+#    (or build CppUTest yourself into Tools/cpputest-install, or set its folder on the Settings page)
 
 # 5. Launch the platform
 ./launch.sh                      # Windows: launch.bat
 # → opens http://localhost:8501
 ```
 
-Then use the pages:
+Then use the pages (details for each in [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md)):
 
-1. **Status** — confirm Ollama + the WSL toolchain are green (copy-paste install hints if not).
-2. **Setup ▸ Providers** — test each provider connection (Ollama / OpenRouter / NVIDIA / DeepSeek) and check key status.
-3. **Setup ▸ Workflow & Models** — see every workflow as a flow chart, and pick a **provider + model per stage** (with presets: *Local-recommended*, *Local-fast*, *OpenRouter-free*, *NVIDIA*, *DeepSeek*).
-4. **Pipeline ▸ Design (MUD)** — import → plan → spec → flow → compilable C skeleton.
-5. **Pipeline ▸ Unit Tests (MUT)** — generate → build/run → coverage → trace.
-6. **Pipeline ▸ Full Chain** — one click end-to-end (with a preset picker), writing `outputs/<run>/RUN_REPORT.md`.
+1. **Start ▸ Overview** — Ollama, the WSL build tools (incl. CppUTest) and cloud keys should be green.
+2. **Setup ▸ Settings** — CppUTest folder (empty = auto-detect), optional compiler flags; **Check** shows what was found.
+3. **Setup ▸ Keys & providers** — test each provider; **Probe free models** marks which free cloud models really answer.
+4. **Setup ▸ Models** — flow charts of every workflow, and a **provider + model per stage** (presets: *Local - recommended*,
+   *Local - fast*, *OpenRouter - free*, *NVIDIA NIM*, *DeepSeek*, *Ollama Cloud*).
+5. **Review ▸ AI monitor** — press **Quick test** in the test chat to confirm a model answers before a long run.
+6. **Verify ▸ Full chain** — one click end-to-end with a live progress bar, writing `outputs/<run>/RUN_REPORT.md`.
+   Or go step by step: **Design ▸ Requirements & design**, then **Verify ▸ Unit tests**.
+7. **Review ▸ Runs & reports** — test report, coverage, run report, per-test results, ZIP download, compare runs.
+
+The **current run** and a nine-box **stage rail** (green/amber/red/grey per stage) are shown at the top of every page.
 
 Each run writes to `outputs/<run>/` (see below).
 
@@ -181,13 +202,15 @@ python -m mudmut_core.chain --requirements inputs/requirements/samples/bms_requi
 
 ## Models & providers
 
-Every pipeline stage has a **provider** (Ollama / OpenRouter / NVIDIA NIM / DeepSeek) and a **model**.
-Change them on the *Workflow & Models* page or apply a preset (`config/presets.json`); the current
-selection persists in `config/stages.json` (gitignored). Cloud providers send your data off-machine and
-are recorded in every `RUN_REPORT.md`.
+Every pipeline stage has a **provider** (Ollama · Ollama Cloud · OpenRouter · NVIDIA NIM · DeepSeek · Google) and a
+**model**. Change them on the *Models* page or apply a preset (`config/presets.json`); the current selection
+persists in `config/stages.json` (gitignored). Cloud providers send your data off-machine and are recorded in every
+`RUN_REPORT.md`. Free models are tagged 🆓 and can be probed (✅ answers · ⚠️ rate-limited · ❌ retired · 💲 needs
+credits) — see [docs/providers.md](docs/providers.md).
 
-API keys are read from your environment (Windows user variables / repo `.env` / process) — never written
-to disk; the Providers page only ever shows "✓ found" / "✗ missing".
+API keys are read from your environment (Windows user variables such as `OPENROUTER_API_KEY`, `NVIDIA_API_KEY`,
+`DEEPSEEK_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `OLLAMA_API_KEY` / repo `.env` / process) — never written to
+disk; the Keys page only ever shows "key found" / "no key".
 
 ### Outputs
 
@@ -197,13 +220,17 @@ outputs/
   <YYYYMMDD_HHMMSS>_<SWC>_<preset>/
     RUN_REPORT.md                ← per-stage verdict ✅/⚠️/❌, models, cloud notice, timings
     run.json                     ← same, machine-readable
+    llm_log.jsonl                ← every request/answer between the app and the models
     00_input/  01_mud/  02_code/  03_mut/  04_trace/
 ```
 
+`03_mut/` also holds a generated `Makefile` and `build_and_run.bat` / `build_and_run.sh`: run them to recompile and
+re-run the tests by hand (they use the CppUTest folder from Settings).
+
 ### What to expect from local 7B models
 
-On an RTX 4060 (8 GB) with `qwen3:8b-ctx16384`, a `--quick` run of the BMS sample takes about
-25–30 minutes, most of it spec and activity generation. Use the `-ctx16384` model variants: the plain
+On an RTX 4060 (8 GB) with `qwen3:8b-ctx16384`, a quick run of the BMS sample takes about 13 minutes (the
+spec stage is roughly 60 % of it); a full run with review and AI activity takes longer. Use the `-ctx16384` model variants: the plain
 `qwen3:8b` loads with a 40k context, spills half onto the CPU, and is about 2× slower. Set both
 `MUD_OPENAI_MODEL` and `MUD_PIPELINE_GENERATOR_MODEL` in `mud-tool/python-sidecar/.env`.
 
@@ -254,12 +281,13 @@ MUD_MUT/
 ├── setup.sh / setup.bat      ← one-time setup (venv + deps)
 ├── launch.sh / launch.bat    ← launch the Streamlit platform
 ├── .env.example / .env.local.example / .env.auto.example
-├── docs/                     ← pipeline.md · providers.md
+├── docs/                     ← HOW_TO_USE.md · pipeline.md · providers.md · PROJECT_OVERVIEW.md
+├── Tools/                    ← optional local checkouts, e.g. a CppUTest build (git-ignored)
 ├── config/                   ← presets.json (tracked) · stages.json (your selection, git-ignored)
 ├── inputs/                   ← requirements/ (samples/) · guidelines/ · skills/ · test_examples/
 ├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
-│   ├── streamlit_app.py      ← Home / Status page
+│   ├── streamlit_app.py      ← router: theme, run bar + stage rail, grouped menu
 │   └── views/                ← Overview · Design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent
 ├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
 ├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
