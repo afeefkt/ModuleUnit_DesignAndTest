@@ -271,11 +271,21 @@ def set_stage(key: str, provider: str, model: str) -> dict[str, Any]:
     return get_stages()[key]
 
 
+def _auto_model(provider_id: str) -> str:
+    """First model of ``provider_id`` that a probe saw answering (non-reasoning), else ''."""
+    try:
+        from mudmut_core.llm import probe
+        return probe.first_working(provider_id, sorted(probe.cached_status(provider_id))) or ""
+    except Exception:
+        return ""
+
+
 def apply_preset(name: str) -> dict[str, Any]:
     """Apply every stage in a preset; returns the new stage map.
 
-    Cloud stages whose preset model is blank are skipped (the user must pick a
-    model from the live list first), so a blank id is never sent to a cloud API.
+    A blank cloud model is filled from the probe cache (a free model that answered a
+    "Say OK" probe) when one is known; otherwise the stage is skipped so a blank id is
+    never sent to a cloud API.
     """
     return apply_preset_with_report(name)[0]
 
@@ -293,6 +303,8 @@ def apply_preset_with_report(name: str) -> tuple[dict[str, Any], list[str]]:
             continue
         provider = cfg.get("provider", "ollama")
         model = cfg.get("model", "")
+        if provider != "ollama" and not model:
+            model = _auto_model(provider)  # a model a probe saw answering, if any
         if provider != "ollama" and not model:
             skipped.append(key)  # blank cloud model — leave the stage unchanged
             continue

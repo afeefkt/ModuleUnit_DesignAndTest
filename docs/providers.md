@@ -11,6 +11,28 @@ endpoints the platform can talk to; models are the specific model IDs.
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | cloud |
 | `nvidia` | `https://integrate.api.nvidia.com/v1` | `NVIDIA_API_KEY` | cloud |
 | `deepseek` | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` | cloud |
+| `google` | `https://generativelanguage.googleapis.com/v1beta/openai` | `GOOGLE_GENERATIVE_AI_API_KEY` | cloud |
+| `ollama_cloud` | `https://ollama.com/v1` | `OLLAMA_API_KEY` | cloud (Ollama's hosted models — separate from your local Ollama) |
+
+### Free models
+
+The 🆓 tag means a different thing per provider:
+
+| provider | "free" means |
+|---|---|
+| `openrouter` | price 0 (the `:free` models; shared upstream rate limits, so some answer 429) |
+| `nvidia` | NIM trial credits — every hosted chat model, rate-limited (many catalogue entries are retired and answer 404) |
+| `ollama_cloud` | on the free plan (usage-limited). Not every listed model is: others answer 402 "needs credits", so 🆓 is only shown after a probe saw the model answer |
+
+Lists are long and partly stale, so the **Providers** page has **Probe free models**: it sends
+only the test prompt "Say OK" (no project data) to each model, 4 at a time, and caches the result
+for 24 h in `config/model_probe.json`. **Workflow & Models** then marks each model
+✅ answers · ⚠️ rate-limited / empty reply (reasoning models) · ❌ not hosted · 💲 needs credits,
+and has a **Free models only** toggle and a filter box. Presets with a blank cloud model
+(`openrouter-free`, `nvidia`, `ollama-cloud`) pick the first probed ✅ non-reasoning model.
+
+The Ollama Cloud key is the Windows user variable `OLLAMA_API_KEY` (forwarded into WSL by
+`launch.bat`; never written to a file).
 
 Built-ins live in `mudmut_core/llm/providers.py`; you can extend them with a
 `config/providers.json` (merged over the built-ins).

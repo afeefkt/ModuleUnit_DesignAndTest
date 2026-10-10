@@ -40,8 +40,9 @@ flowchart LR
     subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
         direction TB
         SET["⚙️ Providers & Keys · Workflow & Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
-        P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain"]
-        RR["📊 Runs & Reports<br/>verdicts · compare runs"]
+        P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain<br/>background job · live % bar"]
+        RR["📊 Runs & Reports<br/>stage rail · test report · coverage · ZIP"]
+        AIM["🛰️ AI monitor<br/>every request / answer / thinking · test chat"]
         OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
     end
 
@@ -72,7 +73,7 @@ flowchart LR
 
     subgraph LLM["🧠 mudmut_core/llm — one client, per-stage provider"]
         OLL[("🦙 Ollama (local)<br/>localhost:11434")]
-        CLOUD[("☁️ OpenRouter · NVIDIA · DeepSeek · Google<br/>keys from Windows user env")]
+        CLOUD[("☁️ Ollama Cloud · OpenRouter · NVIDIA · DeepSeek · Google<br/>keys from Windows user env")]
     end
 
     AG["🤖 opencode serve + mud-designer agent<br/>→ agentic/tools/mudmut_cli.py"]
@@ -84,6 +85,9 @@ flowchart LR
     OCP --> AG -.-> MUD
     AG -.-> OUT
     RR -.-> OUT
+    RS["Report server<br/>localhost:8502 · outputs/ only"] -.-> OUT
+    RR -.-> RS
+    AIM -.-> LLM
     SET -.-> LLM
     LLM -.-> PLAN
     LLM -.-> SPEC
@@ -118,7 +122,7 @@ requirements.csv
 
 | Folder | What it is | Notes |
 |---|---|---|
-| [`launcher/`](launcher/) | The Streamlit platform (Home · Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent · Settings) | `./launch.sh` / `launch.bat` |
+| [`launcher/`](launcher/) | The Streamlit platform (router + `views/`: Overview · Requirements & design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent) | `./launch.sh` / `launch.bat` |
 | [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry) | used by the UI, the CLI, the agent and the tests |
 | [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR flow charts → C-skeleton export | in-process library |
 | [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage | in-process library |
@@ -256,7 +260,7 @@ MUD_MUT/
 ├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
 │   ├── streamlit_app.py      ← Home / Status page
-│   └── pages/                ← Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent · Settings
+│   └── views/                ← Overview · Design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent
 ├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
 ├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)

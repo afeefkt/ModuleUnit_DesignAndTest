@@ -83,6 +83,13 @@ def ensure_environment() -> str:
     # Export provider keys before anything reads (and caches) mud-tool settings.
     _export_keys()
 
+    # Report every model call to the AI monitor (mud-tool's backends call this observer).
+    try:
+        from mudmut_core.llm import observe
+        observe.register()
+    except Exception:
+        pass
+
     _LOADED = True
     return ollama_url
 

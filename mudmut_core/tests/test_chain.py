@@ -47,7 +47,7 @@ def test_run_full_chain_quick_with_stubs(tmp_path, monkeypatch):
     out_dir = tmp_path / "tests_x"
     out_dir.mkdir()
 
-    async def fake_generate_tests(project_dir, function_name=None, output_dir=None):
+    async def fake_generate_tests(project_dir, function_name=None, output_dir=None, progress=None):
         return {
             "output_directory": str(output_dir or out_dir),
             "tests_generated": 1,

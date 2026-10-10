@@ -16,9 +16,8 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
 import _common as c  # noqa: E402,F401  (bootstraps env)
 from mudmut_core import settings, toolchain  # noqa: E402
 
-st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
 
-st.title("⚙️ Settings")
+st.title("Settings")
 st.caption("Stored in `config/settings.json` (git-ignored). Every run's `03_mut/Makefile` is generated from these values.")
 
 current = settings.get_settings()

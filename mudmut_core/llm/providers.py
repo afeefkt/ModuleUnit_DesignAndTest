@@ -53,6 +53,12 @@ BUILTIN_PROVIDERS: dict[str, dict[str, Any]] = {
         "key_env": "DEEPSEEK_API_KEY",
         "privacy": "cloud",
     },
+    "ollama_cloud": {
+        "name": "Ollama Cloud",
+        "base_url": "https://ollama.com/v1",
+        "key_env": "OLLAMA_API_KEY",
+        "privacy": "cloud",
+    },
     "google": {
         "name": "Google Gemini (OpenAI-compatible)",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -188,18 +194,59 @@ def _http_json(url: str, *, timeout: int = 30, api_key: Optional[str] = None) ->
         return json.loads(resp.read().decode("utf-8"))
 
 
+# What "free" means per provider (shown next to the 🆓 tag).
+FREE_NOTES: dict[str, str] = {
+    "openrouter": "price 0 (shared upstream rate limits)",
+    "nvidia": "trial credits, rate-limited",
+    "ollama_cloud": "free plan (verified by probe), usage-limited",
+}
+
+# NVIDIA's catalogue also lists non-chat models (embeddings, rerankers, guards …).
+_NON_CHAT = ("embed", "rerank", "retriev", "reward", "guard", "safety", "parse", "clip", "nvclip")
+
+
+def is_chat_model(provider_id: str, model_id: str) -> bool:
+    low = model_id.lower()
+    return not (provider_id == "nvidia" and any(tag in low for tag in _NON_CHAT))
+
+
 def list_models(provider: Provider) -> list[dict[str, Any]]:
-    """Return ``[{id, free}]`` for the provider.  OpenRouter free models are flagged."""
+    """Return ``[{id, free, free_note}]`` for the provider.
+
+    ``free`` means: OpenRouter — price 0; NVIDIA NIM — trial credits (every hosted chat
+    model); Ollama Cloud — usable on the free plan (usage-limited); local Ollama — always.
+    """
     if provider.id == "ollama":
         data = _http_json(f"{provider.base_url.rstrip('/')}/api/tags")
         return [{"id": m.get("name", ""), "free": True} for m in data.get("models", [])]
 
     key = resolve_key(provider.key_env)
     base = provider.base_url.rstrip("/")
+
+    if provider.id == "ollama_cloud":
+        try:
+            data = _http_json(f"{base}/models", api_key=key)
+            ids = [m.get("id", "") for m in data.get("data", [])]
+        except Exception:
+            data = _http_json("https://ollama.com/api/tags", api_key=key)
+            ids = [m.get("name") or m.get("model", "") for m in data.get("models", [])]
+        # Not every Ollama Cloud model is in the free plan (the API answers 402 for the
+        # others), so "free" is only claimed for models a probe saw answering.
+        from mudmut_core.llm.probe import OK, cached_status
+        status = cached_status("ollama_cloud")
+        return [{"id": i, "free": status.get(i) == OK, "free_note": FREE_NOTES["ollama_cloud"]}
+                for i in ids if i]
+
     data = _http_json(f"{base}/models", api_key=key)
     models = data.get("data", [])
 
     free_ids: set[str] = set()
+    if provider.id == "nvidia":
+        return [
+            {"id": m.get("id", ""), "free": True, "free_note": FREE_NOTES["nvidia"]}
+            for m in models
+            if m.get("id") and is_chat_model("nvidia", m["id"])
+        ]
     if provider.id == "openrouter":
         try:
             allm = _http_json("https://openrouter.ai/api/v1/models")
@@ -213,7 +260,11 @@ def list_models(provider: Provider) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for m in models:
         mid = m.get("id", "")
-        out.append({"id": mid, "free": mid in free_ids})
+        is_free = mid in free_ids
+        entry = {"id": mid, "free": is_free}
+        if is_free and provider.id in FREE_NOTES:
+            entry["free_note"] = FREE_NOTES[provider.id]
+        out.append(entry)
     return out
 
 

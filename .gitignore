@@ -30,6 +30,8 @@ outputs/*
 !outputs/.gitkeep
 config/stages.json
 config/settings.json
+config/model_probe.json
+config/stage_timings.json
 *.bak*
 *.backup
 *.sqlite-journal

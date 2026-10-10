@@ -268,5 +268,59 @@
         "model": "all-minilm:latest"
       }
     }
+  },
+  "ollama-cloud": {
+    "label": "Ollama Cloud",
+    "note": "Generation stages on Ollama Cloud (free-plan models; run Probe free models first so a working model is picked automatically); embeddings stay local.",
+    "stages": {
+      "planner": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "mud_spec_skeleton": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "mud_spec_generator": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "mud_spec_reviewer": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "activity_skeleton": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "activity_generator": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "activity_reviewer": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "bge-m3"
+      },
+      "test_generator": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "test_fixer": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
+    }
   }
 }

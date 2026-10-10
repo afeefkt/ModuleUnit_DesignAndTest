@@ -43,7 +43,7 @@ def stubbed_chain(tmp_path, monkeypatch):
         return {"c": {"RE_Foo": 'void RE_Foo(void)\n{\n    l_u8X = 1;\n    return;\n}\n'},
                 "mermaid": {"RE_Foo": "graph TD; A-->B;"}}
 
-    async def fake_generate_tests(project_dir, function_name=None, output_dir=None):
+    async def fake_generate_tests(project_dir, function_name=None, output_dir=None, progress=None):
         return {"output_directory": str(output_dir), "tests_generated": 1,
                 "functions_analyzed": 1, "failed_functions": []}
 

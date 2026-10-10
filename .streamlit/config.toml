@@ -1,0 +1,15 @@
+# Light "control panel" theme for the MUD_MUT launcher (Bahnschrift is applied by the app CSS).
+[theme]
+base = "light"
+primaryColor = "#0B5FA5"
+backgroundColor = "#F2F4F6"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1D2733"
+font = "sans serif"
+baseRadius = "small"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

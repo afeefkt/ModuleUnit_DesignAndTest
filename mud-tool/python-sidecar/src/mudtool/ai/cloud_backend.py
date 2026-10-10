@@ -9,6 +9,7 @@ import re
 import time
 from typing import AsyncIterator, Optional
 
+from mudtool.ai import observer as _observer
 from mudtool.ai.base_backend import AIResponse, BaseAIBackend
 from mudtool.config.settings import CloudProvider, Settings
 
@@ -160,18 +161,35 @@ class CloudBackend(BaseAIBackend):
         response_format: str = "text",
     ) -> AIResponse:
         start_time = time.monotonic()
-
-        if self.settings.cloud_provider == CloudProvider.ANTHROPIC:
-            return await self._generate_anthropic(
-                system_prompt, user_prompt, max_tokens, temperature,
-                stop_sequences, start_time,
-            )
-        else:
-            return await self._generate_openai(
-                system_prompt, user_prompt, max_tokens, temperature,
-                stop_sequences, start_time,
-                response_format=response_format,
-            )
+        is_anthropic = self.settings.cloud_provider == CloudProvider.ANTHROPIC
+        call_id = _observer.new_call_id()
+        _observer.notify(
+            "start", call_id=call_id, kind="generate",
+            model=self.settings.anthropic_model if is_anthropic else self._active_openai_model(),
+            base_url="https://api.anthropic.com" if is_anthropic else self._active_openai_base_url(),
+            system=system_prompt, user=user_prompt, max_tokens=max_tokens, temperature=temperature,
+        )
+        try:
+            if is_anthropic:
+                response = await self._generate_anthropic(
+                    system_prompt, user_prompt, max_tokens, temperature,
+                    stop_sequences, start_time,
+                )
+            else:
+                response = await self._generate_openai(
+                    system_prompt, user_prompt, max_tokens, temperature,
+                    stop_sequences, start_time,
+                    response_format=response_format,
+                )
+        except Exception as exc:
+            _observer.notify("error", call_id=call_id, error=f"{type(exc).__name__}: {exc}"[:600])
+            raise
+        _observer.notify(
+            "end", call_id=call_id, content=response.content, reasoning=response.reasoning,
+            input_tokens=response.input_tokens, output_tokens=response.output_tokens,
+            finish_reason=response.finish_reason, latency_ms=response.latency_ms,
+        )
+        return response
 
     async def _generate_anthropic(
         self,
@@ -280,11 +298,18 @@ class CloudBackend(BaseAIBackend):
         # Ollama <0.6.2 includes <think>...</think> reasoning blocks inside message.content
         # instead of separating them into message.thinking.  Strip them so downstream JSON
         # extraction sees only the actual response text.
-        raw_content = choice.get("message", {}).get("content", "") or ""
+        message = choice.get("message", {}) or {}
+        raw_content = message.get("content", "") or ""
         content = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
+        # Keep the model's reasoning (for the AI monitor): separate field or inline <think>.
+        reasoning = (message.get("thinking") or message.get("reasoning_content")
+                     or message.get("reasoning") or "")
+        if not reasoning:
+            reasoning = "\n".join(re.findall(r"<think>(.*?)</think>", raw_content, flags=re.DOTALL)).strip()
 
         return AIResponse(
             content=content,
+            reasoning=reasoning or None,
             model=data.get("model", self._active_openai_model()),
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
@@ -381,6 +406,12 @@ class CloudBackend(BaseAIBackend):
         logger.info(
             f"OpenAI-compatible STREAM: model={self._active_openai_model()}"
         )
+        call_id = _observer.new_call_id()
+        _observer.notify(
+            "start", call_id=call_id, kind="stream", model=payload["model"],
+            base_url=self._active_openai_base_url(), system=system_prompt, user=user_prompt,
+            max_tokens=max_tokens, temperature=temperature,
+        )
 
         try:
             in_think_block = False
@@ -417,6 +448,10 @@ class CloudBackend(BaseAIBackend):
 
                     delta = (chunk.get("choices") or [{}])[0].get("delta", {})
                     text = delta.get("content") or ""
+                    reasoning_delta = (delta.get("reasoning") or delta.get("reasoning_content")
+                                       or delta.get("thinking") or "")
+                    if reasoning_delta:
+                        _observer.notify("chunk", call_id=call_id, reasoning=reasoning_delta)
                     if not text:
                         continue
 
@@ -424,6 +459,7 @@ class CloudBackend(BaseAIBackend):
                     if "<think>" in text:
                         in_think_block = True
                     if in_think_block:
+                        _observer.notify("chunk", call_id=call_id, reasoning=text)
                         if "</think>" in text:
                             in_think_block = False
                             text = text[text.index("</think>") + len("</think>"):]
@@ -431,9 +467,13 @@ class CloudBackend(BaseAIBackend):
                             continue
 
                     if text:
+                        _observer.notify("chunk", call_id=call_id, text=text)
                         yield text
 
+            _observer.notify("end", call_id=call_id, content=None, stream_end=True)
+
         except Exception as exc:
+            _observer.notify("error", call_id=call_id, error=f"{type(exc).__name__}: {exc}"[:600])
             logger.warning(
                 "OpenAI streaming failed (%s), falling back to non-streaming", exc
             )

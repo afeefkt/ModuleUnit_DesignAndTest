@@ -1,4 +1,4 @@
-"""LLM client layer — providers (Ollama / OpenRouter / NVIDIA / DeepSeek) and a
+"""LLM client layer — providers (Ollama / Ollama Cloud / OpenRouter / NVIDIA / DeepSeek / Google) and a
 thin OpenAI-compatible chat client.
 """
 

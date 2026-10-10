@@ -16,10 +16,10 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
 import _common as c  # noqa: E402
 from mudmut_core import agents  # noqa: E402
 from mudmut_core.llm import get_providers  # noqa: E402
+from mudmut_core.llm import probe as probe_mod  # noqa: E402
 
-st.set_page_config(page_title="Workflow & Models", page_icon="🧠", layout="wide")
 
-st.title("🧠 Workflow & Models")
+st.title("Models")
 
 # ── Workflow flow charts ──────────────────────────────────────────────────────
 st.header("Workflows")
@@ -108,6 +108,13 @@ def _models(provider_id: str) -> list[dict]:
 
 # Per-stage dropdowns
 st.subheader("Stages")
+fc1, fc2 = st.columns([1, 2])
+free_only = fc1.toggle("🆓 Free models only", value=False,
+                       help="Hide paid models in the cloud dropdowns (free = price 0 / trial credits / free plan).")
+filter_text = fc2.text_input("Filter models", "", placeholder="e.g. gemma, qwen, 30b",
+                             help="Narrows every cloud model dropdown; the current model always stays.")
+st.caption("🆓 free · ✅ answered a probe · ⚠️ rate-limited / empty reply · ❌ not hosted · 💲 needs credits "
+           "— run **Probe free models** on the Providers page to fill in the marks.")
 if not stages:
     st.info("Could not read stage configuration.")
 else:
@@ -135,15 +142,23 @@ else:
                 model_options.add(stage["model"])
             if stage.get("recommended") and new_provider == "ollama":
                 model_options.add(stage["recommended"])
-            model_list = sorted(model_options, key=lambda m: (m not in free, m))
             cur_model = stage.get("model") or ""
+            status = probe_mod.cached_status(new_provider) if new_provider != "ollama" else {}
+            if new_provider != "ollama":
+                if free_only:
+                    model_options = {m for m in model_options if m in free or m == cur_model}
+                if filter_text.strip():
+                    needle = filter_text.strip().lower()
+                    model_options = {m for m in model_options if needle in m.lower() or m == cur_model}
+            model_list = sorted(model_options, key=lambda m: (m not in free, status.get(m) != "ok", m))
             if model_list:
                 new_model = c3.selectbox(
                     "Model", model_list,
                     index=model_list.index(cur_model) if cur_model in model_list else 0,
                     key=f"model_{key}_{new_provider}",
-                    format_func=lambda m, rec=stage.get("recommended"), fr=free: (
-                        f"{m}{' 🆓' if m in fr else ''}{' ★' if m == rec else ''}"),
+                    format_func=lambda m, rec=stage.get("recommended"), fr=free, stt=status: (
+                        f"{'🆓 ' if m in fr else ''}{m}"
+                        f"{(' ' + probe_mod.ICONS[stt[m]]) if m in stt else ''}{' ★' if m == rec else ''}"),
                 )
             else:
                 new_model = c3.text_input("Model id", cur_model, key=f"model_{key}_{new_provider}",

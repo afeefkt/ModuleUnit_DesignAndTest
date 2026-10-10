@@ -16,28 +16,17 @@ import _common as c  # noqa: E402
 from mudmut_core import aio, trace as trace_mod  # noqa: E402
 from mudmut_core import verify, workspace  # noqa: E402
 
-st.set_page_config(page_title="Unit Tests (MUT)", page_icon="🧪", layout="wide")
 
-st.title("🧪 Unit Tests (MUT)")
+st.title("Unit tests")
 
 runs = c.list_runs()
 if not runs:
     st.info("No runs yet — create one on the Design page or the Full Chain page.")
     st.stop()
 
-run_names = [r.folder.name for r in runs]
-# Default to the newest run that already has a C skeleton (skip unfinished ones).
-default_idx = next((i for i, r in enumerate(runs) if r.path("project").is_dir()), 0)
-current = st.session_state.get("current_run_folder")
-if current:
-    for i, r in enumerate(runs):
-        if r.folder.name == Path(current).name:
-            default_idx = i
+run = c.current_run()  # chosen in the run bar at the top of every page
 
-choice = st.selectbox("Run", run_names, index=default_idx)
-run = next(r for r in runs if r.folder.name == choice)
-
-st.caption(f"Folder: `{run.folder}`")
+st.caption(f"Run folder: `{run.folder}`")
 
 project_dir = run.dir("code")
 if not project_dir.is_dir():
@@ -52,7 +41,13 @@ st.code(_stub_c or "(none)", language="c")
 
 if st.button("Generate tests", type="primary"):
     with st.status("Analyzing + generating tests…", expanded=True) as status:
-        generation = aio.run_sync(verify.generate_tests(project_dir, output_dir=run.dir("mut")))
+        def _gen(report):
+            def on_fn(done: int, total: int, name: str) -> None:
+                report({"stage": "tests", "message": f"function {done + 1} of {total}: {name}",
+                        "fraction": done / max(total, 1)})
+            return aio.run_sync(verify.generate_tests(project_dir, output_dir=run.dir("mut"), progress=on_fn))
+
+        generation = c.run_with_progress("Generating tests", _gen)
         run.save_json_in("mut", "results.json", {"generation": generation})
         status.update(label="Tests generated", state="complete")
 
@@ -100,10 +95,8 @@ if generation:
             if result.get("test_output"):
                 with st.expander("Test output"):
                     st.code(result.get("test_output", ""))
-            for label, path_key in (("Coverage HTML", "coverage_html_path"), ("Test report", "report_path")):
-                p = result.get(path_key)
-                if p and Path(p).exists():
-                    st.link_button(f"Open {label}", f"file://{p}")
+            st.subheader("Results")
+            c.results_panel(run, key="mut")
             # traceability
             if st.button("Write traceability"):
                 code = run.read_in("code", f"{run.swc}.c", "")

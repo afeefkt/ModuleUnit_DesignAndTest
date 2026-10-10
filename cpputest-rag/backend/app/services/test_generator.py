@@ -94,6 +94,7 @@ async def generate_tests_for_project(
     project_path: Path,
     function_name: Optional[str] = None,
     output_dir: Optional[Path] = None,
+    progress=None,
 ) -> Dict:
     """Generate tests for all functions in a project.
 
@@ -147,6 +148,11 @@ async def generate_tests_for_project(
 
     for i, func in enumerate(functions, 1):
         logger.info(f"[{i}/{len(functions)}] Generating test for: {func.name}")
+        if progress:
+            try:
+                progress(i - 1, len(functions), func.name)
+            except Exception:
+                pass
 
         try:
             # Retrieve similar examples

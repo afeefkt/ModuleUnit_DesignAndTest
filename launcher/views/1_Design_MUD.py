@@ -15,16 +15,21 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
 import _common as c  # noqa: E402
 from mudmut_core import aio, compilable, design, workspace  # noqa: E402
 
-st.set_page_config(page_title="Design (MUD)", page_icon="📐", layout="wide")
 
 SAMPLE = _REPO_ROOT / "inputs" / "requirements" / "samples" / "bms_requirements.csv"
+
+
+def _expected(stage: str) -> float:
+    """Expected seconds for a stage (measured average, else the default share) — drives the % bar."""
+    from mudmut_core import progress as progress_mod
+    return progress_mod.expected_seconds(quick=False).get(stage, 120.0)
 
 
 def _render_mermaid(mmd: str, height: int = 500):
     c.render_mermaid(mmd, height=height)
 
 
-st.title("📐 Design (MUD)")
+st.title("Requirements & design")
 
 # ── 1. import ─────────────────────────────────────────────────────────────────
 st.header("① Requirements")
@@ -106,7 +111,7 @@ if reqs is not None:
     st.header("② Plan modules")
     if st.button("Plan SWC modules"):
         with st.status("Planning modules…", expanded=True) as status:
-            plan = aio.run_sync(design.plan_modules(text))
+            plan = c.run_with_progress("Planning modules", lambda report: aio.run_sync(design.plan_modules(text)), _expected("plan"))
             st.session_state["plan"] = plan
             status.update(label="Done", state="complete")
     plan = st.session_state.get("plan")
@@ -121,7 +126,7 @@ if reqs is not None:
         mode = "single_pass" if st.checkbox("Quick (single-pass)", value=True) else "two_stage"
         if st.button("Generate MUD spec"):
             with st.status("Generating spec…", expanded=True) as status:
-                spec_md = aio.run_sync(design.generate_mud_spec(module, text, mode=mode))
+                spec_md = c.run_with_progress("Generating the MUD spec", lambda report: aio.run_sync(design.generate_mud_spec(module, text, mode=mode)), _expected("spec"))
                 st.session_state["spec_md"] = spec_md
                 st.session_state["module"] = module
                 status.update(label="Spec generated", state="complete")
@@ -134,7 +139,7 @@ if reqs is not None:
             c1, c2 = st.columns(2)
             if c1.button("Review"):
                 with st.status("Reviewing…", expanded=True) as status:
-                    review = aio.run_sync(design.review_spec(module, text, spec_md))
+                    review = c.run_with_progress("Reviewing the spec", lambda report: aio.run_sync(design.review_spec(module, text, spec_md)), _expected("review"))
                     st.session_state["review"] = review
                     status.update(label="Reviewed", state="complete")
             if c2.button("Approve & continue") and st.session_state.get("review"):
@@ -145,7 +150,7 @@ if reqs is not None:
                 st.metric("Issues", f"{review.error_count} errors / {review.warning_count} warnings")
                 if st.button("Improve (regenerate)"):
                     with st.status("Improving…", expanded=True) as status:
-                        spec_md, review = aio.run_sync(design.review_and_improve(module, text, spec_md, max_rounds=1))
+                        spec_md, review = c.run_with_progress("Improving the spec", lambda report: aio.run_sync(design.review_and_improve(module, text, spec_md, max_rounds=1)), _expected("review"))
                         st.session_state["spec_md"] = spec_md
                         st.session_state["review"] = review
                         status.update(label="Improved", state="complete")
@@ -155,7 +160,7 @@ if reqs is not None:
             st.header("⑤ Activity flow")
             if st.button("Generate flow chart"):
                 with st.status("Generating activity…", expanded=True) as status:
-                    activity = aio.run_sync(design.generate_activity(reqs, spec_md, module.swc_name))
+                    activity = c.run_with_progress("Generating the activity flow", lambda report: aio.run_sync(design.generate_activity(reqs, spec_md, module.swc_name)), _expected("activity"))
                     st.session_state["activity"] = activity
                     status.update(label="Activity generated", state="complete")
             activity = st.session_state.get("activity")
@@ -190,4 +195,4 @@ if reqs is not None:
                     st.success(rep.summary())
                     st.code(rep.c_code, language="c")
                     if st.button("Send to MUT →"):
-                        st.switch_page("pages/2_Unit_Tests_MUT.py")
+                        st.switch_page("views/2_Unit_Tests_MUT.py")

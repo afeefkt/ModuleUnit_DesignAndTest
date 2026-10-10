@@ -52,12 +52,14 @@ async def ensure_rag_index() -> bool:
 
 
 # ── generation ───────────────────────────────────────────────────────────────
-async def generate_tests(project_dir: Path | str, function_name: Optional[str] = None, output_dir: Optional[Path] = None) -> dict:
+async def generate_tests(project_dir: Path | str, function_name: Optional[str] = None, output_dir: Optional[Path] = None,
+                         progress=None) -> dict:
     env.ensure_environment()
     from app.services.test_generator import generate_tests_for_project
 
     await ensure_rag_index()
-    result = await generate_tests_for_project(Path(project_dir), function_name=function_name, output_dir=output_dir)
+    result = await generate_tests_for_project(Path(project_dir), function_name=function_name,
+                                              output_dir=output_dir, progress=progress)
 
     # Copy the generated stub headers + Rte_Stubs.c into the test dir so the
     # generated Makefile (which compiles every *.c) can link them.

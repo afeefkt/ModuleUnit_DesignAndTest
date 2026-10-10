@@ -14,9 +14,8 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
 
 import _common as c  # noqa: E402
 
-st.set_page_config(page_title="Runs & Reports", page_icon="📊", layout="wide")
 
-st.title("📊 Runs & Reports")
+st.title("Runs & reports")
 
 runs = c.list_runs()
 if not runs:
@@ -38,9 +37,12 @@ st.divider()
 mode = st.radio("View", ["Single run", "Compare two runs"], horizontal=True)
 
 if mode == "Single run":
-    run = c.run_picker("run_view")
+    run = c.current_run()  # chosen in the run bar at the top of every page
     if run:
         report = run.read_text("RUN_REPORT.md", "")
+        st.subheader("Test results and coverage")
+        c.results_panel(run, key="runs")
+        st.subheader("Run report")
         st.markdown(report or "_No report_")
         with st.expander("MUD spec"):
             st.markdown(run.read_in("mud", "mud_spec.md", "(none)"))

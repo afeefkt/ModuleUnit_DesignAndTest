@@ -14,8 +14,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from mudmut_core import aio, compilable, design, env, report as report_mod, trace as trace_mod, verify
-from mudmut_core.llm import ollama_unload
+from mudmut_core import aio, compilable, design, env, progress as progress_mod, report as report_mod, trace as trace_mod, verify
+from mudmut_core.llm import observe, ollama_unload
 from mudmut_core.workspace import Run
 
 
@@ -178,13 +178,14 @@ async def _run_full_chain(
     if not imported.requirement_set.requirements:
         raise ChainError(f"no requirements imported from {requirements_file}: {imported.errors}")
     reqs = imported.requirement_set
-    _emit(progress, "import", f"Imported {reqs.count} requirement(s)")
+    _emit(progress, "import", f"Imported {reqs.count} requirement(s)", done=True)
     timings["import"] = time.time() - t0
 
     text = design.requirements_text(reqs)
 
     # ── 2. plan modules ───────────────────────────────────────────────────────
     t0 = time.time()
+    observe.set_stage("plan")
     plan = await design.plan_modules(text)
     modules = plan.modules
     if not modules:
@@ -198,12 +199,14 @@ async def _run_full_chain(
             _emit(progress, "plan", f"SWC '{swc}' not found; using {chosen.swc_name}")
     else:
         chosen = modules[0]
-    _emit(progress, "plan", f"Selected {chosen.swc_name} ({len(modules)} module(s) planned)")
+    _emit(progress, "plan", f"Selected {chosen.swc_name} ({len(modules)} module(s) planned)", done=True)
 
     # Create the run workspace only once the SWC is known.
     run = Run.create(chosen.swc_name, preset=run_label, root=root)
     if run_holder is not None:
         run_holder["run"] = run
+    observe.set_run(run.folder)
+    observe.adopt_orphans(run.folder)
     run.save_json_in("input", "requirements.json", design.requirements_to_dicts(reqs))
     run.save_state(swc=chosen.swc_name, quick=quick, preset=run_label)
     _emit(progress, "workspace", f"Run workspace: {run.folder}")
@@ -211,17 +214,19 @@ async def _run_full_chain(
     # ── 3. generate MUD spec ──────────────────────────────────────────────────
     mode = "single_pass" if quick else "two_stage"
     t0 = time.time()
+    observe.set_stage("spec")
     spec_md = await design.generate_mud_spec(chosen, text, mode=mode, progress=progress)
     if not spec_md or len(spec_md.strip()) < 200:
         raise ChainError(f"MUD spec generation produced too little content ({len(spec_md or '')} chars)")
     run.save_in("mud", "mud_spec.md", spec_md)
     timings["spec"] = time.time() - t0
     stage_notes["spec"] = f"{len(spec_md)} chars, mode={mode}"
-    _emit(progress, "spec", f"MUD spec generated ({len(spec_md)} chars, mode={mode})")
+    _emit(progress, "spec", f"MUD spec generated ({len(spec_md)} chars, mode={mode})", done=True)
 
     # ── 4. review (skip in quick mode) ────────────────────────────────────────
     if not quick:
         t0 = time.time()
+        observe.set_stage("review")
         spec_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
         review_approved = bool(review.approved)
         holder["review_approved"] = review_approved
@@ -233,12 +238,14 @@ async def _run_full_chain(
             progress, "review",
             f"Review: approved={review.approved} coverage={review.coverage_pct}% "
             f"errors={review.error_count} warnings={review.warning_count}",
+            done=True,
         )
 
     # ── 5. activity diagram ───────────────────────────────────────────────────
     t0 = time.time()
     # quick: build the flow straight from Section 7 — on 7-9B models the AI
     # activity step routinely times out and ends in this same fallback anyway.
+    observe.set_stage("activity")
     activity = await design.generate_activity(
         reqs, spec_md, chosen.swc_name, use_ai=not quick, progress=progress
     )
@@ -246,7 +253,7 @@ async def _run_full_chain(
         raise ChainError("activity generation produced no diagrams")
     run.save_json_in("mud", "activity.json", activity.model_dump() if hasattr(activity, "model_dump") else activity.dict())
     timings["activity"] = time.time() - t0
-    _emit(progress, "activity", f"Generated {len(activity.diagrams)} activity diagram(s)")
+    _emit(progress, "activity", f"Generated {len(activity.diagrams)} activity diagram(s)", done=True)
 
     # ── 6. export C + Mermaid ─────────────────────────────────────────────────
     t0 = time.time()
@@ -277,19 +284,26 @@ async def _run_full_chain(
     })
     timings["compilable"] = time.time() - t0
     stage_notes["compilable"] = rep.summary()
-    _emit(progress, "compilable", f"Compilability: {rep.summary()}")
+    _emit(progress, "compilable", f"Compilability: {rep.summary()}", done=True)
 
     # (Models are unloaded in run_full_chain's finally.)
 
     # ── 8. analyze + generate tests ───────────────────────────────────────────
     t0 = time.time()
-    generation = await verify.generate_tests(project_dir, output_dir=run.dir("mut"))
+    observe.set_stage("generate_tests")
+
+    def _gen_progress(done: int, total: int, name: str) -> None:
+        _emit(progress, "generate_tests", f"Generating test {done + 1}/{total}: {name}",
+              fraction=done / max(total, 1))
+
+    generation = await verify.generate_tests(project_dir, output_dir=run.dir("mut"), progress=_gen_progress)
     run.save_json_in("mut", "results.json", {"generation": generation})
     timings["generate_tests"] = time.time() - t0
     _emit(
         progress, "generate_tests",
         f"Generated {generation.get('tests_generated')} test file(s) "
         f"({len(generation.get('failed_functions') or [])} function(s) failed)",
+        done=True,
     )
 
     # ── 9. build + run (+ fix loop) ───────────────────────────────────────────
@@ -297,6 +311,7 @@ async def _run_full_chain(
     test_result: dict[str, Any] = {"status": "skipped"}
     if out_dir and out_dir.is_dir():
         t0 = time.time()
+        observe.set_stage("build_run")
         test_result = verify.fix_loop(out_dir, max_attempts=2)
         run.save_json_in("mut", "results.json", {"generation": generation, "run": test_result})
         timings["build_run"] = time.time() - t0
@@ -308,6 +323,7 @@ async def _run_full_chain(
             f"{junit.get('failures', 0)} failed (fix_attempts={test_result.get('fix_attempts', 0)}"
             f", quarantined={len(quarantined)}"
             f"{', smoke-test fallback' if test_result.get('smoke_fallback') else ''})",
+            done=True,
         )
 
     # ── 10. traceability ──────────────────────────────────────────────────────
@@ -316,9 +332,10 @@ async def _run_full_chain(
     run.save_json_in("trace", "trace.json", trace_record)
     run.save_in("trace", "trace.md", report_mod.trace_markdown(trace_record))
     timings["trace"] = time.time() - t0
-    _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)")
+    _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)", done=True)
 
     run.save_state(timings=timings)
+    progress_mod.record_timings(timings, quick=quick)
 
     summary = {
         "run_folder": str(run.folder),

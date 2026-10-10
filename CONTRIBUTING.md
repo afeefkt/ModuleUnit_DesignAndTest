@@ -7,7 +7,7 @@ validated Module Unit Design flow charts and CppUTest unit tests. Contributions 
 
 This is a **monorepo**: one Streamlit platform on one in-process engine, plus two libraries:
 
-- `launcher/` — the Streamlit platform (all pages).
+- `launcher/` — the Streamlit platform (router `streamlit_app.py`, pages in `views/`).
 - `mudmut_core/` — the shared engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry).
 - `mud-tool/` — the design half (requirements → MUD spec → UML/flow charts → C-skeleton). Python package `mudtool`.
 - `cpputest-rag/` — the verification half (C code → RAG → CppUTest → coverage), used as a library.

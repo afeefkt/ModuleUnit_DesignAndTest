@@ -28,8 +28,7 @@ from mudmut_core import agents, env  # noqa: E402
 from mudmut_core.llm import get_providers  # noqa: E402
 from opencode_client import EventWatcher, OpenCodeClient  # noqa: E402
 
-st.set_page_config(page_title="OpenCode Agent", page_icon="🤖", layout="wide")
-st.title("🤖 OpenCode Agent")
+st.title("OpenCode agent")
 st.caption("An extra agentic layer on the same engine: the agent calls `agentic/tools/mudmut_cli.py`, "
            "which runs mudmut_core and writes to `outputs/<run>/`.")
 

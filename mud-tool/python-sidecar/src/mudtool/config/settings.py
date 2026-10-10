@@ -229,6 +229,10 @@ class Settings(BaseSettings):
     deepseek_api_key: Optional[str] = Field(
         None, validation_alias=AliasChoices("DEEPSEEK_API_KEY", "MUD_DEEPSEEK_API_KEY")
     )
+    ollama_cloud_base_url: str = "https://ollama.com/v1"
+    ollama_cloud_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("OLLAMA_API_KEY", "MUD_OLLAMA_CLOUD_API_KEY")
+    )
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     google_api_key: Optional[str] = Field(
         None, validation_alias=AliasChoices("GOOGLE_GENERATIVE_AI_API_KEY", "MUD_GOOGLE_API_KEY")
@@ -244,6 +248,8 @@ class Settings(BaseSettings):
             return {"base_url": self.deepseek_base_url, "api_key": self.deepseek_api_key or ""}
         if provider == "google":
             return {"base_url": self.google_base_url, "api_key": self.google_api_key or ""}
+        if provider == "ollama_cloud":
+            return {"base_url": self.ollama_cloud_base_url, "api_key": self.ollama_cloud_api_key or ""}
         # ollama (or unset) → the global OpenAI-compatible endpoint.
         return {
             "base_url": self.openai_base_url or "http://localhost:11434/v1",

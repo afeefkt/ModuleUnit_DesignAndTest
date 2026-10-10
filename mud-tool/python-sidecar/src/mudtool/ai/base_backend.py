@@ -16,6 +16,7 @@ class AIResponse(BaseModel):
     output_tokens: int = 0
     finish_reason: Optional[str] = None
     latency_ms: Optional[int] = None
+    reasoning: Optional[str] = Field(None, description="Model reasoning/thinking text, if returned")
 
 
 class BaseAIBackend(ABC):
