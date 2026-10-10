@@ -18,6 +18,16 @@ from typing import Any, Optional
 
 from mudmut_core.env import REPO_ROOT
 
+
+class ProviderError(RuntimeError):
+    """Raised when a provider request fails; carries the HTTP status + body."""
+
+    def __init__(self, status: int, body: str = ""):
+        self.status = status
+        self.body = body
+        super().__init__(f"provider error {status}: {body}")
+
+
 BUILTIN_PROVIDERS: dict[str, dict[str, Any]] = {
     "ollama": {
         "name": "Ollama (local)",
@@ -41,6 +51,12 @@ BUILTIN_PROVIDERS: dict[str, dict[str, Any]] = {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
         "key_env": "DEEPSEEK_API_KEY",
+        "privacy": "cloud",
+    },
+    "google": {
+        "name": "Google Gemini (OpenAI-compatible)",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "key_env": "GOOGLE_GENERATIVE_AI_API_KEY",
         "privacy": "cloud",
     },
 }
@@ -107,11 +123,11 @@ def _read_root_env() -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
-        values[key.strip()] = val.strip()
+        values[key.strip()] = val.strip().strip('"').strip("'")
     return values
 
 
-_WINDOWS_USER_KEYS: dict[str, str] = {}
+_WINDOWS_USER_KEYS: dict[str, Optional[str]] = {}
 
 
 def _windows_user_env(name: str) -> Optional[str]:
@@ -205,7 +221,7 @@ def test_chat(provider: Provider, model: str) -> tuple[bool, str]:
     """One-line chat test; returns (ok, detail)."""
     try:
         from mudmut_core.llm.client import chat_sync
-        reply = chat_sync(provider, model, [{"role": "user", "content": "Say OK"}], max_tokens=8)
+        reply = chat_sync(provider, model, [{"role": "user", "content": "Say OK"}], max_tokens=64)
         return bool(reply.strip()), reply.strip()[:60]
     except Exception as exc:  # noqa: BLE001
         return False, str(exc)[:120]

@@ -64,7 +64,7 @@ async def run_full_chain(
     *,
     swc: Optional[str] = None,
     quick: bool = False,
-    preset: str = "local",
+    preset: str = "local-recommended",
     progress: Optional[Callable[[dict], None]] = None,
     keep_run: bool = True,
     root: Optional[Path] = None,
@@ -73,10 +73,68 @@ async def run_full_chain(
 
     ``quick=True`` uses ``single_pass`` spec generation, skips the review and
     builds the activity flow deterministically from Section 7.
+
+    A ``RUN_REPORT.md`` + ``run.json`` are always written (even on failure), and
+    the LLM models are unloaded on exit.
     """
+    run_holder: dict[str, Any] = {}
+    try:
+        return await _run_full_chain(
+            requirements_file, swc=swc, quick=quick, preset=preset,
+            progress=progress, keep_run=keep_run, root=root, run_holder=run_holder,
+        )
+    except Exception as exc:
+        run = run_holder.get("run")
+        if run is not None:
+            try:
+                report_mod.write_run_report(run, {
+                    "run_folder": str(run.folder),
+                    "swc": run.swc,
+                    "preset": preset,
+                    "quick": quick,
+                    "timings": run.state.get("timings", {}),
+                    "tests_generated": 0,
+                    "generation_failed": 0,
+                    "review_approved": True,
+                    "compilability": {"compile_ok": False, "stubbed": 0, "kept": 0},
+                    "tests": {"status": "error"},
+                    "trace": {},
+                    "error": str(exc),
+                }, stage_notes={"error": str(exc)})
+            except Exception:
+                pass
+        raise
+    finally:
+        _unload_models(_mud_models())
+        _unload_models([m for m in [_test_model()] if m])
+
+
+async def _run_full_chain(
+    requirements_file: str | Path,
+    *,
+    swc: Optional[str] = None,
+    quick: bool = False,
+    preset: str = "local-recommended",
+    progress: Optional[Callable[[dict], None]] = None,
+    keep_run: bool = True,
+    root: Optional[Path] = None,
+    run_holder: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """The linear pipeline (run by ``run_full_chain``, which adds error/finally handling)."""
     env.ensure_environment()
+    env.export_provider_keys()
     timings: dict[str, float] = {}
     stage_notes: dict[str, str] = {}
+    review_approved: bool = True
+
+    # Apply the requested preset so the run uses its provider+model selection
+    # (not just its name in the folder).
+    try:
+        from mudmut_core import agents
+        agents.apply_preset(preset)
+        _emit(progress, "preset", f"Applied preset '{preset}'")
+    except KeyError:
+        _emit(progress, "preset", f"Preset '{preset}' unknown — using current selection")
 
     # ── 1. import ─────────────────────────────────────────────────────────────
     t0 = time.time()
@@ -108,6 +166,8 @@ async def run_full_chain(
 
     # Create the run workspace only once the SWC is known.
     run = Run.create(chosen.swc_name, preset=preset, root=root)
+    if run_holder is not None:
+        run_holder["run"] = run
     run.save_json_in("input", "requirements.json", design.requirements_to_dicts(reqs))
     run.save_state(swc=chosen.swc_name, quick=quick, preset=preset)
     _emit(progress, "workspace", f"Run workspace: {run.folder}")
@@ -127,6 +187,7 @@ async def run_full_chain(
     if not quick:
         t0 = time.time()
         spec_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
+        review_approved = bool(review.approved)
         run.save_json_in("mud", "review.json", review.to_dict())
         run.save_in("mud", "mud_spec.md", spec_md)
         timings["review"] = time.time() - t0
@@ -181,9 +242,7 @@ async def run_full_chain(
     stage_notes["compilable"] = rep.summary()
     _emit(progress, "compilable", f"Compilability: {rep.summary()}")
 
-    # Free VRAM before the MUT stage: unload every MUD-stage model so the
-    # (different) test-generation model can load without the "Stopping…" hang.
-    _unload_models(_mud_models())
+    # (Models are unloaded in run_full_chain's finally.)
 
     # ── 8. analyze + generate tests ───────────────────────────────────────────
     t0 = time.time()
@@ -222,16 +281,17 @@ async def run_full_chain(
     timings["trace"] = time.time() - t0
     _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)")
 
-    # Unload the test-generation model too, so Ollama ends the run idle.
-    _unload_models([m for m in [_test_model()] if m])
-
     run.save_state(timings=timings)
 
     summary = {
         "run_folder": str(run.folder),
         "swc": chosen.swc_name,
         "preset": preset,
+        "quick": quick,
         "timings": timings,
+        "tests_generated": generation.get("tests_generated", 0),
+        "generation_failed": len(generation.get("failed_functions") or []),
+        "review_approved": review_approved,
         "compilability": {
             "kept": rep.kept_statements,
             "stubbed": rep.stubbed_statements,
@@ -252,7 +312,8 @@ def _main() -> int:
     parser.add_argument("--requirements", required=True, help="Path to the requirements file (csv/txt/md/xlsx)")
     parser.add_argument("--swc", default=None, help="SWC name to design + test (default: first planned module)")
     parser.add_argument("--quick", action="store_true", help="single_pass spec, skip review (fast demo)")
-    parser.add_argument("--preset", default="local", help="model preset name (local/fast/openrouter/nvidia/deepseek)")
+    parser.add_argument("--preset", default="local-recommended",
+                        help="model preset id from config/presets.json (local-recommended/local-fast/openrouter-free/nvidia/deepseek)")
     args = parser.parse_args()
 
     def progress(event: dict) -> None:

@@ -58,23 +58,49 @@ def ensure_environment() -> str:
     # cpputest-rag ``app.config.Config()`` is built at import time from env vars
     # with relative defaults, so absolute paths must be set BEFORE ``import app.*``.
     os.environ["OLLAMA_URL"] = ollama_url
-    os.environ["C_PROJECT_DIR"] = str(REPO_ROOT / "cpputest-rag" / "c_projects")
     os.environ["TEST_EXAMPLES_DIR"] = str(REPO_ROOT / "inputs" / "test_examples")
     os.environ["OUTPUT_DIR"] = str(REPO_ROOT / "outputs" / "_generated_tests")
-    os.environ.setdefault("DATABASE_PATH", str(REPO_ROOT / "cpputest-rag" / "data" / "cpputest.db"))
+    os.environ.setdefault("DATABASE_PATH", str(REPO_ROOT / "outputs" / "_state" / "cpputest.db"))
     os.environ.setdefault("EMBED_MODEL", root_env.get("EMBED_MODEL", "all-minilm:latest"))
     os.environ.setdefault("GEN_MODEL", root_env.get("GEN_MODEL", "qwen2.5:7b"))
     # mud-tool design assets now live under inputs/ — set them so guidelines and
     # skills are actually loaded (the defaults pointed at python-sidecar/data/*).
     os.environ.setdefault("MUD_GUIDELINES_DIR", str(REPO_ROOT / "inputs" / "guidelines"))
     os.environ.setdefault("MUD_SKILLS_DIR", str(REPO_ROOT / "inputs" / "skills"))
-    os.environ.setdefault("MUD_DATA_DIR", str(REPO_ROOT / "inputs"))
     # Request timeouts: cpputest-rag reads REQUEST_TIMEOUT; mud-tool reads MUD_REQUEST_TIMEOUT.
     os.environ.setdefault("REQUEST_TIMEOUT", root_env.get("REQUEST_TIMEOUT", "1800"))
     os.environ.setdefault("MUD_REQUEST_TIMEOUT", root_env.get("MUD_REQUEST_TIMEOUT", "1800"))
 
+    # Apply the saved stage selection (config/stages.json) to env vars so a fresh
+    # process picks up the user's provider+model choices (deferred import).
+    try:
+        from mudmut_core import agents
+        agents.apply_stages_to_env(agents.load_stages())
+    except Exception:
+        pass
+
     _LOADED = True
     return ollama_url
+
+
+def export_provider_keys() -> None:
+    """Resolve cloud provider keys and export them to ``os.environ`` (process only).
+
+    The mud-tool settings read the shared key names (``OPENROUTER_API_KEY`` etc.)
+    via ``validation_alias``, but WSL does not inherit Windows user variables, so
+    we resolve them here (env → .env → Windows User scope) and export them in
+    memory — never to a file.
+    """
+    ensure_environment()
+    try:
+        from mudmut_core.llm.providers import get_providers, resolve_key
+        for p in get_providers().values():
+            if p.key_env:
+                key = resolve_key(p.key_env)
+                if key:
+                    os.environ[p.key_env] = key
+    except Exception:
+        pass
 
 
 def ollama_host() -> str:

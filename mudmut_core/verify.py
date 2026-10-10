@@ -159,10 +159,14 @@ def _fixer_generate(prompt: str, *, timeout: int = 300) -> str:
     except Exception:
         pass
     provider = get_providers().get(provider_id) or get_providers().get("ollama")
-    return chat_blocking(
-        provider, model, [{"role": "user", "content": prompt}],
-        max_tokens=4000, temperature=0.2, timeout=timeout,
-    )
+    try:
+        return chat_blocking(
+            provider, model, [{"role": "user", "content": prompt}],
+            max_tokens=4000, temperature=0.2, timeout=timeout,
+        )
+    except Exception as exc:  # noqa: BLE001 - a failed fix attempt is non-fatal
+        print(f"[mudmut_core] test fixer generation failed: {exc}")
+        return ""
 
 
 def _failed_test_files(stderr: str, test_dir: Path) -> list[Path]:

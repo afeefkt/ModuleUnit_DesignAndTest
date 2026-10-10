@@ -206,7 +206,9 @@ class Settings(BaseSettings):
     # deepseek).  Empty = no override → use the global backend/provider.
     planner_model: str = ""
     planner_provider: str = ""
-    mud_spec_skeleton_provider: str = ""
+    mud_spec_skeleton_provider: str = Field(
+        "", validation_alias=AliasChoices("MUD_SPEC_SKELETON_PROVIDER", "MUD_MUD_SPEC_SKELETON_PROVIDER")
+    )
     pipeline_generator_provider: str = ""
     pipeline_reviewer_provider: str = ""
     activity_pipeline_skeleton_provider: str = ""
@@ -227,6 +229,10 @@ class Settings(BaseSettings):
     deepseek_api_key: Optional[str] = Field(
         None, validation_alias=AliasChoices("DEEPSEEK_API_KEY", "MUD_DEEPSEEK_API_KEY")
     )
+    google_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    google_api_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices("GOOGLE_GENERATIVE_AI_API_KEY", "MUD_GOOGLE_API_KEY")
+    )
 
     def provider_connection(self, provider: str) -> dict[str, str]:
         """Return ``{base_url, api_key}`` for a provider id (ollama default)."""
@@ -236,6 +242,8 @@ class Settings(BaseSettings):
             return {"base_url": self.nvidia_base_url, "api_key": self.nvidia_api_key or ""}
         if provider == "deepseek":
             return {"base_url": self.deepseek_base_url, "api_key": self.deepseek_api_key or ""}
+        if provider == "google":
+            return {"base_url": self.google_base_url, "api_key": self.google_api_key or ""}
         # ollama (or unset) → the global OpenAI-compatible endpoint.
         return {
             "base_url": self.openai_base_url or "http://localhost:11434/v1",

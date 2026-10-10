@@ -15,6 +15,7 @@ from mudmut_core import env
 
 def _orchestrator():
     env.ensure_environment()
+    env.export_provider_keys()
     from mudtool.api.dependencies import get_orchestrator
     return get_orchestrator()
 

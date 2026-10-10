@@ -3,10 +3,19 @@ from mudmut_core.llm import client, get_providers
 
 def test_builtin_providers():
     providers = get_providers()
-    assert set(providers) == {"ollama", "openrouter", "nvidia", "deepseek"}
+    assert {"ollama", "openrouter", "nvidia", "deepseek", "google"} <= set(providers)
     assert providers["ollama"].privacy == "local"
     assert providers["openrouter"].is_cloud
     assert providers["openrouter"].key_env == "OPENROUTER_API_KEY"
+
+
+def test_chat_url_for_local_and_cloud():
+    providers = get_providers()
+    # Ollama's base is the bare host, so /v1 must be added.
+    assert client._chat_url(providers["ollama"]) == "http://localhost:11434/v1/chat/completions"
+    # Cloud bases already end in /v1.
+    assert client._chat_url(providers["openrouter"]) == "https://openrouter.ai/api/v1/chat/completions"
+    assert client._chat_url(providers["deepseek"]) == "https://api.deepseek.com/v1/chat/completions"
 
 
 def test_payload_think_only_for_local():

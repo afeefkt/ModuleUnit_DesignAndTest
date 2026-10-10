@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from mudmut_core import chain, design, verify
+from mudmut_core import agents, chain, design, verify
 
 
 def _write_reqs(tmp_path: Path) -> Path:
@@ -68,6 +68,10 @@ def test_run_full_chain_quick_with_stubs(tmp_path, monkeypatch):
     monkeypatch.setattr(design, "export", fake_export)
     monkeypatch.setattr(verify, "generate_tests", fake_generate_tests)
     monkeypatch.setattr(verify, "fix_loop", fake_fix_loop)
+    # Avoid writing to the real mud-tool .env / unloading real models.
+    monkeypatch.setattr(agents, "apply_preset", lambda name: agents.get_stages())
+    monkeypatch.setattr(chain, "_unload_models", lambda models: None)
+    monkeypatch.setattr(chain, "_mud_models", lambda: [])
 
     summary = asyncio.run(chain.run_full_chain(
         str(req_file), swc="SWC_Test", quick=True, root=tmp_path / "runs",

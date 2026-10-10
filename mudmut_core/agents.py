@@ -80,13 +80,13 @@ STAGES: list[Stage] = [
           "guidelines_embed_model", None, "bge-m3",
           "Embedding model for design-guideline RAG (Ollama only)."),
     Stage("test_generator", "Test generator", "mut", "code",
-          "GEN_MODEL", None,
+          "GEN_MODEL", "TEST_GEN_PROVIDER",
           "GEN_MODEL", None, "qwen2.5:7b",
           "Generates CppUTest cases for each function."),
     Stage("test_fixer", "Test fix loop", "mut", "code",
-          "GEN_MODEL", None,
-          "GEN_MODEL", None, "qwen2.5:7b",
-          "Repairs failing-to-compile test files."),
+          "FIX_MODEL", "TEST_FIX_PROVIDER",
+          "FIX_MODEL", None, "qwen2.5:7b",
+          "Repairs failing-to-compile test files (defaults to the test generator)."),
     Stage("rag_embed", "RAG embeddings", "mut", "embed",
           "EMBED_MODEL", None,
           "EMBED_MODEL", None, "all-minilm:latest",
@@ -120,6 +120,19 @@ def save_stages(data: dict[str, dict[str, str]]) -> None:
     STAGES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def apply_stages_to_env(stages: dict[str, dict[str, str]]) -> None:
+    """Export a stages map to environment variables (fresh-process bootstrap)."""
+    for key, cfg in (stages or {}).items():
+        stage = STAGES_BY_KEY.get(key)
+        if not stage or not isinstance(cfg, dict):
+            continue
+        provider = cfg.get("provider") or "ollama"
+        model = cfg.get("model") or ""
+        os.environ[stage.model_env] = model
+        if stage.provider_env:
+            os.environ[stage.provider_env] = provider
+
+
 # ── env writing ───────────────────────────────────────────────────────────────
 def _write_env(env_path: Path, updates: dict[str, str]) -> None:
     """Update key=value lines in an env file in place (append if missing)."""
@@ -147,22 +160,29 @@ def _current_mud_settings() -> Any:
     return get_settings()
 
 
-def _stage_current(stage: Stage, settings: Any) -> dict[str, str]:
-    model = getattr(settings, stage.model_setting, "") or ""
-    provider = getattr(settings, stage.provider_setting, "") if stage.provider_setting else ""
+def _stage_current(stage: Stage, settings: Any, override: dict) -> dict[str, str]:
     if stage.side == "mut":
-        import os
         model = os.environ.get(stage.model_setting, "")
-        provider = "ollama"
+        provider = os.environ.get(stage.provider_env, "") if stage.provider_env else ""
+    else:
+        model = getattr(settings, stage.model_setting, "") or ""
+        provider = getattr(settings, stage.provider_setting, "") if stage.provider_setting else ""
+    # config/stages.json override wins (single source of truth for the UI/CLI).
+    cfg = override.get(stage.key) or {}
+    if cfg.get("model"):
+        model = cfg["model"]
+    if cfg.get("provider"):
+        provider = cfg["provider"]
     return {"provider": provider or "ollama", "model": model}
 
 
 def get_stages() -> dict[str, dict[str, Any]]:
     """Return current provider+model per stage (with label/role/recommended)."""
     settings = _current_mud_settings()
+    override = load_stages()
     out: dict[str, dict[str, Any]] = {}
     for s in STAGES:
-        cur = _stage_current(s, settings)
+        cur = _stage_current(s, settings, override)
         out[s.key] = {
             "label": s.label,
             "side": s.side,
@@ -217,40 +237,55 @@ def set_stage(key: str, provider: str, model: str) -> dict[str, Any]:
             os.environ[k] = v
         _reset_mud_caches()
     else:
-        # MUT: model env (GEN_MODEL / EMBED_MODEL) + mutate app.config in place.
-        updates = {stage.model_env: model}
-        _write_env(CPPUTEST_ENV, updates)
+        # MUT: model + provider env (single source of truth is stages.json; the
+        # .env files are no longer written — nothing loads them). Mutate the
+        # shared app.config in place for the attrs it owns (GEN_MODEL/EMBED_MODEL).
         os.environ[stage.model_env] = model
-        try:
-            from app.config import config
-            setattr(config, stage.model_setting, model)
-        except Exception:
-            pass
-        if stage.model_setting == "EMBED_MODEL":
-            import mudmut_core.verify as verify
-            verify._index_built = False
+        if stage.provider_env:
+            os.environ[stage.provider_env] = provider
+        if stage.model_setting in ("GEN_MODEL", "EMBED_MODEL"):
+            try:
+                from app.config import config
+                setattr(config, stage.model_setting, model)
+            except Exception:
+                pass
+            if stage.model_setting == "EMBED_MODEL":
+                import mudmut_core.verify as verify
+                verify._index_built = False
 
     return get_stages()[key]
 
 
 def apply_preset(name: str) -> dict[str, Any]:
-    """Apply every stage in a preset; returns the new stage map."""
+    """Apply every stage in a preset; returns the new stage map.
+
+    Cloud stages whose preset model is blank are skipped (the user must pick a
+    model from the live list first), so a blank id is never sent to a cloud API.
+    """
     presets = load_presets()
     preset = presets.get(name)
     if not preset:
         raise KeyError(f"unknown preset: {name}")
     stages = preset.get("stages", {})
     for key, cfg in stages.items():
-        if key in STAGES_BY_KEY:
-            set_stage(key, cfg.get("provider", "ollama"), cfg.get("model", ""))
+        if key not in STAGES_BY_KEY:
+            continue
+        provider = cfg.get("provider", "ollama")
+        model = cfg.get("model", "")
+        if provider != "ollama" and not model:
+            continue  # blank cloud model — leave unchanged
+        set_stage(key, provider, model)
     return get_stages()
 
 
 def reset_defaults() -> dict[str, Any]:
-    """Clear config/stages.json (fall back to .env / defaults)."""
+    """Restore the default local preset and clear any per-stage overrides."""
     if STAGES_FILE.is_file():
         STAGES_FILE.unlink()
-    return get_stages()
+    try:
+        return apply_preset("local-recommended")
+    except KeyError:
+        return get_stages()
 
 
 def available_models(provider_id: str) -> list[dict[str, Any]]:

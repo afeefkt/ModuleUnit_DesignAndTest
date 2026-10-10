@@ -16,27 +16,18 @@ from mudmut_core.workspace import RUN_JSON, RUN_REPORT, Run
 
 
 def _models_snapshot() -> dict[str, Any]:
-    """Best-effort snapshot of the provider+model per stage (local only until Phase 2)."""
-    snapshot: dict[str, Any] = {}
+    """Snapshot of the real provider+model per stage (from ``agents.get_stages()``)."""
     try:
-        from mudmut_core import env
-        env.ensure_environment()
-        from mudtool.config.settings import get_settings
-        s = get_settings()
-        snapshot["mud"] = {
-            "planner": {"provider": "ollama", "model": s.openai_model},
-            "mud_spec_skeleton": {"provider": "ollama", "model": getattr(s, "mud_spec_skeleton_model", "")},
-            "mud_spec_generator": {"provider": "ollama", "model": getattr(s, "pipeline_generator_model", "") or s.openai_model},
-            "mud_spec_reviewer": {"provider": "ollama", "model": getattr(s, "pipeline_reviewer_model", "") or s.openai_model},
-        }
+        from mudmut_core import agents
+        stages = agents.get_stages()
+        mud = {}
+        mut = {}
+        for key, st in stages.items():
+            entry = {"provider": st.get("provider", "ollama"), "model": st.get("model", "")}
+            (mud if st.get("side") == "mud" else mut)[key] = entry
+        return {"mud": mud, "mut": mut}
     except Exception:
-        snapshot["mud"] = {}
-    import os
-    snapshot["mut"] = {
-        "test_generator": {"provider": "ollama", "model": os.environ.get("GEN_MODEL", "")},
-        "rag_embed": {"provider": "ollama", "model": os.environ.get("EMBED_MODEL", "")},
-    }
-    return snapshot
+        return {"mud": {}, "mut": {}}
 
 
 def cloud_providers(models: dict[str, Any]) -> list[str]:
@@ -77,19 +68,47 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
     junit = tests.get("junit") or {}
     passed = junit.get("passed", 0)
     failed = junit.get("failures", 0)
+    tests_generated = summary.get("tests_generated", 0)
+    generation_failed = summary.get("generation_failed", 0)
+    compile_ok = bool(comp.get("compile_ok"))
+    stubbed = int(comp.get("stubbed") or 0)
+    status = tests.get("status")
+    smoke = bool(tests.get("smoke_fallback"))
+    quarantined = tests.get("quarantined_tests") or []
 
-    # Per-stage verdicts.
+    def compilable_v():
+        if not compile_ok:
+            return "❌"
+        return "⚠️" if stubbed else "✅"
+
+    def gen_v():
+        if tests_generated == 0:
+            return "❌"
+        return "⚠️" if generation_failed else "✅"
+
+    def run_v():
+        if status == "build_failed":
+            return "❌"
+        if status == "passed" and not smoke and not quarantined:
+            return "✅"
+        if status in ("test_failed", "passed"):
+            return "⚠️"
+        return "⚠️"  # skipped / unknown
+
+    def review_v():
+        if summary.get("quick"):
+            return "—"
+        return "✅" if summary.get("review_approved", True) else "⚠️"
+
     verdicts: dict[str, str] = {
         "import": "✅",
         "plan": "✅",
         "spec": "✅",
-        "review": "⚠️" if summary.get("quick") else "✅",
+        "review": review_v(),
         "activity": "✅",
-        "compilable": _verdict(bool(comp.get("compile_ok")), warn=bool(comp.get("stubbed"))),
-        "generate_tests": _verdict(
-            not summary.get("generation_failed"), warn=bool(summary.get("generation_failed"))
-        ),
-        "build_run": _verdict(tests.get("status") == "passed", warn=tests.get("status") in (None, "skipped", "test_failed")),
+        "compilable": compilable_v(),
+        "generate_tests": gen_v(),
+        "build_run": run_v(),
         "trace": "✅",
     }
 

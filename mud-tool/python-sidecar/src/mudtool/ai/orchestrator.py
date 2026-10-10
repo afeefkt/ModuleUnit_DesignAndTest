@@ -184,19 +184,19 @@ class AIOrchestrator:
         """Build a CloudBackend variant with a per-stage provider + model override.
 
         ``provider`` ('' = no override) selects the OpenAI-compatible endpoint +
-        key (ollama / openrouter / nvidia / deepseek); ``model_name`` overrides
-        the model.  When no provider override is set, the global backend/provider
-        is kept and only the model field is swapped (backward-compatible).
+        key (ollama / openrouter / nvidia / deepseek / google); ``model_name``
+        overrides the model.  When no provider override is set, the global
+        backend/provider is kept and only the model field is swapped.
         """
-        gen_backend = self._get_backend()
-        if not isinstance(gen_backend, CloudBackend):
-            return gen_backend
-        model_name = _normalize_provider_model(self.settings, model_name)
         provider = (provider or "").strip()
-        active_model = _active_provider_model(self.settings)
 
         if not provider:
             # No per-stage provider override → keep the global provider + model field.
+            gen_backend = self._get_backend()
+            if not isinstance(gen_backend, CloudBackend):
+                return gen_backend
+            model_name = _normalize_provider_model(self.settings, model_name)
+            active_model = _active_provider_model(self.settings)
             if not model_name or model_name == active_model:
                 return gen_backend
             model_field = _provider_model_field(self.settings)
@@ -206,22 +206,16 @@ class AIOrchestrator:
                 new_settings = self.settings.copy(update={model_field: model_name})
             return CloudBackend(new_settings)
 
-        # Explicit per-stage provider override.
+        # Explicit per-stage provider → build a fresh backend without requiring
+        # the global one (its key may be missing), and do NOT rewrite the model
+        # name (it is already the provider's model id).
         conn = self.settings.provider_connection(provider)
-        if provider == "deepseek":
-            update = {
-                "cloud_provider": CloudProvider.DEEPSEEK,
-                "deepseek_base_url": conn["base_url"],
-                "deepseek_api_key": conn["api_key"],
-                "deepseek_model": model_name or active_model,
-            }
-        else:
-            update = {
-                "cloud_provider": CloudProvider.OPENAI_COMPATIBLE,
-                "openai_base_url": conn["base_url"],
-                "openai_api_key": conn["api_key"],
-                "openai_model": model_name or active_model,
-            }
+        update = {
+            "cloud_provider": CloudProvider.OPENAI_COMPATIBLE,
+            "openai_base_url": conn["base_url"],
+            "openai_api_key": conn["api_key"],
+            "openai_model": (model_name or "").strip() or _active_provider_model(self.settings),
+        }
         try:
             new_settings = self.settings.model_copy(update=update)
         except AttributeError:
