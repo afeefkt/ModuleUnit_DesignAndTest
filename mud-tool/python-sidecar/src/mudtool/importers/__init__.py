@@ -5,10 +5,11 @@ from mudtool.importers.excel_importer import ExcelImporter
 from mudtool.importers.csv_importer import CSVImporter
 from mudtool.importers.text_importer import TextImporter
 from mudtool.importers.markdown_importer import MarkdownImporter
+from mudtool.importers.reqif_importer import ReqIFImporter
 from mudtool.importers.factory import ImporterFactory
 
 __all__ = [
     "BaseImporter", "ImportResult",
-    "ExcelImporter", "CSVImporter", "TextImporter", "MarkdownImporter",
+    "ExcelImporter", "CSVImporter", "TextImporter", "MarkdownImporter", "ReqIFImporter",
     "ImporterFactory",
 ]

@@ -10,6 +10,7 @@ from mudtool.importers.base import BaseImporter, ImportResult
 from mudtool.importers.csv_importer import CSVImporter
 from mudtool.importers.excel_importer import ExcelImporter
 from mudtool.importers.markdown_importer import MarkdownImporter
+from mudtool.importers.reqif_importer import ReqIFImporter
 from mudtool.importers.text_importer import TextImporter
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Ordered list of importers to try
 _IMPORTERS: list[type[BaseImporter]] = [
     ExcelImporter,
+    ReqIFImporter,
     CSVImporter,
     TextImporter,
     MarkdownImporter,
@@ -55,7 +57,7 @@ class ImporterFactory:
 
         raise ValueError(
             f"Unsupported file format: {file_path.suffix}. "
-            f"Supported: .xlsx, .xls, .csv, .txt, .md"
+            f"Supported: .xlsx, .xls, .csv, .reqif, .reqifz, .txt, .md"
         )
 
     @staticmethod

@@ -21,17 +21,7 @@ SAMPLE = _REPO_ROOT / "inputs" / "requirements" / "samples" / "bms_requirements.
 
 
 def _render_mermaid(mmd: str, height: int = 500):
-    st.components.v1.html(
-        f"""
-        <script type="module">
-          import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-          mermaid.initialize({{ startOnLoad: false }});
-          mermaid.run({{ querySelector: '.mermaid' }});
-        </script>
-        <pre class="mermaid" style="font-size:12px">{mmd}</pre>
-        """,
-        height=height,
-    )
+    c.render_mermaid(mmd, height=height)
 
 
 st.title("📐 Design (MUD)")
@@ -39,7 +29,49 @@ st.title("📐 Design (MUD)")
 # ── 1. import ─────────────────────────────────────────────────────────────────
 st.header("① Requirements")
 use_sample = st.checkbox("Use sample (BMS)", value=True)
-uploaded = st.file_uploader("…or upload requirements (.csv / .txt / .md / .xlsx)", type=["csv", "txt", "md", "xlsx"])
+uploaded = st.file_uploader(
+    "…or upload requirements (.csv / .xlsx / .reqif / .txt / .md) — DOORS, Polarion, Jira, Excel exports",
+    type=["csv", "txt", "md", "xlsx", "reqif", "reqifz"],
+)
+
+
+def _header_row(file) -> list[str]:
+    """Column headers of an uploaded CSV/XLSX (empty list for other formats)."""
+    import csv
+    import io
+    name = file.name.lower()
+    try:
+        if name.endswith(".csv"):
+            from mudtool.importers.base import read_text_file
+            tmp = _REPO_ROOT / "workspace" / "uploads" / ("_hdr_" + file.name)
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_bytes(file.getvalue())
+            text, _ = read_text_file(tmp)
+            tmp.unlink(missing_ok=True)
+            first = text.splitlines()[0] if text else ""
+            delim = max(",;	|", key=first.count)
+            return [h.strip() for h in next(csv.reader(io.StringIO(first), delimiter=delim), []) if h.strip()]
+        if name.endswith(".xlsx"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file.getvalue()), read_only=True, data_only=True)
+            row = next(wb.active.iter_rows(min_row=1, max_row=1, values_only=True), ())
+            wb.close()
+            return [str(v).strip() for v in row if v]
+    except Exception:  # noqa: BLE001 - preview only; the importer reports real errors
+        pass
+    return []
+
+
+mapping: dict[str, str] = {}
+if uploaded is not None and not use_sample:
+    headers = _header_row(uploaded)
+    if headers:
+        with st.expander("Column mapping (optional — leave on auto unless the import misses columns)"):
+            st.caption(f"Detected columns: {', '.join(headers)}")
+            for field, label in (("req_id", "ID"), ("title", "Title"), ("description", "Description (text)")):
+                choice = st.selectbox(label, ["(auto)"] + headers, key=f"map_{field}")
+                if choice != "(auto)":
+                    mapping[field] = choice
 
 if st.button("Import requirements", type="primary"):
     if use_sample:
@@ -51,12 +83,19 @@ if st.button("Import requirements", type="primary"):
     else:
         st.error("Upload a file or use the sample.")
         st.stop()
-    result = design.import_requirements(path)
+    result = design.import_requirements(path, column_mapping=mapping or None)
     if not result.requirement_set.requirements:
         st.error(f"Import failed: {result.errors}")
         st.stop()
     st.session_state["imported"] = result.requirement_set
-    st.success(f"Imported {result.requirement_set.count} requirement(s)")
+    st.success(f"Imported {result.requirement_set.count} requirement(s)"
+               + (f" ({result.rows_skipped} row(s) skipped)" if result.rows_skipped else ""))
+    if result.warnings or result.errors:
+        with st.expander(f"Import notes ({len(result.warnings) + len(result.errors)})"):
+            for msg in result.errors:
+                st.error(msg)
+            for msg in result.warnings[:50]:
+                st.caption(msg)
 
 reqs = st.session_state.get("imported")
 if reqs is not None:
@@ -126,7 +165,7 @@ if reqs is not None:
                 mmd_map = exported["mermaid"]
                 flow = next(iter(mmd_map.values()), "")
                 st.subheader("Flow chart")
-                _render_mermaid(flow)
+                _render_mermaid(flow, height=650)
                 with st.expander("Mermaid source"):
                     st.code(flow, language="mermaid")
 

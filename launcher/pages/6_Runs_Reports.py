@@ -45,7 +45,7 @@ if mode == "Single run":
         with st.expander("MUD spec"):
             st.markdown(run.read_in("mud", "mud_spec.md", "(none)"))
         with st.expander("Flow chart"):
-            c.render_mermaid(run.read_in("mud", "flow.mmd", ""), height=360)
+            c.render_mermaid(run.read_in("mud", "flow.mmd", ""), height=520)
         with st.expander("C skeleton"):
             st.code(run.read_in("code", f"{run.swc}.c", "(none)"), language="c")
         with st.expander("Trace"):

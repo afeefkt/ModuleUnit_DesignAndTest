@@ -21,11 +21,15 @@ def _orchestrator():
 
 
 # ── requirements ─────────────────────────────────────────────────────────────
-def import_requirements(file_path: str | Path):
-    """Auto-detect the format and import a requirement file."""
+def import_requirements(file_path: str | Path, column_mapping: Optional[dict[str, str]] = None):
+    """Auto-detect the format and import a requirement file.
+
+    ``column_mapping`` (optional) maps canonical fields (``req_id``, ``title``,
+    ``description`` …) to the source column names, overriding auto-detection.
+    """
     env.ensure_environment()
     from mudtool.importers.factory import ImporterFactory
-    return ImporterFactory.import_file(Path(file_path))
+    return ImporterFactory.import_file(Path(file_path), column_mapping=column_mapping or None)
 
 
 def requirements_text(reqs) -> str:

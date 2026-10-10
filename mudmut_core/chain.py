@@ -374,7 +374,7 @@ def _main() -> int:
         "preset": summary["preset"],
         "timings": summary["timings"],
         "compilability": summary["compilability"],
-        "tests": {k: summary["tests"].get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
+        "tests": {k: summary["tests"].get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback", "cpputest")},
     }, indent=2))
     return 0
 

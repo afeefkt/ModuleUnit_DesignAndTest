@@ -80,6 +80,59 @@ echo "cpputest_lib=$l"
 
 
 @dataclass
+class CppUTestInfo:
+    """Where CppUTest was found (all paths in the form the build sees: WSL/Linux)."""
+    found: bool = False
+    home: str = ""
+    include_dir: str = ""
+    lib_dir: str = ""
+    has_ext: bool = False
+    detail: str = ""
+
+
+# Args: $1 = user-configured home (may be empty). Prints key=value lines.
+_FIND_CPPUTEST = r"""
+cands=""
+[ -n "$1" ] && cands="$1"
+[ -n "$CPPUTEST_HOME" ] && cands="$cands $CPPUTEST_HOME"
+cands="$cands /usr /usr/local /opt/cpputest $HOME/cpputest $HOME/cpputest-install $HOME/.local"
+for h in $cands; do
+  [ -f "$h/include/CppUTest/TestHarness.h" ] || continue
+  for d in lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu; do
+    for n in libCppUTest.a libCppUTest.so; do
+      if [ -f "$h/$d/$n" ]; then
+        echo "home=$h"; echo "inc=$h/include"; echo "lib=$h/$d"
+        ext=no; for e in libCppUTestExt.a libCppUTestExt.so; do [ -f "$h/$d/$e" ] && ext=yes; done
+        echo "ext=$ext"; exit 0
+      fi
+    done
+  done
+done
+echo "home="
+"""
+
+
+def find_cpputest(home: str = "") -> CppUTestInfo:
+    """Locate CppUTest: the configured ``home`` first, then common install prefixes."""
+    import shlex
+    home = (home or "").strip()
+    if home:
+        home = wsl_path(home).rstrip("/") or home
+    try:
+        proc = _shell("set -- " + shlex.quote(home) + "\n" + _FIND_CPPUTEST)
+    except Exception as exc:  # noqa: BLE001 - e.g. no WSL installed
+        return CppUTestInfo(detail=f"could not run the CppUTest probe: {exc}")
+    found = dict(line.split("=", 1) for line in proc.stdout.splitlines() if "=" in line)
+    if not found.get("home"):
+        where = f"not found under '{home}'" if home else "not found in the usual locations"
+        return CppUTestInfo(detail=f"CppUTest {where}")
+    return CppUTestInfo(
+        found=True, home=found["home"], include_dir=found["inc"], lib_dir=found["lib"],
+        has_ext=found.get("ext") == "yes", detail=f"{found['inc']} + {found['lib']}",
+    )
+
+
+@dataclass
 class ToolStatus:
     name: str
     available: bool
@@ -124,12 +177,11 @@ def check_toolchain() -> ToolchainReport:
     add("g++", "g++", "apt-get install -y g++")
     add("make", "make", "apt-get install -y make")
     add("gcov", "gcov", "apt-get install -y gcc")
-    hdr = found.get("cpputest_header", "").strip() or "MISSING"
-    lib = found.get("cpputest_lib", "").strip() or "MISSING"
+    from mudmut_core import settings
+    info = find_cpputest(settings.get_settings()["cpputest_home"])
     report.tools.append(ToolStatus(
-        "CppUTest", hdr != "MISSING" and lib != "MISSING",
-        f"{hdr if hdr != 'MISSING' else 'headers missing'} + {lib if lib != 'MISSING' else 'lib missing'}",
-        APT_INSTALL_CPPUTEST_LCOV,
+        "CppUTest", info.found, info.detail,
+        "Set the CppUTest folder on the Settings page, or: " + APT_INSTALL_CPPUTEST_LCOV,
     ))
     add("lcov", "lcov", APT_INSTALL_CPPUTEST_LCOV)
     return report

@@ -7,14 +7,14 @@ Everything runs in-process (`mudmut_core`) inside WSL; no Docker, no services re
 
 | # | Stage | Engine call | Model stage (Workflow & Models) | Output in `outputs/<run>/` |
 |---|---|---|---|---|
-| 1 | Import requirements | `design.import_requirements` | — | `00_input/requirements.json` |
+| 1 | Import requirements (CSV/XLSX/ReqIF/MD/TXT; DOORS, Polarion, Jira column names recognised, HTML text cleaned, odd IDs normalised) | `design.import_requirements` | — | `00_input/requirements.json` |
 | 2 | Plan modules (SWC split) | `design.plan_modules` | `planner` | (selected SWC in `state.json`) |
 | 3 | MUD spec | `design.generate_mud_spec` (`single_pass` / `two_stage`) | `mud_spec_skeleton`, `mud_spec_generator` | `01_mud/mud_spec.md` |
 | 4 | Review (full mode) | `design.review_and_improve` | `mud_spec_reviewer` | `01_mud/review.json` |
 | 5 | Activity / code flow | `design.generate_activity` (AI, or deterministic from Section 7 in quick mode / on placeholder) | `activity_*` | `01_mud/activity.json`, `flow.mmd` |
 | 6 | C skeleton + compilable | `design.export` → `compilable.make_compilable` (gcc in WSL) | — | `02_code/<SWC>.c/.h`, `Rte_*`, `compilability.json` |
 | 7 | Generate tests | `verify.generate_tests` (RAG + LLM per function) | `test_generator`, `rag_embed` | `03_mut/Test_*.cpp`, `Makefile` |
-| 8 | Build, run, fix | `verify.fix_loop` (make in WSL, fix loop, quarantine, smoke fallback) | `test_fixer` | `03_mut/test-results.xml`, `coverage_html/`, `test-report.html`, `quarantined/` |
+| 8 | Build, run, fix (Makefile generated per run from the CppUTest folder in **Settings**) | `verify.fix_loop` (make in WSL, fix loop, quarantine, smoke fallback) | `test_fixer` | `03_mut/test-results.xml`, `coverage_html/`, `test-report.html`, `quarantined/` |
 | 9 | Traceability | `trace.build_trace` | — | `04_trace/trace.json` |
 | 10 | Report | `report.write_run_report` | — | `RUN_REPORT.md`, `run.json` |
 

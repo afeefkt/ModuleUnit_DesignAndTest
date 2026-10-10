@@ -297,26 +297,38 @@ def _uniquify_test_group(test_code: str, func_name: str) -> str:
     return test_code
 
 
-def create_makefile(output_dir: Path):
+def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cflags: str = ""):
     """Create Makefile for building generated tests with coverage support.
 
-    Builds for an apt-installed CppUTest (``CPPUTEST_HOME ?= /usr``), records the
+    ``cpputest`` (optional) carries the resolved install: ``home``, ``include_dir``,
+    ``lib_dir``, ``has_ext`` (see ``mudmut_core.toolchain.find_cpputest``); those
+    paths are baked in so the run folder builds against that exact CppUTest. Without
+    it the Makefile targets an apt install (``CPPUTEST_HOME ?= /usr``). Records the
     real test exit code, generates lcov 2.x coverage, and re-raises the test exit
     code so CI / the native runner see genuine failures.
     """
     tab = "\t"
+    cpputest = cpputest or {}
+    home = cpputest.get("home") or "/usr"
+    inc = cpputest.get("include_dir") or "$(CPPUTEST_HOME)/include"
+    lib = cpputest.get("lib_dir") or "$(CPPUTEST_HOME)/lib"
+    ext = " -lCppUTestExt" if cpputest.get("has_ext", True) else ""
     L = [
         "# Auto-generated Makefile for CppUTest with Coverage",
+        f"# CppUTest: {home} (include {inc}, lib {lib})",
         "",
-        "# apt-installed CppUTest lives under /usr; override to point elsewhere.",
-        "CPPUTEST_HOME ?= /usr",
+        "# CppUTest location (resolved when generated); override on the make command line.",
+        f"CPPUTEST_HOME ?= {home}",
+        f"CPPUTEST_INC ?= {inc}",
+        f"CPPUTEST_LIB ?= {lib}",
         "",
-        "# Compiler flags with coverage enabled",
-        "CXXFLAGS += -Wall -Wextra -g -std=c++11 --coverage -fprofile-arcs -ftest-coverage",
-        "CXXFLAGS += -I$(CPPUTEST_HOME)/include",
-        "CFLAGS += -Wall -Wextra -g -std=c99 --coverage -fprofile-arcs -ftest-coverage",
-        "CFLAGS += -I$(CPPUTEST_HOME)/include",
-        "LDFLAGS += -L$(CPPUTEST_HOME)/lib -lCppUTest -lCppUTestExt --coverage",
+        "# Compiler flags with coverage enabled; -MMD -MP track header dependencies",
+        "CXXFLAGS += -Wall -Wextra -g -std=c++11 --coverage -fprofile-arcs -ftest-coverage -MMD -MP -I.",
+        "CXXFLAGS += -I$(CPPUTEST_INC)",
+        "CFLAGS += -Wall -Wextra -g -std=c99 --coverage -fprofile-arcs -ftest-coverage -MMD -MP -I.",
+        "CFLAGS += -I$(CPPUTEST_INC)",
+        f"LDFLAGS += -L$(CPPUTEST_LIB) -Wl,-rpath,$(CPPUTEST_LIB) -lCppUTest{ext} --coverage",
+    ] + ([f"CXXFLAGS += {extra_cflags}", f"CFLAGS += {extra_cflags}"] if extra_cflags.strip() else []) + [
         "",
         "# Source files",
         "TEST_SRC = $(wildcard Test_*.cpp) AllTests.cpp",
@@ -324,6 +336,7 @@ def create_makefile(output_dir: Path):
         "TEST_OBJS = $(TEST_SRC:.cpp=.o)",
         "C_OBJS = $(C_SRC:.c=.o)",
         "ALL_OBJS = $(TEST_OBJS) $(C_OBJS)",
+        "DEPS = $(ALL_OBJS:.o=.d)",
         "TEST_TARGET = run_tests",
         "",
         "# Coverage files",
@@ -344,6 +357,8 @@ def create_makefile(output_dir: Path):
         "",
         "%.o: %.c",
         tab + "$(CC) $(CFLAGS) -c $< -o $@",
+        "",
+        "-include $(DEPS)",
         "",
         "# Run tests with JUnit XML output; record the real exit code (re-raised by coverage).",
         "test: $(TEST_TARGET)",
@@ -375,7 +390,7 @@ def create_makefile(output_dir: Path):
         "",
         "# Clean all build artifacts including coverage files",
         "clean:",
-        tab + "rm -f $(ALL_OBJS) $(TEST_TARGET) $(GCOV_FILES) $(COVERAGE_INFO) .test_exit_code",
+        tab + "rm -f $(ALL_OBJS) $(DEPS) $(TEST_TARGET) $(GCOV_FILES) $(COVERAGE_INFO) .test_exit_code",
         tab + "rm -rf $(COVERAGE_HTML_DIR)",
         tab + "rm -f test-results.xml",
         "",

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html as _html
 import logging
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
@@ -34,19 +36,93 @@ class ImportResult(BaseModel):
         return len(self.errors) == 0 and self.requirement_set.count > 0
 
 
-# Default column name mappings for Polarion/DOORS Excel exports
+# Default column name mappings for Polarion / DOORS / Jira / ReqIF-derived exports.
+# Matching is case-insensitive and ignores spaces, underscores and hyphens
+# (see ``normalize_header``), so "Object Text", "object_text" and "OBJECT-TEXT" all match.
 DEFAULT_COLUMN_MAPPING: dict[str, list[str]] = {
-    "req_id": ["Req_ID", "req_id", "ID", "Requirement ID", "ReqID", "Work Item ID"],
-    "title": ["Title", "title", "Name", "Requirement Title", "Summary"],
-    "description": ["Description", "description", "Text", "Requirement Text", "Content"],
-    "parent_id": ["Parent_ID", "parent_id", "Parent", "Parent ID", "Parent Work Item"],
-    "req_type": ["Type", "type", "req_type", "Requirement Type", "Category"],
-    "safety_level": ["ASIL", "asil", "Safety", "Safety Level", "safety_level"],
-    "priority": ["Priority", "priority", "Importance"],
-    "status": ["Status", "status", "State", "Lifecycle"],
-    "module_hint": ["Module_Hint", "module_hint", "Module", "Component", "Target Module"],
-    "notes": ["Notes", "notes", "Comments", "Remarks", "Additional Info"],
+    "req_id": ["Req_ID", "req_id", "ID", "Requirement ID", "ReqID", "Work Item ID",
+               # DOORS
+               "Object Identifier", "Absolute Number", "Object ID", "Requirement Identifier",
+               # Jira / Jama / generic
+               "Key", "Issue key", "Issue ID", "Global ID", "Identifier", "Ref", "Reference"],
+    "title": ["Title", "title", "Name", "Requirement Title", "Summary",
+              "Object Heading", "Object Short Text", "Heading", "Short Text", "Short Description"],
+    "description": ["Description", "description", "Text", "Requirement Text", "Content",
+                    "Object Text", "Requirement Description", "Details", "Statement",
+                    "Anforderung", "Beschreibung", "Anforderungstext"],
+    "parent_id": ["Parent_ID", "parent_id", "Parent", "Parent ID", "Parent Work Item",
+                  "Parent Requirement", "Parent Object"],
+    "req_type": ["Type", "type", "req_type", "Requirement Type", "Category", "Object Type",
+                 "Work Item Type", "Issue Type"],
+    "safety_level": ["ASIL", "asil", "Safety", "Safety Level", "safety_level", "ASIL Level",
+                     "Safety Integrity Level", "SIL"],
+    "priority": ["Priority", "priority", "Importance", "Severity"],
+    "status": ["Status", "status", "State", "Lifecycle", "Workflow Status"],
+    "module_hint": ["Module_Hint", "module_hint", "Module", "Component", "Target Module",
+                    "Allocated To", "Allocation", "Software Component"],
+    "notes": ["Notes", "notes", "Comments", "Remarks", "Additional Info", "Rationale"],
 }
+
+
+def normalize_header(header: str) -> str:
+    """Lower-case a column header and drop spaces / underscores / hyphens / dots / BOM."""
+    return re.sub(r"[\s_.\-﻿]+", "", str(header or "")).lower()
+
+
+_HEADER_LOOKUP: dict[str, str] = {
+    normalize_header(alias): field
+    for field, aliases in DEFAULT_COLUMN_MAPPING.items()
+    for alias in aliases
+}
+
+
+def strip_markup(text: str) -> str:
+    """Turn HTML / rich text (Polarion, DOORS, ReqIF XHTML) into plain text."""
+    if not text or ("<" not in text and "&" not in text):
+        return text
+    t = re.sub(r"(?i)<\s*br\s*/?\s*>|</\s*(p|div|li|tr|h[1-6])\s*>", "\n", text)
+    t = re.sub(r"(?i)<\s*li[^>]*>", "- ", t)
+    t = re.sub(r"<[^>]+>", "", t)
+    t = _html.unescape(t)
+    t = re.sub(r"[ \t\xa0]+", " ", t)
+    return re.sub(r"\s*\n\s*", "\n", t).strip()
+
+
+_ID_RE = re.compile(r"^[A-Z]+-(?:[A-Z]+-)*\d+$")
+
+
+def normalize_req_id(raw: str, row_num: int = 0) -> tuple[str, bool]:
+    """Coerce an ALM identifier to the canonical ``PREFIX-123`` form.
+
+    Returns ``(id, changed)``. DOORS numbers ("1234", "3.2.1"), Polarion/Jira keys and
+    free-form IDs ("SRS_12", "REQ 12") are all accepted; the original is kept by the
+    caller (notes) when it changed.
+    """
+    s = (raw or "").strip()
+    if _ID_RE.match(s):
+        return s, False
+    t = re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").upper()
+    if _ID_RE.match(t):
+        return t, True
+    m = re.match(r"^([A-Z]+)(\d+)$", t.replace("-", ""))
+    if m:
+        return f"{m.group(1)}-{m.group(2)}", True
+    if t.isdigit():
+        return f"REQ-{t}", True
+    return f"IMP-{row_num:04d}", True
+
+
+def read_text_file(file_path: Path) -> tuple[str, str]:
+    """Read a text file trying the encodings ALM tools produce. Returns (text, encoding)."""
+    data = Path(file_path).read_bytes()
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16"), "utf-16"
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return data.decode(enc), enc
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1"), "latin-1"
 
 
 class BaseImporter(ABC):
@@ -89,20 +165,15 @@ class BaseImporter(ABC):
         Returns:
             Canonical field name or None if no match found.
         """
-        header_clean = header.strip()
+        norm = normalize_header(header)
 
         # Check custom mapping first
         for field, source_col in self.column_mapping.items():
-            if header_clean.lower() == source_col.lower():
+            if norm == normalize_header(source_col):
                 return field
 
         # Check default mappings
-        for field, aliases in DEFAULT_COLUMN_MAPPING.items():
-            for alias in aliases:
-                if header_clean.lower() == alias.lower():
-                    return field
-
-        return None
+        return _HEADER_LOOKUP.get(norm)
 
     def _parse_req_type(self, value: str) -> RequirementType:
         """Parse requirement type string to enum."""
@@ -183,8 +254,9 @@ class BaseImporter(ABC):
             Requirement or None if row is invalid.
         """
         req_id = row_data.get("req_id", "").strip()
-        title = row_data.get("title", "").strip()
-        description = row_data.get("description", "").strip()
+        title = strip_markup(row_data.get("title", "")).strip()
+        description = strip_markup(row_data.get("description", "")).strip()
+        notes = strip_markup(row_data.get("notes", "")).strip()
 
         # Validate required fields
         if not req_id:
@@ -199,6 +271,12 @@ class BaseImporter(ABC):
             )
             description = title
 
+        original_id = req_id
+        req_id, changed = normalize_req_id(req_id, row_num)
+        if changed:
+            self._warnings.append(f"Row {row_num}: ID '{original_id}' normalised to {req_id}")
+            notes = f"Original ID: {original_id}" + (" | " + notes if notes else "")
+
         try:
             return Requirement(
                 req_id=req_id,
@@ -210,7 +288,7 @@ class BaseImporter(ABC):
                 priority=self._parse_priority(row_data.get("priority", "should")),
                 status=self._parse_status(row_data.get("status", "draft")),
                 module_hint=row_data.get("module_hint", "").strip() or None,
-                notes=row_data.get("notes", "").strip() or None,
+                notes=notes or None,
                 source=row_data.get("source", "").strip() or None,
             )
         except Exception as e:

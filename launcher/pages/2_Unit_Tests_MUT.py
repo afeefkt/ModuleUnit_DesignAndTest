@@ -64,7 +64,9 @@ if generation:
     )
     out_dir = Path(generation.get("output_directory", ""))
     if out_dir.is_dir():
-        if st.button("Build & run (+ fix loop)"):
+        st.caption("The Makefile is regenerated on every build from the CppUTest folder in Settings "
+                   "(no need to regenerate the tests after changing it).")
+        if st.button("Rebuild & run (+ fix loop)"):
             with st.status("Building + running…", expanded=True) as status:
                 result = verify.fix_loop(out_dir, max_attempts=2)
                 run.save_json_in("mut", "results.json", {"generation": generation, "run": result})
@@ -86,6 +88,12 @@ if generation:
                 st.info("No AI-generated test compiled, so a deterministic smoke test "
                         "(each runnable executed once) was built and run instead.")
             m4.metric("Fix attempts", result.get("fix_attempts", 0))
+            cpp = result.get("cpputest") or {}
+            if result.get("cpputest_missing"):
+                st.error("CppUTest was not found. Set its folder on the **Settings** page "
+                         "(or install it) and rebuild.")
+            elif cpp.get("found"):
+                st.caption(f"CppUTest: `{cpp.get('home')}` (lib `{cpp.get('lib_dir')}`)")
             if result.get("build_error"):
                 with st.expander("Build output"):
                     st.code(result.get("build_error", ""))

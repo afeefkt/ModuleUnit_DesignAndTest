@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
-from mudmut_core import env, toolchain
+from mudmut_core import env, settings, toolchain
 
 _index_built = False
 
@@ -89,14 +89,52 @@ def parse_junit(xml_path: Path) -> dict[str, int]:
     return {"tests": tests, "failures": failures, "errors": errors, "passed": tests - failures - errors}
 
 
+def write_makefile(test_dir: Path | str) -> toolchain.CppUTestInfo:
+    """(Re)write ``<test_dir>/Makefile`` against the configured / detected CppUTest.
+
+    Called before every build, so changing the CppUTest folder in Settings takes
+    effect without regenerating the tests.
+    """
+    env.ensure_environment()
+    from app.services.test_generator import create_makefile
+    cfg = settings.get_settings()
+    info = toolchain.find_cpputest(cfg["cpputest_home"])
+    cpputest = {
+        "home": info.home, "include_dir": info.include_dir,
+        "lib_dir": info.lib_dir, "has_ext": info.has_ext,
+    } if info.found else None
+    create_makefile(Path(test_dir), cpputest=cpputest, extra_cflags=cfg["extra_cflags"])
+    return info
+
+
 def build_and_run(test_dir: Path | str) -> dict[str, Any]:
     """Build (``make clean all``) then run with coverage (``make coverage``)."""
     test_dir = Path(test_dir)
+
+    cpputest = write_makefile(test_dir)
+    cpputest_info = {
+        "found": cpputest.found, "home": cpputest.home,
+        "include_dir": cpputest.include_dir, "lib_dir": cpputest.lib_dir,
+    }
+    if not cpputest.found:
+        return {
+            "status": "build_failed",
+            "cpputest_missing": True,
+            "cpputest": cpputest_info,
+            "build_output": "",
+            "build_error": (
+                f"{cpputest.detail}. Set the CppUTest folder on the Settings page "
+                f"(or MUDMUT_CPPUTEST_HOME), or install it: {toolchain.APT_INSTALL_CPPUTEST_LCOV}"
+            ),
+            "test_output": None,
+            "test_error": None,
+        }
 
     build = toolchain.run_make(test_dir, targets=("clean", "all"))
     if not build.ok:
         return {
             "status": "build_failed",
+            "cpputest": cpputest_info,
             "build_output": build.stdout,
             "build_error": build.stderr,
             "test_output": None,
@@ -113,6 +151,7 @@ def build_and_run(test_dir: Path | str) -> dict[str, Any]:
 
     result = {
         "status": test_status,
+        "cpputest": cpputest_info,
         "build_output": build.stdout,
         "build_error": build.stderr,
         "test_output": run.stdout,

@@ -81,6 +81,7 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
     stubbed = int(comp.get("stubbed") or 0)
     status = tests.get("status")
     smoke = bool(tests.get("smoke_fallback"))
+    cpp = tests.get("cpputest") or {}
     quarantined = tests.get("quarantined_tests") or []
 
     def compilable_v():
@@ -144,7 +145,7 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "error": summary.get("error"),
         "warnings": summary.get("warnings", []),
         "compilability": comp,
-        "tests": {k: tests.get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
+        "tests": {k: tests.get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback", "cpputest")},
         "trace": {
             "requirements": len(trace.get("source_requirements", [])),
             "summary": trace.get("summary", {}),
@@ -202,6 +203,10 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         f"- **Tests:** {tests.get('status', 'skipped')} — {passed} passed / {failed} failed"
         f" (fix_attempts={tests.get('fix_attempts', 0)})",
         f"- **Trace:** {len(trace.get('source_requirements', []))} requirement(s)",
+    ] + ([
+        f"- **CppUTest:** `{cpp.get('home')}` (include `{cpp.get('include_dir')}`, lib `{cpp.get('lib_dir')}`)"
+        if cpp.get("found") else "- **CppUTest:** ❌ not found — set the folder on the Settings page"
+    ] if cpp else []) + [
         "",
         "## Timings (seconds)",
         "",

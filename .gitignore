@@ -27,6 +27,7 @@ htmlcov/
 outputs/*
 !outputs/.gitkeep
 config/stages.json
+config/settings.json
 *.bak*
 *.backup
 *.sqlite-journal

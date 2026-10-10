@@ -35,11 +35,11 @@ Every AI step is wrapped in **deterministic guardrail layers** (see [Reliability
 
 ```mermaid
 flowchart LR
-    REQ[/"📄 inputs/requirements/<br/>CSV · XLSX · MD · TXT"/]
+    REQ[/"📄 inputs/requirements/<br/>DOORS · Polarion · Jira exports<br/>CSV · XLSX · ReqIF · MD · TXT"/]
 
     subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
         direction TB
-        SET["⚙️ Providers & Keys · Workflow & Models<br/>preset or provider+model per stage"]
+        SET["⚙️ Providers & Keys · Workflow & Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
         P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain"]
         RR["📊 Runs & Reports<br/>verdicts · compare runs"]
         OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
@@ -118,7 +118,7 @@ requirements.csv
 
 | Folder | What it is | Notes |
 |---|---|---|
-| [`launcher/`](launcher/) | The Streamlit platform (Home · Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent) | `./launch.sh` / `launch.bat` |
+| [`launcher/`](launcher/) | The Streamlit platform (Home · Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent · Settings) | `./launch.sh` / `launch.bat` |
 | [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry) | used by the UI, the CLI, the agent and the tests |
 | [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR flow charts → C-skeleton export | in-process library |
 | [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage | in-process library |
@@ -256,7 +256,7 @@ MUD_MUT/
 ├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
 │   ├── streamlit_app.py      ← Home / Status page
-│   └── pages/                ← Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent
+│   └── pages/                ← Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent · Settings
 ├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
 ├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)
