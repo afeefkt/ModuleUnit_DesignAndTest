@@ -144,20 +144,43 @@ wsl -u root -e apt-get install -y build-essential cpputest lcov
 # → opens http://localhost:8501
 ```
 
-Then use the three pages:
+Then use the pages:
 
 1. **Status** — confirm Ollama + the WSL toolchain are green (copy-paste install hints if not).
-2. **Design (MUD)** — import the sample (or upload) requirements, plan modules, pick an SWC, generate + review
-   the MUD spec, see the flow chart, and get a **compilable C skeleton** with a kept/stubbed report.
-3. **Unit Tests (MUT)** — generate CppUTest tests, build & run (with a fix loop), see pass/fail + coverage,
-   and the requirement → test trace.
-4. **Full Chain** — one click runs everything and writes the full run to `workspace/runs/<id>/`.
+2. **Setup ▸ Providers** — test each provider connection (Ollama / OpenRouter / NVIDIA / DeepSeek) and check key status.
+3. **Setup ▸ Workflow & Models** — see every workflow as a flow chart, and pick a **provider + model per stage** (with presets: *Local-recommended*, *Local-fast*, *OpenRouter-free*, *NVIDIA*, *DeepSeek*).
+4. **Pipeline ▸ Design (MUD)** — import → plan → spec → flow → compilable C skeleton.
+5. **Pipeline ▸ Unit Tests (MUT)** — generate → build/run → coverage → trace.
+6. **Pipeline ▸ Full Chain** — one click end-to-end (with a preset picker), writing `outputs/<run>/RUN_REPORT.md`.
+
+Each run writes to `outputs/<run>/` (see below).
 
 Prefer the CLI?
 
 ```bash
-python -m mudmut_core.chain --requirements mud-tool/data/sample/bms_requirements.csv \
-    --swc SWC_BatteryManagement --quick
+python -m mudmut_core.chain --requirements inputs/requirements/samples/bms_requirements.csv \
+    --swc SWC_BatteryManagement --quick --preset local-fast
+```
+
+## Models & providers
+
+Every pipeline stage has a **provider** (Ollama / OpenRouter / NVIDIA NIM / DeepSeek) and a **model**.
+Change them on the *Workflow & Models* page or apply a preset (`config/presets.json`); the current
+selection persists in `config/stages.json` (gitignored). Cloud providers send your data off-machine and
+are recorded in every `RUN_REPORT.md`.
+
+API keys are read from your environment (Windows user variables / repo `.env` / process) — never written
+to disk; the Providers page only ever shows "✓ found" / "✗ missing".
+
+### Outputs
+
+```
+outputs/
+  LATEST                         ← name of the most recent run
+  <YYYYMMDD_HHMMSS>_<SWC>_<preset>/
+    RUN_REPORT.md                ← per-stage verdict ✅/⚠️/❌, models, cloud notice, timings
+    run.json                     ← same, machine-readable
+    00_input/  01_mud/  02_code/  03_mut/  04_trace/
 ```
 
 ### What to expect from local 7B models
