@@ -67,24 +67,23 @@ Generate ONLY the test code, starting with TEST_GROUP and including all test cas
 Do not include explanations or markdown formatting - just the C++ test code."""
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{config.OLLAMA_URL}/generate",
-                json={
-                    "model": config.GEN_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.3,
-                        "top_p": 0.9,
-                        "num_predict": 2000
-                    }
-                },
-                timeout=aiohttp.ClientTimeout(total=config.REQUEST_TIMEOUT)
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result.get("response", "")
+        # Route through the multi-provider client using the ``test_generator``
+        # stage (provider + model from mudmut_core.agents).
+        from mudmut_core.llm import achat, get_providers
+        provider_id, model = "ollama", config.GEN_MODEL
+        try:
+            from mudmut_core import agents
+            st = agents.get_stages().get("test_generator", {})
+            provider_id = st.get("provider", "ollama")
+            model = st.get("model") or config.GEN_MODEL
+        except Exception:
+            pass
+        provider = get_providers().get(provider_id) or get_providers().get("ollama")
+        return await achat(
+            provider, model,
+            [{"role": "user", "content": prompt}],
+            max_tokens=2000, temperature=0.3, timeout=float(config.REQUEST_TIMEOUT),
+        )
     except Exception as e:
         logger.error(f"Test generation error: {e}")
 

@@ -219,7 +219,8 @@ class ModulePlanner:
         Returns:
             PlanResult with a list of ModuleInfo objects.
         """
-        backend = self._orchestrator._get_backend()
+        _get_planner_backend = getattr(self._orchestrator, "_get_planner_backend", None)
+        backend = _get_planner_backend() if _get_planner_backend else self._orchestrator._get_backend()
         evidence_modules = _derive_modules_from_requirements_text(requirements_text)
         req_count = sum(len(m.req_ids) for m in evidence_modules.values()) or requirements_text.count("\n")
         target_swc_count = max(1, min(10, math.ceil(req_count / 8)))

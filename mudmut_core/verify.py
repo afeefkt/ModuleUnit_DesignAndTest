@@ -142,22 +142,27 @@ def build_and_run(test_dir: Path | str) -> dict[str, Any]:
 
 
 # ── fix loop ─────────────────────────────────────────────────────────────────
-def _ollama_generate(model: str, prompt: str, *, timeout: int = 300) -> str:
+def _fixer_generate(prompt: str, *, timeout: int = 300) -> str:
+    """Generate a corrected test file via the ``test_fixer`` stage (provider+model).
+
+    Synchronous (``chat_blocking``) so it can run inside the chain's running loop.
+    """
+    import os
     env.ensure_environment()
-    from app.config import config
-    payload = json.dumps({
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.2, "num_predict": 4000},
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        f"{config.OLLAMA_URL}/generate",
-        data=payload,
-        headers={"Content-Type": "application/json"},
+    from mudmut_core.llm import chat_blocking, get_providers
+    provider_id, model = "ollama", os.environ.get("GEN_MODEL", "qwen2.5:7b")
+    try:
+        from mudmut_core import agents
+        st = agents.get_stages().get("test_fixer", {})
+        provider_id = st.get("provider", "ollama")
+        model = st.get("model") or model
+    except Exception:
+        pass
+    provider = get_providers().get(provider_id) or get_providers().get("ollama")
+    return chat_blocking(
+        provider, model, [{"role": "user", "content": prompt}],
+        max_tokens=4000, temperature=0.2, timeout=timeout,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8")).get("response", "")
 
 
 def _failed_test_files(stderr: str, test_dir: Path) -> list[Path]:
@@ -204,7 +209,7 @@ def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
                 f"COMPILER ERRORS:\n{stderr[-3000:]}\n\n"
                 f"FILE ({f.name}):\n```cpp\n{code}\n```\n"
             )
-            fixed = _ollama_generate(config.GEN_MODEL, prompt)
+            fixed = _fixer_generate(prompt)
             if not fixed:
                 continue
             fixed = fixed.strip()
