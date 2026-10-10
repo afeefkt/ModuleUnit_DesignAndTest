@@ -27,24 +27,22 @@ jobs:
       - name: Unit tests
         run: pytest -q -m "not live" || true
 
-  bridge-and-launcher:
-    name: bridge + launcher (smoke)
+  launcher:
+    name: launcher (smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Byte-compile bridge + launcher
+      - name: Byte-compile launcher
         run: |
-          python -m py_compile bridge/mud_to_tests.py launcher/streamlit_app.py
-      - name: Bridge CLI help
-        run: python bridge/mud_to_tests.py --help
+          python -m py_compile launcher/streamlit_app.py launcher/_common.py
       - name: Traceability extraction self-check
         run: |
           python - <<'PY'
-          import sys; sys.path.insert(0, "bridge")
-          from mud_to_tests import extract_requirements
+          import sys; sys.path.insert(0, ".")
+          from mudmut_core.trace import extract_requirements
           reqs = extract_requirements("/* Requirements: REQ_001, REQ_002 */")
           assert reqs == ["REQ_001", "REQ_002"], reqs
           print("ok", reqs)

@@ -17,7 +17,7 @@ from mudmut_core import aio, compilable, design, workspace  # noqa: E402
 
 st.set_page_config(page_title="Design (MUD)", page_icon="📐", layout="wide")
 
-SAMPLE = _REPO_ROOT / "mud-tool" / "data" / "sample" / "bms_requirements.csv"
+SAMPLE = _REPO_ROOT / "inputs" / "requirements" / "samples" / "bms_requirements.csv"
 
 
 def _render_mermaid(mmd: str, height: int = 500):

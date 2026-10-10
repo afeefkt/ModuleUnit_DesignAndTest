@@ -22,34 +22,34 @@ env/
 .coverage*
 htmlcov/
 
-# ── MUD_MUT workspace (runs) ─────────────────────────────────────────
+# ── MUD_MUT outputs & config ─────────────────────────────────────────
+# Runs live under outputs/<run>/; only the .gitkeep is tracked.
+outputs/*
+!outputs/.gitkeep
+config/stages.json
+*.bak*
+*.backup
+*.sqlite-journal
+**/data/elaborated/
+**/guidelines_cache/
+# Legacy generated dirs (deleted in Phase 1).
 workspace/
-.cpputest-src/
-.cpputest-prefix/
-.lcov-src/
-.perl5lib/
+cpputest-rag/generated_tests/
+cpputest-rag/c_projects/
 
 # ── Node / frontend tooling (if any) ────────────────────────────────
 node_modules/
 
 # ── Claude / IDE / local worktrees ──────────────────────────────────
-.claude/settings.local.json
-.claude/worktrees/
+**/.claude/settings.local.json
+**/.claude/worktrees/
 .vscode/*
 !.vscode/extensions.json
 
 # ── Generated / cached artifacts ────────────────────────────────────
-# Keep generated_tests/ dirs but drop heavy build outputs
-**/generated_tests/**/*.o
-**/generated_tests/**/*.gcda
-**/generated_tests/**/*.gcno
-**/generated_tests/**/run_tests
-**/generated_tests/**/coverage.info
-**/generated_tests/**/coverage_html/
 graphify-out/cache/
 **/output/
 **/logs/*.log
-bridge/out/
 
 # ── Agentic spike (agentic/) ─────────────────────────────────────────
 agentic/runs/

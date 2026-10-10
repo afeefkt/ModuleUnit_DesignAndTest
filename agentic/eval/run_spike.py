@@ -42,7 +42,7 @@ LOCAL_MODELS = [
 ]
 RUNNABLES = ["RE_EstimateSOC", "RE_MonitorSafety"]
 
-PROMPT = "Design the activity flow for {runnable} from mud-tool/data/sample/bms_requirements.csv. Use run id '{run_id}'."
+PROMPT = "Design the activity flow for {runnable} from inputs/requirements/samples/bms_requirements.csv. Use run id '{run_id}'."
 
 
 def _find_strings(obj, key="command", acc=None):

@@ -1,27 +1,48 @@
 """Requirement → design → test traceability.
 
-Reuses the pure helpers in ``bridge/mud_to_tests.py`` and adds a per-TEST
-mapping, where possible, from the requirement IDs attached to each skeleton
+Self-contained (the old ``bridge/mud_to_tests.py`` helpers are inlined here) and
+adds a per-TEST mapping from the requirement IDs attached to each skeleton
 function to the ``Test_<function>.cpp`` that exercises it.
 """
 
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 from typing import Any, Optional
 
 from mudmut_core.env import REPO_ROOT
 
-if str(REPO_ROOT / "bridge") not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT / "bridge"))
+# Requirement-ID patterns used in the C-skeleton comment forms:
+#   /* Requirements: REQ-BMS-001, REQ-BMS-002 */   (file header)
+#   /* [REQ-BMS-001, REQ-BMS-002] */                 (per-node trace comment)
+#   /* trace: REQ_012 */                             (hand-written trace comment)
+_REQ_HEADER_RE = re.compile(r"Requirements?:\s*([^\*/\n]+)", re.IGNORECASE)
+_REQ_TRACE_RE = re.compile(r"/\*\s*(?:\[([^\]]*)\]|trace:\s*([^*]*))\s*\*/", re.IGNORECASE)
+REQ_TOKEN_RE = re.compile(r"\b[A-Z][A-Z0-9]*(?:[-_][A-Z][A-Z0-9]*)*[-_]\d+\b")
 
-from mud_to_tests import (  # noqa: E402
-    extract_requirements,
-    list_test_files,
-    requirement_ids_in,
-)
+
+def requirement_ids_in(code: str) -> list[str]:
+    """Requirement IDs in ``code``'s trace comments, in order of first appearance."""
+    chunks = list(_REQ_HEADER_RE.findall(code))
+    for bracket, trace in _REQ_TRACE_RE.findall(code):
+        chunks.append(bracket or trace)
+    return list(dict.fromkeys(tok for chunk in chunks for tok in REQ_TOKEN_RE.findall(chunk)))
+
+
+def extract_requirements(code: str) -> list[str]:
+    """Sorted requirement IDs referenced by a C skeleton."""
+    return sorted(requirement_ids_in(code))
+
+
+def list_test_files(output_directory: str) -> list[str]:
+    """Names of generated ``Test_*.cpp`` files in an output directory."""
+    if not output_directory:
+        return []
+    out = Path(output_directory)
+    if not out.is_dir():
+        return []
+    return sorted(p.name for p in out.glob("Test_*.cpp"))
 
 _FUNC_SIG = re.compile(r"\b(?:static\s+)?void\s+(\w+)\s*\(\s*void\s*\)")
 

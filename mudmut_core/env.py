@@ -59,11 +59,16 @@ def ensure_environment() -> str:
     # with relative defaults, so absolute paths must be set BEFORE ``import app.*``.
     os.environ["OLLAMA_URL"] = ollama_url
     os.environ["C_PROJECT_DIR"] = str(REPO_ROOT / "cpputest-rag" / "c_projects")
-    os.environ["TEST_EXAMPLES_DIR"] = str(REPO_ROOT / "cpputest-rag" / "test_examples")
-    os.environ["OUTPUT_DIR"] = str(REPO_ROOT / "cpputest-rag" / "generated_tests")
+    os.environ["TEST_EXAMPLES_DIR"] = str(REPO_ROOT / "inputs" / "test_examples")
+    os.environ["OUTPUT_DIR"] = str(REPO_ROOT / "outputs" / "_generated_tests")
     os.environ.setdefault("DATABASE_PATH", str(REPO_ROOT / "cpputest-rag" / "data" / "cpputest.db"))
     os.environ.setdefault("EMBED_MODEL", root_env.get("EMBED_MODEL", "all-minilm:latest"))
     os.environ.setdefault("GEN_MODEL", root_env.get("GEN_MODEL", "qwen2.5:7b"))
+    # mud-tool design assets now live under inputs/ — set them so guidelines and
+    # skills are actually loaded (the defaults pointed at python-sidecar/data/*).
+    os.environ.setdefault("MUD_GUIDELINES_DIR", str(REPO_ROOT / "inputs" / "guidelines"))
+    os.environ.setdefault("MUD_SKILLS_DIR", str(REPO_ROOT / "inputs" / "skills"))
+    os.environ.setdefault("MUD_DATA_DIR", str(REPO_ROOT / "inputs"))
     # Request timeouts: cpputest-rag reads REQUEST_TIMEOUT; mud-tool reads MUD_REQUEST_TIMEOUT.
     os.environ.setdefault("REQUEST_TIMEOUT", root_env.get("REQUEST_TIMEOUT", "1800"))
     os.environ.setdefault("MUD_REQUEST_TIMEOUT", root_env.get("MUD_REQUEST_TIMEOUT", "1800"))

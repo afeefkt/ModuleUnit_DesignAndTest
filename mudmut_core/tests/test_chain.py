@@ -47,9 +47,9 @@ def test_run_full_chain_quick_with_stubs(tmp_path, monkeypatch):
     out_dir = tmp_path / "tests_x"
     out_dir.mkdir()
 
-    async def fake_generate_tests(project_dir, function_name=None):
+    async def fake_generate_tests(project_dir, function_name=None, output_dir=None):
         return {
-            "output_directory": str(out_dir),
+            "output_directory": str(output_dir or out_dir),
             "tests_generated": 1,
             "functions_analyzed": 1,
             "failed_functions": [],
@@ -74,8 +74,11 @@ def test_run_full_chain_quick_with_stubs(tmp_path, monkeypatch):
     ))
 
     run_folder = Path(summary["run_folder"])
-    assert (run_folder / "mud_spec.md").is_file()
-    assert (run_folder / "skeleton.c").is_file()
-    assert (run_folder / "compilability.json").is_file()
-    assert (run_folder / "trace.json").is_file()
+    assert (run_folder / "00_input" / "requirements.json").is_file()
+    assert (run_folder / "01_mud" / "mud_spec.md").is_file()
+    assert (run_folder / "02_code" / "SWC_Test.c").is_file()
+    assert (run_folder / "02_code" / "compilability.json").is_file()
+    assert (run_folder / "04_trace" / "trace.json").is_file()
+    assert (run_folder / "RUN_REPORT.md").is_file()
+    assert (run_folder / "run.json").is_file()
     assert summary["compilability"]["compile_ok"] is True

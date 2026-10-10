@@ -1,7 +1,7 @@
-"""Persistent run workspace.
+"""Persistent run workspace — outputs/<run>/.
 
-Each pipeline run lives under ``workspace/runs/<timestamp>_<swc>/`` and every
-step persists its output there, so any single step can be inspected or re-run.
+Each pipeline run lives under ``outputs/<YYYYMMDD_HHMMSS>_<SWC>_<preset>/`` with
+per-stage subfolders, and ``outputs/LATEST`` names the most recent run.
 """
 
 from __future__ import annotations
@@ -14,20 +14,20 @@ from typing import Any, Optional
 
 from mudmut_core.env import REPO_ROOT
 
-RUNS_ROOT = REPO_ROOT / "workspace" / "runs"
-
-# Canonical artifact filenames (order = pipeline order).
-REQUIREMENTS = "requirements.json"
-MUD_SPEC = "mud_spec.md"
-REVIEW = "review.json"
-ACTIVITY = "activity.json"
-FLOW = "flow.mmd"
-SKELETON = "skeleton.c"
-COMPILABILITY = "compilability.json"
-TESTS_DIR = "tests"
-RESULTS = "results.json"
-TRACE = "trace.json"
+RUNS_ROOT = REPO_ROOT / "outputs"
+LATEST = "LATEST"
+RUN_REPORT = "RUN_REPORT.md"
+RUN_JSON = "run.json"
 STATE = "state.json"
+
+# Stage subfolders (order = pipeline order).
+SECTIONS = {
+    "input": "00_input",
+    "mud": "01_mud",
+    "code": "02_code",
+    "mut": "03_mut",
+    "trace": "04_trace",
+}
 
 
 @dataclass
@@ -36,19 +36,25 @@ class Run:
 
     swc: str
     folder: Path
+    preset: str = "local"
     state: dict[str, Any] = field(default_factory=dict)
 
     # ── construction ──────────────────────────────────────────────────────────
     @classmethod
-    def create(cls, swc: str, *, root: Optional[Path] = None) -> "Run":
+    def create(cls, swc: str, *, preset: str = "local", root: Optional[Path] = None) -> "Run":
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe = "".join(c if (c.isalnum() or c in "_-") else "_" for c in swc)
-        base = (root or RUNS_ROOT)
+        safe_preset = "".join(c if (c.isalnum() or c in "_-") else "_" for c in preset)
+        base = root or RUNS_ROOT
         base.mkdir(parents=True, exist_ok=True)
-        folder = base / f"{stamp}_{safe}"
+        folder = base / f"{stamp}_{safe}_{safe_preset}"
         folder.mkdir(parents=True, exist_ok=True)
-        run = cls(swc=swc, folder=folder, state={"swc": swc, "created": stamp})
+        for sub in SECTIONS.values():
+            (folder / sub).mkdir(parents=True, exist_ok=True)
+        run = cls(swc=swc, folder=folder, preset=preset,
+                  state={"swc": swc, "preset": preset, "created": stamp})
         run.save_state()
+        run.mark_latest()
         return run
 
     @classmethod
@@ -58,7 +64,12 @@ class Run:
         state_path = folder / STATE
         if state_path.is_file():
             state = json.loads(state_path.read_text(encoding="utf-8"))
-        return cls(swc=state.get("swc", folder.name), folder=folder, state=state)
+        return cls(
+            swc=state.get("swc", folder.name),
+            folder=folder,
+            preset=state.get("preset", "local"),
+            state=state,
+        )
 
     @classmethod
     def list_runs(cls, *, root: Optional[Path] = None) -> list["Run"]:
@@ -71,7 +82,37 @@ class Run:
                 runs.append(cls.load(d))
         return runs
 
-    # ── persistence helpers ───────────────────────────────────────────────────
+    @classmethod
+    def latest(cls, *, root: Optional[Path] = None) -> Optional["Run"]:
+        base = root or RUNS_ROOT
+        marker = base / LATEST
+        if not marker.is_file():
+            return None
+        name = marker.read_text(encoding="utf-8").strip()
+        folder = base / name
+        if folder.is_dir():
+            return cls.load(folder)
+        return None
+
+    def mark_latest(self) -> None:
+        marker = self.folder.parent / LATEST
+        marker.write_text(self.folder.name, encoding="utf-8")
+
+    # ── section helpers ───────────────────────────────────────────────────────
+    def dir(self, section: str) -> Path:
+        """Path to a stage subfolder (``input`` / ``mud`` / ``code`` / ``mut`` / ``trace``)."""
+        return self.folder / SECTIONS[section]
+
+    def save_in(self, section: str, name: str, text: str) -> Path:
+        p = self.dir(section) / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def save_json_in(self, section: str, name: str, obj: Any) -> Path:
+        return self.save_in(section, name, json.dumps(obj, indent=2, default=str))
+
+    # ── run-level persistence helpers ─────────────────────────────────────────
     def path(self, name: str) -> Path:
         return self.folder / name
 

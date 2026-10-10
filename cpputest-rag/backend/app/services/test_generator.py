@@ -93,9 +93,15 @@ Do not include explanations or markdown formatting - just the C++ test code."""
 
 async def generate_tests_for_project(
     project_path: Path,
-    function_name: Optional[str] = None
+    function_name: Optional[str] = None,
+    output_dir: Optional[Path] = None,
 ) -> Dict:
-    """Generate tests for all functions in a project"""
+    """Generate tests for all functions in a project.
+
+    ``output_dir`` (optional) places the tests directly in a caller-chosen
+    directory (e.g. ``outputs/<run>/03_mut``); otherwise a timestamped dir is
+    created under ``config.OUTPUT_DIR``.
+    """
 
     logger.info(f"Analyzing project: {project_path}")
 
@@ -130,8 +136,11 @@ async def generate_tests_for_project(
     logger.info(f"Generating tests for {len(functions)} functions...")
 
     # Create output directory
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = config.OUTPUT_DIR / f"tests_{timestamp}"
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = config.OUTPUT_DIR / f"tests_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     generated_tests = []

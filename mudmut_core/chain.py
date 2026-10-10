@@ -2,7 +2,7 @@
 
 Headless entry point::
 
-    python -m mudmut_core.chain --requirements mud-tool/data/sample/bms_requirements.csv \\
+    python -m mudmut_core.chain --requirements inputs/requirements/samples/bms_requirements.csv \\
         --swc SWC_BatteryManagement --quick
 """
 
@@ -14,20 +14,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from mudmut_core import aio, compilable, design, env, trace as trace_mod, verify
+from mudmut_core import aio, compilable, design, env, report as report_mod, trace as trace_mod, verify
 from mudmut_core.llm import ollama_unload
-from mudmut_core.workspace import (
-    ACTIVITY,
-    COMPILABILITY,
-    FLOW,
-    MUD_SPEC,
-    REQUIREMENTS,
-    RESULTS,
-    REVIEW,
-    SKELETON,
-    TRACE,
-    Run,
-)
+from mudmut_core.workspace import Run
 
 
 class ChainError(RuntimeError):
@@ -75,6 +64,7 @@ async def run_full_chain(
     *,
     swc: Optional[str] = None,
     quick: bool = False,
+    preset: str = "local",
     progress: Optional[Callable[[dict], None]] = None,
     keep_run: bool = True,
     root: Optional[Path] = None,
@@ -86,6 +76,7 @@ async def run_full_chain(
     """
     env.ensure_environment()
     timings: dict[str, float] = {}
+    stage_notes: dict[str, str] = {}
 
     # ── 1. import ─────────────────────────────────────────────────────────────
     t0 = time.time()
@@ -116,9 +107,9 @@ async def run_full_chain(
     _emit(progress, "plan", f"Selected {chosen.swc_name} ({len(modules)} module(s) planned)")
 
     # Create the run workspace only once the SWC is known.
-    run = Run.create(chosen.swc_name, root=root)
-    run.save_json(REQUIREMENTS, design.requirements_to_dicts(reqs))
-    run.save_state(swc=chosen.swc_name, quick=quick)
+    run = Run.create(chosen.swc_name, preset=preset, root=root)
+    run.save_json_in("input", "requirements.json", design.requirements_to_dicts(reqs))
+    run.save_state(swc=chosen.swc_name, quick=quick, preset=preset)
     _emit(progress, "workspace", f"Run workspace: {run.folder}")
 
     # ── 3. generate MUD spec ──────────────────────────────────────────────────
@@ -127,17 +118,19 @@ async def run_full_chain(
     spec_md = await design.generate_mud_spec(chosen, text, mode=mode, progress=progress)
     if not spec_md or len(spec_md.strip()) < 200:
         raise ChainError(f"MUD spec generation produced too little content ({len(spec_md or '')} chars)")
-    run.save_text(MUD_SPEC, spec_md)
+    run.save_in("mud", "mud_spec.md", spec_md)
     timings["spec"] = time.time() - t0
+    stage_notes["spec"] = f"{len(spec_md)} chars, mode={mode}"
     _emit(progress, "spec", f"MUD spec generated ({len(spec_md)} chars, mode={mode})")
 
     # ── 4. review (skip in quick mode) ────────────────────────────────────────
     if not quick:
         t0 = time.time()
         spec_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
-        run.save_json(REVIEW, review.to_dict())
-        run.save_text(MUD_SPEC, spec_md)
+        run.save_json_in("mud", "review.json", review.to_dict())
+        run.save_in("mud", "mud_spec.md", spec_md)
         timings["review"] = time.time() - t0
+        stage_notes["review"] = f"approved={review.approved} coverage={review.coverage_pct}%"
         _emit(
             progress, "review",
             f"Review: approved={review.approved} coverage={review.coverage_pct}% "
@@ -153,7 +146,7 @@ async def run_full_chain(
     )
     if not activity.diagrams:
         raise ChainError("activity generation produced no diagrams")
-    run.save_json(ACTIVITY, activity.model_dump() if hasattr(activity, "model_dump") else activity.dict())
+    run.save_json_in("mud", "activity.json", activity.model_dump() if hasattr(activity, "model_dump") else activity.dict())
     timings["activity"] = time.time() - t0
     _emit(progress, "activity", f"Generated {len(activity.diagrams)} activity diagram(s)")
 
@@ -165,21 +158,17 @@ async def run_full_chain(
     if not c_map:
         raise ChainError("no C skeleton produced (no top-level ActivityDiagram)")
 
-    # Persist the mermaid flow (first diagram, for the UI).
     first_mmd = next(iter(mermaid_map.values()), "")
-    run.save_text(FLOW, first_mmd)
-
-    # Combine all skeleton .c files into one module file for the MUT step.
+    run.save_in("mud", "flow.mmd", first_mmd)
     c_code = "\n\n".join(c_map.values())
-    run.save_text(SKELETON, c_code)
+    run.save_in("code", f"{chosen.swc_name}.c", c_code)
     timings["export"] = time.time() - t0
 
     # ── 7. make the C compilable ──────────────────────────────────────────────
-    project_dir = run.path("project")
-    project_dir.mkdir(parents=True, exist_ok=True)
+    project_dir = run.dir("code")
     t0 = time.time()
     rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir)
-    run.save_json(COMPILABILITY, {
+    run.save_json_in("code", "compilability.json", {
         "swc": chosen.swc_name,
         "total_statements": rep.total_statements,
         "kept_statements": rep.kept_statements,
@@ -188,9 +177,8 @@ async def run_full_chain(
         "compile_ok": rep.compile_ok,
         "last_error": rep.last_error,
     })
-    run.save_text(SKELETON, rep.c_code)
-    (project_dir / f"{chosen.swc_name}.c").write_text(rep.c_code, encoding="utf-8")
     timings["compilable"] = time.time() - t0
+    stage_notes["compilable"] = rep.summary()
     _emit(progress, "compilable", f"Compilability: {rep.summary()}")
 
     # Free VRAM before the MUT stage: unload every MUD-stage model so the
@@ -199,8 +187,8 @@ async def run_full_chain(
 
     # ── 8. analyze + generate tests ───────────────────────────────────────────
     t0 = time.time()
-    generation = await verify.generate_tests(project_dir)
-    run.save_json(RESULTS, {"generation": generation})
+    generation = await verify.generate_tests(project_dir, output_dir=run.dir("mut"))
+    run.save_json_in("mut", "results.json", {"generation": generation})
     timings["generate_tests"] = time.time() - t0
     _emit(
         progress, "generate_tests",
@@ -214,7 +202,7 @@ async def run_full_chain(
     if out_dir and out_dir.is_dir():
         t0 = time.time()
         test_result = verify.fix_loop(out_dir, max_attempts=2)
-        run.save_json(RESULTS, {"generation": generation, "run": test_result})
+        run.save_json_in("mut", "results.json", {"generation": generation, "run": test_result})
         timings["build_run"] = time.time() - t0
         junit = test_result.get("junit") or {}
         quarantined = test_result.get("quarantined_tests") or []
@@ -229,7 +217,8 @@ async def run_full_chain(
     # ── 10. traceability ──────────────────────────────────────────────────────
     t0 = time.time()
     trace_record = trace_mod.build_trace(chosen.swc_name, rep.c_code, generation)
-    run.save_json(TRACE, trace_record)
+    run.save_json_in("trace", "trace.json", trace_record)
+    run.save_in("trace", "trace.md", report_mod.trace_markdown(trace_record))
     timings["trace"] = time.time() - t0
     _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)")
 
@@ -237,9 +226,11 @@ async def run_full_chain(
     _unload_models([m for m in [_test_model()] if m])
 
     run.save_state(timings=timings)
-    return {
+
+    summary = {
         "run_folder": str(run.folder),
         "swc": chosen.swc_name,
+        "preset": preset,
         "timings": timings,
         "compilability": {
             "kept": rep.kept_statements,
@@ -250,33 +241,37 @@ async def run_full_chain(
         "trace": trace_record,
     }
 
+    # ── 11. run report ────────────────────────────────────────────────────────
+    report_mod.write_run_report(run, summary, stage_notes=stage_notes)
+
+    return summary
+
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description="MUD → MUT end-to-end chain (headless)")
     parser.add_argument("--requirements", required=True, help="Path to the requirements file (csv/txt/md/xlsx)")
     parser.add_argument("--swc", default=None, help="SWC name to design + test (default: first planned module)")
     parser.add_argument("--quick", action="store_true", help="single_pass spec, skip review (fast demo)")
+    parser.add_argument("--preset", default="local", help="model preset name (local/fast/openrouter/nvidia/deepseek)")
     args = parser.parse_args()
 
-    events: list[dict] = []
-
     def progress(event: dict) -> None:
-        events.append(event)
         msg = event.get("message", "")
         print(f"  [{event.get('stage', '?')}] {msg}")
 
     print("MUD_MUT chain")
     print(f"  requirements: {args.requirements}")
-    print(f"  swc: {args.swc or '(auto)'}   quick={args.quick}\n")
+    print(f"  swc: {args.swc or '(auto)'}   quick={args.quick}   preset={args.preset}\n")
 
     summary = aio.run_sync(
-        run_full_chain(args.requirements, swc=args.swc, quick=args.quick, progress=progress)
+        run_full_chain(args.requirements, swc=args.swc, quick=args.quick, preset=args.preset, progress=progress)
     )
 
     print("\n=== SUMMARY ===")
     print(json.dumps({
         "run_folder": summary["run_folder"],
         "swc": summary["swc"],
+        "preset": summary["preset"],
         "timings": summary["timings"],
         "compilability": summary["compilability"],
         "tests": {k: summary["tests"].get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},

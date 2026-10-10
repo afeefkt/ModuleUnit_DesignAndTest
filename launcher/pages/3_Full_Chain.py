@@ -20,7 +20,7 @@ st.set_page_config(page_title="Full Chain", page_icon="🔗", layout="wide")
 
 st.title("🔗 Full Chain (one-click)")
 
-SAMPLE = _REPO_ROOT / "mud-tool" / "data" / "sample" / "bms_requirements.csv"
+SAMPLE = _REPO_ROOT / "inputs" / "requirements" / "samples" / "bms_requirements.csv"
 
 st.markdown("Runs the whole pipeline: import → plan → spec → activity → C → tests → coverage → trace.")
 
