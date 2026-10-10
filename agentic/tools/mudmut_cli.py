@@ -2,7 +2,7 @@
 """mudmut_cli — deterministic tools for the MUD_MUT agentic spike.
 
 Small-model friendly: every subcommand prints COMPACT JSON to stdout and exits
-non-zero on hard failure. All artifacts land under ``agentic/runs/<run_id>/``.
+non-zero on hard failure. All artifacts land under ``outputs/<run_id>/``.
 
 This CLI wraps the existing ``mudtool`` library IN-PROCESS (no Docker, no
 FastAPI). It deliberately makes NO LLM calls — the agent (OpenCode) is the
@@ -69,9 +69,20 @@ def _sanitize_run_id(run_id: str) -> str:
     return safe
 
 
-def make_run_dir(run_id: str) -> Path:
-    """Create (if needed) and return the run's artifact directory."""
-    d = RUNS_DIR / _sanitize_run_id(run_id)
+def make_run_dir(run_id: str, swc: str = "") -> Path:
+    """Open (creating if needed) the run folder ``outputs/<run_id>/``.
+
+    Same layout as a chain run (00_input … 04_trace + state.json + LATEST), so
+    agent runs show up in Runs & Reports.
+    """
+    from mudmut_core.workspace import Run
+    return Run.open_named(_sanitize_run_id(run_id), swc=swc, preset="agent", root=RUNS_DIR).folder
+
+
+def _sec(run_dir: Path, section: str) -> Path:
+    """A run's stage folder: input / mud / code / mut / trace."""
+    from mudmut_core.workspace import SECTIONS
+    d = run_dir / SECTIONS[section]
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -139,7 +150,7 @@ def load_generation_result(path: Path) -> GenerationResult:
 
 def _load_req_ids(run_dir: Path) -> list[str] | None:
     """Return requirement IDs from the run's requirements.json, or None."""
-    req_file = run_dir / "requirements.json"
+    req_file = _sec(run_dir, "input") / "requirements.json"
     if not req_file.exists():
         return None
     data = json.loads(req_file.read_text(encoding="utf-8"))
@@ -173,7 +184,7 @@ def handle_import(args) -> dict:
 
     req_set = result.requirement_set
     # Persist the full requirement set for later stages (show-req / validation).
-    (run_dir / "requirements.json").write_text(
+    (_sec(run_dir, "input") / "requirements.json").write_text(
         json.dumps(req_set.model_dump(mode="json"), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
@@ -193,7 +204,7 @@ def handle_import(args) -> dict:
 
 def handle_show(args) -> dict:
     run_dir = make_run_dir(args.run)
-    req_file = run_dir / "requirements.json"
+    req_file = _sec(run_dir, "input") / "requirements.json"
     if not req_file.exists():
         return {"ok": False, "error": f"no requirements.json in {run_dir}; run import-reqs first"}
     data = json.loads(req_file.read_text(encoding="utf-8"))
@@ -233,7 +244,7 @@ def handle_validate(args) -> dict:
         "issues": _top_issues(report),
         "mermaid": mermaid_summary,
     }
-    (run_dir / "validation_report.json").write_text(
+    (_sec(run_dir, "mud") / "validation_report.json").write_text(
         json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return out
@@ -249,7 +260,7 @@ def handle_export_c(args) -> dict:
 
     written: dict[str, str] = {}
     for name, code in files.items():
-        path = run_dir / f"{name}.c"
+        path = _sec(run_dir, "mud") / f"{name}.c"
         path.write_text(code, encoding="utf-8")
         written[name] = str(path)
     return {"ok": True, "files": written}
@@ -266,7 +277,7 @@ def handle_render(args) -> dict:
     written: dict[str, str] = {}
     for key, text in inline.items():
         safe = key.replace(" ", "_").replace("/", "_")
-        path = run_dir / f"{safe}.mmd"
+        path = _sec(run_dir, "mud") / f"{safe}.mmd"
         path.write_text(text, encoding="utf-8")
         written[key] = str(path)
     return {"ok": True, "files": written}
@@ -275,11 +286,12 @@ def handle_render(args) -> dict:
 # ── MUT-stage subcommands (delegate to mudmut_core) ───────────────────────────
 
 def _find_c(run_dir: Path, swc: str) -> Path:
-    """Locate the C skeleton for ``swc`` (written by export-c)."""
-    p = run_dir / f"{swc}.c"
+    """Locate the C skeleton for ``swc`` (written by export-c into 01_mud/)."""
+    mud = _sec(run_dir, "mud")
+    p = mud / f"{swc}.c"
     if p.is_file():
         return p
-    for c in sorted(run_dir.glob("*.c")):
+    for c in sorted(mud.glob("*.c")):
         return c
     raise ValueError(f"no C skeleton for '{swc}' in {run_dir}; run export-c first")
 
@@ -287,9 +299,9 @@ def _find_c(run_dir: Path, swc: str) -> Path:
 def handle_make_compilable(args) -> dict:
     from mudmut_core import compilable
     import json as _json
-    run_dir = make_run_dir(args.run)
+    run_dir = make_run_dir(args.run, swc=args.swc)
     code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
-    project_dir = run_dir / "code"
+    project_dir = _sec(run_dir, "code")
     rep = compilable.make_compilable(code, args.swc, project_dir)
     (project_dir / "compilability.json").write_text(_json.dumps({
         "swc": args.swc,
@@ -310,11 +322,12 @@ def handle_make_compilable(args) -> dict:
 def handle_gen_tests(args) -> dict:
     from mudmut_core import aio, verify
     run_dir = make_run_dir(args.run)
-    project_dir = run_dir / "code"
-    if not project_dir.is_dir():
-        raise ValueError(f"no code/ dir in {run_dir}; run make-compilable first")
-    out_dir = run_dir / "tests"
+    project_dir = _sec(run_dir, "code")
+    if not any(project_dir.glob("*.c")):
+        raise ValueError(f"no C code in {project_dir}; run make-compilable first")
+    out_dir = _sec(run_dir, "mut")
     generation = aio.run_sync(verify.generate_tests(project_dir, output_dir=out_dir))
+    (out_dir / "generation.json").write_text(json.dumps(generation, indent=2, default=str), encoding="utf-8")
     return {
         "ok": True,
         "tests_generated": generation.get("tests_generated"),
@@ -327,11 +340,11 @@ def handle_gen_tests(args) -> dict:
 def handle_build_run(args) -> dict:
     from mudmut_core import verify
     run_dir = make_run_dir(args.run)
-    out_dir = run_dir / "tests"
-    if not out_dir.is_dir():
-        raise ValueError(f"no tests/ dir in {run_dir}; run gen-tests first")
+    out_dir = _sec(run_dir, "mut")
+    if not any(out_dir.glob("Test_*.cpp")):
+        raise ValueError(f"no tests in {out_dir}; run gen-tests first")
     result = verify.fix_loop(out_dir, max_attempts=2)
-    (run_dir / "run_result.json").write_text(
+    (out_dir / "results.json").write_text(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )
     return {"ok": True, "status": result.get("status"), "junit": result.get("junit"), "run_dir": str(run_dir)}
@@ -339,11 +352,12 @@ def handle_build_run(args) -> dict:
 
 def handle_trace(args) -> dict:
     from mudmut_core import trace as trace_mod
-    run_dir = make_run_dir(args.run)
-    code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
-    generation = {"output_directory": str(run_dir / "tests")}
+    run_dir = make_run_dir(args.run, swc=args.swc)
+    compiled = _sec(run_dir, "code") / f"{args.swc}.c"
+    code = (compiled if compiled.is_file() else _find_c(run_dir, args.swc)).read_text(encoding="utf-8")
+    generation = {"output_directory": str(_sec(run_dir, "mut"))}
     record = trace_mod.build_trace(args.swc, code, generation)
-    (run_dir / "trace.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    (_sec(run_dir, "trace") / "trace.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
     return {
         "ok": True,
         "requirements": len(record.get("source_requirements", [])),
@@ -358,17 +372,26 @@ def handle_report(args) -> dict:
     run_dir = make_run_dir(args.run)
     run = Run.load(run_dir)
 
-    def _load(name: str, default=None):
-        p = run_dir / name
+    def _load(section: str, name: str, default=None):
+        p = _sec(run_dir, section) / name
         return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else default
 
+    comp = _load("code", "compilability.json", {}) or {}
+    generation = _load("mut", "generation.json", {}) or {}
     summary = {
         "swc": args.swc or run.swc or args.run,
-        "preset": getattr(run, "preset", "agentic"),
+        "preset": run.preset,
         "quick": True,
-        "compilability": _load("code/compilability.json", {}),
-        "tests": _load("run_result.json", {}),
-        "trace": _load("trace.json", {}),
+        # report.py expects the chain's short keys
+        "compilability": {
+            "compile_ok": comp.get("compile_ok", False),
+            "kept": comp.get("kept_statements", 0),
+            "stubbed": comp.get("stubbed_statements", 0),
+        },
+        "tests_generated": generation.get("tests_generated", 0),
+        "generation_failed": len(generation.get("failed_functions") or []),
+        "tests": _load("mut", "results.json", {}) or {},
+        "trace": _load("trace", "trace.json", {}) or {},
     }
     p = report_mod.write_run_report(run, summary)
     return {"ok": True, "report": str(p), "run_dir": str(run_dir)}
@@ -385,7 +408,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("import-reqs", help="Import a requirements file (CSV/XLSX/MD/TXT).")
     sp.add_argument("file")
-    sp.add_argument("--run", required=True, help="run id; artifacts land under agentic/runs/<id>/")
+    sp.add_argument("--run", required=True, help="run id; artifacts land under outputs/<id>/ (00_input … 04_trace)")
     sp.set_defaults(func=handle_import)
 
     sp = sub.add_parser("show-req", help="Show one requirement's full text.")
@@ -413,15 +436,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--run", required=True)
     sp.set_defaults(func=handle_make_compilable)
 
-    sp = sub.add_parser("gen-tests", help="Generate CppUTest tests into <run>/tests/.")
+    sp = sub.add_parser("gen-tests", help="Generate CppUTest tests into <run>/03_mut/.")
     sp.add_argument("--run", required=True)
     sp.set_defaults(func=handle_gen_tests)
 
-    sp = sub.add_parser("build-run", help="Build + run the tests in <run>/tests/ (with fix loop).")
+    sp = sub.add_parser("build-run", help="Build + run the tests in <run>/03_mut/ (with fix loop).")
     sp.add_argument("--run", required=True)
     sp.set_defaults(func=handle_build_run)
 
-    sp = sub.add_parser("trace", help="Write requirement -> test traceability to <run>/trace.json.")
+    sp = sub.add_parser("trace", help="Write requirement -> test traceability to <run>/04_trace/trace.json.")
     sp.add_argument("swc")
     sp.add_argument("--run", required=True)
     sp.set_defaults(func=handle_trace)

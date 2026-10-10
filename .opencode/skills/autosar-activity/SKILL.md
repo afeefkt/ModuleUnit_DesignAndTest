@@ -87,6 +87,6 @@ flow. Output either a bare diagram object or a `{"diagrams": [ ... ]}` wrapper.
 
 ## Deeper reference
 For full AUTOSAR MUD rules (design patterns, naming cheat-sheet, ASIL checklist, RTE API
-reference), read `mud-tool/data/skills/MUD_SKILL_CORE.md` and
-`mud-tool/data/guidelines/MUD_SKILL_APPENDIX.md`. The rules above are the condensed subset
+reference), read `inputs/skills/MUD_SKILL_CORE.md` and
+`inputs/guidelines/MUD_SKILL_APPENDIX.md`. The rules above are the condensed subset
 that local 7B models most often get wrong.

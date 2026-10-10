@@ -78,15 +78,33 @@ if cloud_used:
 # Preset buttons
 presets = agents.load_presets()
 st.subheader("Presets")
-cols = st.columns(len(presets))
-for col, (pid, preset) in zip(cols, presets.items()):
-    if col.button(preset.get("label", pid), key=f"preset_{pid}"):
-        with st.spinner(f"Applying {pid}…"):
-            agents.apply_preset(pid)
-        st.rerun()
+if presets:
+    cols = st.columns(len(presets))
+    for col, (pid, preset) in zip(cols, presets.items()):
+        if col.button(preset.get("label", pid), key=f"preset_{pid}"):
+            with st.spinner(f"Applying {pid}…"):
+                _, skipped = agents.apply_preset_with_report(pid)
+            if skipped:
+                st.session_state["preset_skipped"] = (pid, skipped)
+            st.rerun()
+else:
+    st.info("No presets found (config/presets.json).")
+if st.session_state.get("preset_skipped"):
+    pid, skipped = st.session_state.pop("preset_skipped")
+    st.warning(f"Preset '{pid}' has no model for {', '.join(skipped)} — pick one below for those stages.")
 if st.button("Reset to defaults", key="reset_defaults"):
     agents.reset_defaults()
     st.rerun()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _models(provider_id: str) -> list[dict]:
+    """Live model list per provider, cached for 5 minutes (one call, not one per stage)."""
+    try:
+        return agents.available_models(provider_id)
+    except Exception:
+        return []
+
 
 # Per-stage dropdowns
 st.subheader("Stages")
@@ -94,34 +112,43 @@ if not stages:
     st.info("Could not read stage configuration.")
 else:
     for key, stage in stages.items():
+        spec = agents.STAGES_BY_KEY[key]
+        ollama_only = spec.provider_env is None
         with st.container(border=True):
             c1, c2, c3 = st.columns([1.2, 2, 3])
             c1.markdown(f"**{stage['label']}**  \n`{stage['role']}` · `{stage['side']}`")
+            shared = agents.shared_with(key)
+            if shared:
+                c1.caption("🔗 same setting as: " + ", ".join(stages[k]["label"] for k in shared if k in stages))
             current_provider = stage.get("provider") or "ollama"
+            choices = ["ollama"] if ollama_only else provider_ids
             new_provider = c2.selectbox(
-                "Provider", provider_ids,
-                index=provider_ids.index(current_provider) if current_provider in provider_ids else 0,
-                key=f"prov_{key}",
+                "Provider", choices,
+                index=choices.index(current_provider) if current_provider in choices else 0,
+                key=f"prov_{key}", disabled=ollama_only,
+                help="Ollama only for this stage" if ollama_only else None,
             )
-            # Model options: live list for the provider + the current/recommended model.
-            model_options = set()
-            if stage.get("model"):
+            live = _models(new_provider)
+            free = {m["id"] for m in live if m.get("free") and new_provider != "ollama"}
+            model_options = {m["id"] for m in live}
+            if stage.get("model") and new_provider == current_provider:
                 model_options.add(stage["model"])
-            if stage.get("recommended"):
+            if stage.get("recommended") and new_provider == "ollama":
                 model_options.add(stage["recommended"])
-            try:
-                for m in agents.available_models(new_provider):
-                    model_options.add(m["id"])
-            except Exception:
-                pass
-            model_list = sorted(model_options)
+            model_list = sorted(model_options, key=lambda m: (m not in free, m))
             cur_model = stage.get("model") or ""
-            default_idx = model_list.index(cur_model) if cur_model in model_list else 0
-            new_model = c3.selectbox(
-                "Model", model_list, index=default_idx, key=f"model_{key}",
-                format_func=lambda m: f"{m} ★" if m == stage.get("recommended") else m,
-            )
-            if new_provider != current_provider or new_model != cur_model:
+            if model_list:
+                new_model = c3.selectbox(
+                    "Model", model_list,
+                    index=model_list.index(cur_model) if cur_model in model_list else 0,
+                    key=f"model_{key}_{new_provider}",
+                    format_func=lambda m, rec=stage.get("recommended"), fr=free: (
+                        f"{m}{' 🆓' if m in fr else ''}{' ★' if m == rec else ''}"),
+                )
+            else:
+                new_model = c3.text_input("Model id", cur_model, key=f"model_{key}_{new_provider}",
+                                          help="No model list available — check the provider key / connection.")
+            if new_model and (new_provider != current_provider or new_model != cur_model):
                 if st.button("Apply", key=f"apply_{key}"):
                     agents.set_stage(key, new_provider, new_model)
                     st.rerun()

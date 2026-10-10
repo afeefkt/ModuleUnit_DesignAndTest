@@ -28,7 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 AGENT = "mud-designer"
 CLI = REPO / "agentic" / "tools" / "mudmut_cli.py"
-RUNS_DIR = REPO / "agentic" / "runs"
+RUNS_DIR = REPO / "outputs"  # same layout as chain runs (00_input ... 04_trace)
 RESULTS_PATH = REPO / "agentic" / "eval" / "results.md"
 
 RUNS = int(os.environ.get("MUDMUT_RUNS", "5"))
@@ -118,7 +118,7 @@ def _contains_error(obj) -> bool:
 
 def deterministic_validate(run_id: str) -> dict | None:
     """Re-validate the agent's final activity.json with the same CLI."""
-    activity = RUNS_DIR / run_id / "activity.json"
+    activity = RUNS_DIR / run_id / "01_mud" / "activity.json"
     if not activity.exists():
         return None
     try:

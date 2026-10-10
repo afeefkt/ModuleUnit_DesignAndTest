@@ -58,6 +58,33 @@ class Run:
         return run
 
     @classmethod
+    def open_named(cls, name: str, *, swc: str = "", preset: str = "agent",
+                   root: Optional[Path] = None) -> "Run":
+        """Open (creating if needed) a run folder with a caller-chosen name.
+
+        Used by the agent CLI, whose run ids come from the agent. The folder gets
+        the same numbered sections and ``state.json`` as a chain run, so it is
+        listed in Runs & Reports.
+        """
+        base = root or RUNS_ROOT
+        folder = base / name
+        is_new = not (folder / STATE).is_file()
+        for sub in SECTIONS.values():
+            (folder / sub).mkdir(parents=True, exist_ok=True)
+        run = cls.load(folder)
+        if is_new:
+            run.swc = swc or name
+            run.preset = preset
+            run.state = {"swc": run.swc, "preset": preset,
+                         "created": datetime.now().strftime("%Y%m%d_%H%M%S")}
+            run.save_state()
+        elif swc and run.swc != swc:
+            run.swc = swc
+            run.save_state(swc=swc)
+        run.mark_latest()
+        return run
+
+    @classmethod
     def load(cls, folder: Path | str) -> "Run":
         folder = Path(folder)
         state = {}

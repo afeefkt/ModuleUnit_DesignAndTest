@@ -1,92 +1,272 @@
 {
   "local-recommended": {
     "label": "Local - recommended",
-    "note": "Reasoning on deepseek-r1:7b, code on qwen3:8b; everything local via Ollama.",
+    "note": "One 16k-context model (qwen3:8b-ctx16384) for every MUD stage: fits an 8 GB GPU and avoids model swaps between stages. deepseek-r1:7b loads a 131k context by default — create a capped variant (see docs/providers.md) before selecting it.",
     "stages": {
-      "planner": {"provider": "ollama", "model": "deepseek-r1:7b"},
-      "mud_spec_skeleton": {"provider": "ollama", "model": "deepseek-r1:7b"},
-      "mud_spec_generator": {"provider": "ollama", "model": "qwen3:8b"},
-      "mud_spec_reviewer": {"provider": "ollama", "model": "deepseek-r1:7b"},
-      "activity_skeleton": {"provider": "ollama", "model": "deepseek-r1:7b"},
-      "activity_generator": {"provider": "ollama", "model": "qwen3:8b"},
-      "activity_reviewer": {"provider": "ollama", "model": "deepseek-r1:7b"},
-      "visual_qa": {"provider": "ollama", "model": "llava:7b"},
-      "guidelines_embed": {"provider": "ollama", "model": "bge-m3"},
-      "test_generator": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "test_fixer": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "rag_embed": {"provider": "ollama", "model": "all-minilm:latest"}
+      "planner": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "mud_spec_skeleton": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "mud_spec_generator": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "mud_spec_reviewer": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "activity_skeleton": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "activity_generator": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "activity_reviewer": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "nomic-embed-text:latest"
+      },
+      "test_generator": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "test_fixer": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
     }
   },
   "local-fast": {
     "label": "Local - fast",
     "note": "Non-thinking models throughout; much faster, lower quality.",
     "stages": {
-      "planner": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "mud_spec_skeleton": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "mud_spec_generator": {"provider": "ollama", "model": "qwen2.5-coder:7b"},
-      "mud_spec_reviewer": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "activity_skeleton": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "activity_generator": {"provider": "ollama", "model": "qwen2.5-coder:7b"},
-      "activity_reviewer": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "visual_qa": {"provider": "ollama", "model": "llava:7b"},
-      "guidelines_embed": {"provider": "ollama", "model": "all-minilm:latest"},
-      "test_generator": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "test_fixer": {"provider": "ollama", "model": "qwen2.5:7b"},
-      "rag_embed": {"provider": "ollama", "model": "all-minilm:latest"}
+      "planner": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "mud_spec_skeleton": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "mud_spec_generator": {
+        "provider": "ollama",
+        "model": "qwen2.5-coder:7b"
+      },
+      "mud_spec_reviewer": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "activity_skeleton": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "activity_generator": {
+        "provider": "ollama",
+        "model": "qwen2.5-coder:7b"
+      },
+      "activity_reviewer": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      },
+      "test_generator": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "test_fixer": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
     }
   },
   "openrouter-free": {
     "label": "OpenRouter - free",
     "note": "Generation stages on free OpenRouter models (picked from the live list); embeddings stay local.",
     "stages": {
-      "planner": {"provider": "openrouter", "model": ""},
-      "mud_spec_skeleton": {"provider": "openrouter", "model": ""},
-      "mud_spec_generator": {"provider": "openrouter", "model": ""},
-      "mud_spec_reviewer": {"provider": "openrouter", "model": ""},
-      "activity_skeleton": {"provider": "openrouter", "model": ""},
-      "activity_generator": {"provider": "openrouter", "model": ""},
-      "activity_reviewer": {"provider": "openrouter", "model": ""},
-      "visual_qa": {"provider": "ollama", "model": "llava:7b"},
-      "guidelines_embed": {"provider": "ollama", "model": "bge-m3"},
-      "test_generator": {"provider": "openrouter", "model": ""},
-      "test_fixer": {"provider": "openrouter", "model": ""},
-      "rag_embed": {"provider": "ollama", "model": "all-minilm:latest"}
+      "planner": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "mud_spec_skeleton": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "mud_spec_generator": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "mud_spec_reviewer": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "activity_skeleton": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "activity_generator": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "activity_reviewer": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "bge-m3"
+      },
+      "test_generator": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "test_fixer": {
+        "provider": "openrouter",
+        "model": ""
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
     }
   },
   "nvidia": {
     "label": "NVIDIA NIM",
     "note": "Generation stages on NVIDIA NIM; embeddings stay local.",
     "stages": {
-      "planner": {"provider": "nvidia", "model": ""},
-      "mud_spec_skeleton": {"provider": "nvidia", "model": ""},
-      "mud_spec_generator": {"provider": "nvidia", "model": ""},
-      "mud_spec_reviewer": {"provider": "nvidia", "model": ""},
-      "activity_skeleton": {"provider": "nvidia", "model": ""},
-      "activity_generator": {"provider": "nvidia", "model": ""},
-      "activity_reviewer": {"provider": "nvidia", "model": ""},
-      "visual_qa": {"provider": "ollama", "model": "llava:7b"},
-      "guidelines_embed": {"provider": "ollama", "model": "bge-m3"},
-      "test_generator": {"provider": "nvidia", "model": ""},
-      "test_fixer": {"provider": "nvidia", "model": ""},
-      "rag_embed": {"provider": "ollama", "model": "all-minilm:latest"}
+      "planner": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "mud_spec_skeleton": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "mud_spec_generator": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "mud_spec_reviewer": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "activity_skeleton": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "activity_generator": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "activity_reviewer": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "bge-m3"
+      },
+      "test_generator": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "test_fixer": {
+        "provider": "nvidia",
+        "model": ""
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
     }
   },
   "deepseek": {
     "label": "DeepSeek",
     "note": "Generation stages on DeepSeek (deepseek-chat / deepseek-reasoner); embeddings stay local.",
     "stages": {
-      "planner": {"provider": "deepseek", "model": "deepseek-chat"},
-      "mud_spec_skeleton": {"provider": "deepseek", "model": "deepseek-reasoner"},
-      "mud_spec_generator": {"provider": "deepseek", "model": "deepseek-chat"},
-      "mud_spec_reviewer": {"provider": "deepseek", "model": "deepseek-reasoner"},
-      "activity_skeleton": {"provider": "deepseek", "model": "deepseek-reasoner"},
-      "activity_generator": {"provider": "deepseek", "model": "deepseek-chat"},
-      "activity_reviewer": {"provider": "deepseek", "model": "deepseek-reasoner"},
-      "visual_qa": {"provider": "ollama", "model": "llava:7b"},
-      "guidelines_embed": {"provider": "ollama", "model": "bge-m3"},
-      "test_generator": {"provider": "deepseek", "model": "deepseek-chat"},
-      "test_fixer": {"provider": "deepseek", "model": "deepseek-chat"},
-      "rag_embed": {"provider": "ollama", "model": "all-minilm:latest"}
+      "planner": {
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
+      "mud_spec_skeleton": {
+        "provider": "deepseek",
+        "model": "deepseek-reasoner"
+      },
+      "mud_spec_generator": {
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
+      "mud_spec_reviewer": {
+        "provider": "deepseek",
+        "model": "deepseek-reasoner"
+      },
+      "activity_skeleton": {
+        "provider": "deepseek",
+        "model": "deepseek-reasoner"
+      },
+      "activity_generator": {
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
+      "activity_reviewer": {
+        "provider": "deepseek",
+        "model": "deepseek-reasoner"
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "bge-m3"
+      },
+      "test_generator": {
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
+      "test_fixer": {
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
     }
   }
 }

@@ -35,21 +35,22 @@ Every AI step is wrapped in **deterministic guardrail layers** (see [Reliability
 
 ```mermaid
 flowchart LR
-    REQ[/"📄 Requirements<br/>CSV · XLSX · MD · TXT"/]
+    REQ[/"📄 inputs/requirements/<br/>CSV · XLSX · MD · TXT"/]
 
     subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
         direction TB
-        P1["① Design MUD"]
-        P2["② Unit Tests MUT"]
-        P3["③ Full Chain<br/>(= python -m mudmut_core.chain)"]
+        SET["⚙️ Providers & Keys · Workflow & Models<br/>preset or provider+model per stage"]
+        P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain"]
+        RR["📊 Runs & Reports<br/>verdicts · compare runs"]
+        OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
     end
 
     subgraph MUD["🧩 MUD — mud-tool library (in-process)"]
         direction TB
-        IMP["Import"] --> PLAN["Plan modules (SWC)<br/><i>qwen3:8b-ctx16384</i>"]
-        PLAN --> SPEC["MUD spec<br/>single_pass · two_stage + review"]
-        SPEC --> ACT{"Activity flow<br/>(call_signature labels)"}
-        ACT -- "AI placeholder / timeout" --> FB["Deterministic Section 7<br/>flow builder"]
+        IMP["Import"] --> PLAN["Plan modules (SWC)<br/><i>stage: planner</i>"]
+        PLAN --> SPEC["MUD spec<br/>single_pass · two_stage + review<br/><i>stages: skeleton · generator · reviewer</i>"]
+        SPEC --> ACT{"Activity flow"}
+        ACT -- "quick mode / AI placeholder" --> FB["Deterministic Section 7<br/>flow builder"]
         ACT --> EXP["Export C skeleton + Mermaid"]
         FB --> EXP
     end
@@ -60,27 +61,38 @@ flowchart LR
 
     subgraph MUT["🧪 MUT — cpputest-rag library (in-process)"]
         direction TB
-        GEN["Generate CppUTest per runnable<br/>RAG examples · <i>qwen2.5:7b</i>"]
-        GEN --> FIX["Build (make in WSL) → fix loop:<br/>define invented constants → LLM fix ×2"]
+        GEN["Generate CppUTest per runnable<br/>RAG examples · <i>stage: test_generator</i>"]
+        GEN --> FIX["Build (make in WSL) → fix loop:<br/>define invented constants → LLM fix ×2<br/><i>stage: test_fixer</i>"]
         FIX -- "still red" --> Q["quarantined/ (+ smoke test if none compile)"]
         FIX --> RUN["Run → JUnit · lcov coverage · HTML report"]
         Q --> RUN
     end
 
-    TRACE[/"🔗 trace.json<br/>REQ → test · verified / not_verified"/]
-    OLL[("🦙 Ollama on Windows<br/>localhost:11434")]
+    OUT[/"📁 outputs/&lt;run&gt;/<br/>00_input · 01_mud · 02_code · 03_mut · 04_trace<br/>RUN_REPORT.md · run.json (verdicts, models, cloud notice)"/]
+
+    subgraph LLM["🧠 mudmut_core/llm — one client, per-stage provider"]
+        OLL[("🦙 Ollama (local)<br/>localhost:11434")]
+        CLOUD[("☁️ OpenRouter · NVIDIA · DeepSeek · Google<br/>keys from Windows user env")]
+    end
+
+    AG["🤖 opencode serve + mud-designer agent<br/>→ agentic/tools/mudmut_cli.py"]
 
     REQ --> IMP
     UI -.-> MUD
     EXP --> CMP --> GEN
-    RUN --> TRACE
-    OLL -.-> PLAN
-    OLL -.-> SPEC
-    OLL -.-> GEN
+    RUN --> OUT
+    OCP --> AG -.-> MUD
+    AG -.-> OUT
+    RR -.-> OUT
+    SET -.-> LLM
+    LLM -.-> PLAN
+    LLM -.-> SPEC
+    LLM -.-> GEN
 ```
 
-Every run is saved in `workspace/runs/<timestamp>_<SWC>/` (spec, activity JSON, flow, skeleton,
-compilability report, test results, trace), so any step can be inspected or re-run.
+Every run is saved in `outputs/<YYYYMMDD_HHMMSS>_<SWC>_<preset>/` with one folder per stage and a
+`RUN_REPORT.md` (✅/⚠️/❌ per stage, the provider + model used for every stage, and whether any data
+was sent to a cloud provider). `outputs/LATEST` names the most recent run.
 
 ## One platform, two halves
 
@@ -106,11 +118,12 @@ requirements.csv
 
 | Folder | What it is | Notes |
 |---|---|---|
-| [`launcher/`](launcher/) | The Streamlit platform (Home/Status + Design + Unit Tests + Full Chain) | `streamlit run launcher/streamlit_app.py` |
-| [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, chain, toolchain) | used by the UI, the CLI and the tests |
+| [`launcher/`](launcher/) | The Streamlit platform (Home · Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent) | `./launch.sh` / `launch.bat` |
+| [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry) | used by the UI, the CLI, the agent and the tests |
 | [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR flow charts → C-skeleton export | in-process library |
 | [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage | in-process library |
-| [`bridge/`](bridge/) | CLI glue (skeleton → tests → traceability) | [docs/pipeline.md](docs/pipeline.md) |
+| [`agentic/`](agentic/) | OpenCode agent layer (`mudmut_cli.py` tools on `mudmut_core`) | [agentic/README.md](agentic/README.md) |
+| `inputs/` · `outputs/` | Requirements, guidelines, skills, test examples · one folder per run | `config/` holds presets + your stage selection |
 
 ---
 
@@ -237,16 +250,17 @@ MUD_MUT/
 ├── setup.sh / setup.bat      ← one-time setup (venv + deps)
 ├── launch.sh / launch.bat    ← launch the Streamlit platform
 ├── .env.example / .env.local.example / .env.auto.example
-├── docs/
-│   └── pipeline.md           ← end-to-end MUD → C-skeleton → tests walkthrough
+├── docs/                     ← pipeline.md · providers.md
+├── config/                   ← presets.json (tracked) · stages.json (your selection, git-ignored)
+├── inputs/                   ← requirements/ (samples/) · guidelines/ · skills/ · test_examples/
+├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
 │   ├── streamlit_app.py      ← Home / Status page
-│   └── pages/                ← 1_Design_MUD · 2_Unit_Tests_MUT · 3_Full_Chain
-├── mudmut_core/              ← the shared in-process engine (UI + CLI + tests)
+│   └── pages/                ← Design · Unit Tests · Full Chain · Workflow & Models · Providers · Runs & Reports · OpenCode Agent
+├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
+├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)
-├── cpputest-rag/             ← VERIFICATION half (history-preserved subtree)
-└── bridge/
-    └── mud_to_tests.py       ← the pipeline glue + traceability
+└── cpputest-rag/             ← VERIFICATION half (history-preserved subtree)
 ```
 
 ---
@@ -268,19 +282,18 @@ gh repo create MUD_MUT --public --source=. --remote=origin --push
 
 CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
-## Agentic mode (experimental)
+## Agentic mode (OpenCode layer)
 
-An experimental **agentic flow** replaces the orchestration with OpenCode as the agent backend and Streamlit
-as the frontend, reusing the same deterministic `mudtool` library in-process. The platform above remains the
-default, the fallback, and the benchmark.
+An optional extra layer: the **OpenCode Agent** page starts `opencode serve` inside WSL and lets the
+`mud-designer` agent drive the same engine through `agentic/tools/mudmut_cli.py`. Every tool call is shown
+live in a timeline, permission requests can be approved inline, and the agent's run lands in
+`outputs/<run>/` like any other run (visible in Runs & Reports). Needs a native OpenCode in WSL:
 
 ```bash
-python3 -m venv .venv-agentic && .venv-agentic/bin/pip install -e mud-tool/python-sidecar pytest
-export OLLAMA_BASE_URL=http://localhost:11434/v1
-opencode run --agent mud-designer "Design the activity flow for RE_EstimateSOC …"
+curl -fsSL https://opencode.ai/install | bash      # inside WSL; installs ~/.opencode/bin/opencode
 ```
 
-Artifacts land under `agentic/runs/<id>/`. See [agentic/README.md](agentic/README.md).
+See [agentic/README.md](agentic/README.md).
 
 ---
 

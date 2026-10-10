@@ -10,6 +10,7 @@ spike lives under `agentic/` and drives the deterministic `mudtool` library via
 2. **Not a certified tool.** All output is an AI-assisted draft. Never claim ASIL / ISO 26262
    compliance. Flag ASIL-B-and-above designs for human review.
 3. **Local-first.** Do not use web access to process requirements or generated designs.
-4. **Artifacts live under `agentic/runs/<id>/`.** Deterministic artifacts are produced by the
-   CLI, not hand-written. The agent writes only `activity.json` there.
+4. **Artifacts live under `outputs/<id>/`** (00_input … 04_trace, RUN_REPORT.md). Deterministic
+   artifacts are produced by the CLI, not hand-written. The agent writes only
+   `outputs/<id>/01_mud/activity.json`.
 5. **Least privilege.** Run only the tools your agent is permitted to run.

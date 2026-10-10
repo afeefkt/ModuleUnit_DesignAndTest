@@ -114,7 +114,7 @@ def test_import_requirements(tmp_path):
     assert out["count"] == 2
     assert out["ids"] == ["REQ-BMS-001", "REQ-BMS-002"]
 
-    reqs_path = Path(out["run_dir"]) / "requirements.json"
+    reqs_path = Path(out["run_dir"]) / "00_input" / "requirements.json"
     assert reqs_path.exists()
 
 
@@ -180,3 +180,23 @@ def test_render_mermaid(tmp_path):
     mmd_path = Path(next(iter(out["files"].values())))
     content = mmd_path.read_text(encoding="utf-8")
     assert content.lstrip().startswith("flowchart TD")
+
+
+def test_agent_run_uses_numbered_layout_and_is_listed(tmp_path, monkeypatch):
+    """Agent runs share the chain layout so Runs & Reports can list them."""
+    from mudmut_core.workspace import Run
+
+    monkeypatch.setattr(mudmut_cli, "RUNS_DIR", tmp_path)
+    run_dir = mudmut_cli.make_run_dir("agent_run_1", swc="SWC_Agent")
+    for sub in ("00_input", "01_mud", "02_code", "03_mut", "04_trace"):
+        assert (run_dir / sub).is_dir()
+    listed = Run.list_runs(root=tmp_path)
+    assert [r.folder.name for r in listed] == ["agent_run_1"]
+    assert listed[0].swc == "SWC_Agent"
+    assert (tmp_path / "LATEST").read_text().strip() == "agent_run_1"
+
+
+def test_run_id_cannot_escape_outputs(tmp_path, monkeypatch):
+    monkeypatch.setattr(mudmut_cli, "RUNS_DIR", tmp_path)
+    run_dir = mudmut_cli.make_run_dir("../../etc/x")
+    assert run_dir.resolve().parent == tmp_path.resolve()

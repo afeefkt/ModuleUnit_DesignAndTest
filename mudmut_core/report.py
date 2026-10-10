@@ -15,6 +15,13 @@ from typing import Any, Optional
 from mudmut_core.workspace import RUN_JSON, RUN_REPORT, Run
 
 
+# Pipeline stages in execution order (verdict keys).
+STAGE_ORDER = (
+    "import", "plan", "spec", "review", "activity",
+    "compilable", "generate_tests", "build_run", "trace",
+)
+
+
 def _models_snapshot() -> dict[str, Any]:
     """Snapshot of the real provider+model per stage (from ``agents.get_stages()``)."""
     try:
@@ -112,6 +119,14 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "trace": "✅",
     }
 
+    # A failed run: the failing stage is ❌, every stage after it was never reached.
+    failed_stage = summary.get("failed_stage")
+    if failed_stage in STAGE_ORDER:
+        idx = STAGE_ORDER.index(failed_stage)
+        verdicts[failed_stage] = "❌"
+        for later in STAGE_ORDER[idx + 1:]:
+            verdicts[later] = "—"
+
     cloud_notice = (
         f"Data sent to cloud: {', '.join(clouds)}" if clouds else "Data sent to cloud: none (all local)"
     )
@@ -125,6 +140,9 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "cloud_providers": clouds,
         "cloud_notice": cloud_notice,
         "timings": summary.get("timings", {}),
+        "failed_stage": failed_stage,
+        "error": summary.get("error"),
+        "warnings": summary.get("warnings", []),
         "compilability": comp,
         "tests": {k: tests.get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
         "trace": {
@@ -140,6 +158,12 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         f"- **Preset:** {summary.get('preset', run.preset)}",
         f"- **Generated:** {datetime.now().isoformat()}",
         f"- **{cloud_notice}**",
+    ]
+    if failed_stage:
+        lines.append(f"- **❌ Run failed in stage `{failed_stage}`:** {summary.get('error', '')}")
+    for warning in summary.get("warnings", []):
+        lines.append(f"- ⚠️ {warning}")
+    lines += [
         "",
         "## Stage verdicts",
         "",
@@ -157,7 +181,7 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "build_run": "Build & run",
         "trace": "Traceability",
     }
-    for key in ("import", "plan", "spec", "review", "activity", "compilable", "generate_tests", "build_run", "trace"):
+    for key in STAGE_ORDER:
         lines.append(f"| {stage_labels[key]} | {verdicts.get(key, '✅')} | {stage_notes.get(key, '')} |")
 
     lines += [

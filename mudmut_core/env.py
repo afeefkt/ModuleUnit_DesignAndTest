@@ -59,7 +59,8 @@ def ensure_environment() -> str:
     # with relative defaults, so absolute paths must be set BEFORE ``import app.*``.
     os.environ["OLLAMA_URL"] = ollama_url
     os.environ["TEST_EXAMPLES_DIR"] = str(REPO_ROOT / "inputs" / "test_examples")
-    os.environ["OUTPUT_DIR"] = str(REPO_ROOT / "outputs" / "_generated_tests")
+    # Runs pass their own 03_mut dir; this default only serves the optional FastAPI backend.
+    os.environ["OUTPUT_DIR"] = str(REPO_ROOT / "outputs" / "_state" / "generated_tests")
     os.environ.setdefault("DATABASE_PATH", str(REPO_ROOT / "outputs" / "_state" / "cpputest.db"))
     os.environ.setdefault("EMBED_MODEL", root_env.get("EMBED_MODEL", "all-minilm:latest"))
     os.environ.setdefault("GEN_MODEL", root_env.get("GEN_MODEL", "qwen2.5:7b"))
@@ -79,28 +80,46 @@ def ensure_environment() -> str:
     except Exception:
         pass
 
+    # Export provider keys before anything reads (and caches) mud-tool settings.
+    _export_keys()
+
     _LOADED = True
     return ollama_url
 
 
-def export_provider_keys() -> None:
-    """Resolve cloud provider keys and export them to ``os.environ`` (process only).
+def _export_keys() -> list[str]:
+    """Put resolved provider keys into ``os.environ`` (process only, never a file).
 
-    The mud-tool settings read the shared key names (``OPENROUTER_API_KEY`` etc.)
-    via ``validation_alias``, but WSL does not inherit Windows user variables, so
-    we resolve them here (env → .env → Windows User scope) and export them in
-    memory — never to a file.
+    Returns the names newly added. mud-tool reads the shared names
+    (``OPENROUTER_API_KEY`` …) via ``validation_alias``; WSL does not inherit
+    Windows user variables, so they are resolved env → .env → Windows User scope.
     """
-    ensure_environment()
+    added: list[str] = []
     try:
         from mudmut_core.llm.providers import get_providers, resolve_key
         for p in get_providers().values():
-            if p.key_env:
+            if p.key_env and not os.environ.get(p.key_env):
                 key = resolve_key(p.key_env)
                 if key:
                     os.environ[p.key_env] = key
+                    added.append(p.key_env)
     except Exception:
         pass
+    return added
+
+
+def export_provider_keys() -> None:
+    """Ensure provider keys are exported; refresh mud-tool settings if a key was
+    only found now (settings are cached and would otherwise miss it)."""
+    ensure_environment()
+    if _export_keys():
+        try:
+            from mudtool.config.settings import get_settings
+            get_settings.cache_clear()
+            from mudtool.api.dependencies import reset_orchestrator
+            reset_orchestrator()
+        except Exception:
+            pass
 
 
 def ollama_host() -> str:

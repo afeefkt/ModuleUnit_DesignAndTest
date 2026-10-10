@@ -31,8 +31,15 @@ with col2:
     quick = st.checkbox("Quick mode (single-pass, skip review)", value=True)
 
 from mudmut_core import agents  # noqa: E402
-preset_names = list(agents.load_presets().keys())
-preset = st.selectbox("Model preset", preset_names, index=0)
+CURRENT = "Current selection (Workflow & Models)"
+preset_choice = st.selectbox(
+    "Models",
+    [CURRENT] + list(agents.load_presets().keys()),
+    index=0,
+    help="'Current selection' runs with your per-stage choices and leaves them unchanged. "
+         "Choosing a preset applies it to every stage first (and saves it as your selection).",
+)
+preset = None if preset_choice == CURRENT else preset_choice
 
 if st.button("▶ Run full chain", type="primary"):
     steps = st.empty()
@@ -49,6 +56,8 @@ if st.button("▶ Run full chain", type="primary"):
         steps.markdown("\n".join(f"- ✅ {e['stage']}: {e['message']}" for e in log))
         st.session_state["current_run_folder"] = summary["run_folder"]
         st.success("Chain complete.")
+        for warning in summary.get("warnings", []):
+            st.warning(warning)
         st.json({
             "run_folder": summary["run_folder"],
             "swc": summary["swc"],

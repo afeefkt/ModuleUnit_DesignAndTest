@@ -86,8 +86,6 @@ def _test_dir(output_directory: str) -> Optional[Path]:
     if not output_directory:
         return None
     out = Path(output_directory)
-    if not out.is_dir():
-        out = REPO_ROOT / "cpputest-rag" / "generated_tests" / out.name
     return out if out.is_dir() else None
 
 

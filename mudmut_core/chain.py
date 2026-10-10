@@ -64,12 +64,16 @@ async def run_full_chain(
     *,
     swc: Optional[str] = None,
     quick: bool = False,
-    preset: str = "local-recommended",
+    preset: Optional[str] = None,
     progress: Optional[Callable[[dict], None]] = None,
     keep_run: bool = True,
     root: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Run the whole MUD → MUT pipeline and return a summary dict.
+
+    ``preset=None`` (default) runs with the current per-stage selection
+    (Workflow & Models / ``config/stages.json``) and does not change it. Pass a
+    preset id from ``config/presets.json`` to apply that preset first.
 
     ``quick=True`` uses ``single_pass`` spec generation, skips the review and
     builds the activity flow deterministically from Section 7.
@@ -77,11 +81,20 @@ async def run_full_chain(
     A ``RUN_REPORT.md`` + ``run.json`` are always written (even on failure), and
     the LLM models are unloaded on exit.
     """
-    run_holder: dict[str, Any] = {}
+    run_holder: dict[str, Any] = {"done": None, "warnings": []}
+
+    def tracking_progress(event: dict) -> None:
+        # Remember the last completed pipeline stage, so a failure can be
+        # attributed to the stage that was running.
+        if event.get("stage") in report_mod.STAGE_ORDER:
+            run_holder["done"] = event["stage"]
+        if progress:
+            progress(event)
+
     try:
         return await _run_full_chain(
             requirements_file, swc=swc, quick=quick, preset=preset,
-            progress=progress, keep_run=keep_run, root=root, run_holder=run_holder,
+            progress=tracking_progress, keep_run=keep_run, root=root, run_holder=run_holder,
         )
     except Exception as exc:
         run = run_holder.get("run")
@@ -90,16 +103,18 @@ async def run_full_chain(
                 report_mod.write_run_report(run, {
                     "run_folder": str(run.folder),
                     "swc": run.swc,
-                    "preset": preset,
+                    "preset": run.preset,
                     "quick": quick,
                     "timings": run.state.get("timings", {}),
                     "tests_generated": 0,
                     "generation_failed": 0,
-                    "review_approved": True,
+                    "review_approved": run_holder.get("review_approved", True),
                     "compilability": {"compile_ok": False, "stubbed": 0, "kept": 0},
                     "tests": {"status": "error"},
                     "trace": {},
-                    "error": str(exc),
+                    "failed_stage": _failed_stage(run_holder.get("done"), quick),
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "warnings": run_holder.get("warnings", []),
                 }, stage_notes={"error": str(exc)})
             except Exception:
                 pass
@@ -109,12 +124,21 @@ async def run_full_chain(
         _unload_models([m for m in [_test_model()] if m])
 
 
+def _failed_stage(last_done: Optional[str], quick: bool) -> str:
+    """The stage after the last completed one (review is skipped in quick mode)."""
+    order = [s for s in report_mod.STAGE_ORDER if not (quick and s == "review")]
+    if last_done not in order:
+        return order[0]
+    idx = order.index(last_done)
+    return order[min(idx + 1, len(order) - 1)]
+
+
 async def _run_full_chain(
     requirements_file: str | Path,
     *,
     swc: Optional[str] = None,
     quick: bool = False,
-    preset: str = "local-recommended",
+    preset: Optional[str] = None,
     progress: Optional[Callable[[dict], None]] = None,
     keep_run: bool = True,
     root: Optional[Path] = None,
@@ -127,14 +151,26 @@ async def _run_full_chain(
     stage_notes: dict[str, str] = {}
     review_approved: bool = True
 
-    # Apply the requested preset so the run uses its provider+model selection
-    # (not just its name in the folder).
-    try:
-        from mudmut_core import agents
-        agents.apply_preset(preset)
-        _emit(progress, "preset", f"Applied preset '{preset}'")
-    except KeyError:
-        _emit(progress, "preset", f"Preset '{preset}' unknown — using current selection")
+    holder = run_holder if run_holder is not None else {}
+    warnings: list[str] = holder.setdefault("warnings", [])
+
+    # Only an explicitly requested preset changes the stage selection; by
+    # default the run uses (and never overwrites) the user's current choices.
+    from mudmut_core import agents
+    if preset:
+        try:
+            _, skipped = agents.apply_preset_with_report(preset)
+            _emit(progress, "preset", f"Applied preset '{preset}'")
+            if skipped:
+                msg = (f"Preset '{preset}' has no model for: {', '.join(skipped)} — "
+                       f"these stages kept their current model (pick one on Workflow & Models)")
+                warnings.append(msg)
+                _emit(progress, "preset", msg)
+        except KeyError:
+            msg = f"Preset '{preset}' unknown — using the current selection"
+            warnings.append(msg)
+            _emit(progress, "preset", msg)
+    run_label = preset or "custom"
 
     # ── 1. import ─────────────────────────────────────────────────────────────
     t0 = time.time()
@@ -165,11 +201,11 @@ async def _run_full_chain(
     _emit(progress, "plan", f"Selected {chosen.swc_name} ({len(modules)} module(s) planned)")
 
     # Create the run workspace only once the SWC is known.
-    run = Run.create(chosen.swc_name, preset=preset, root=root)
+    run = Run.create(chosen.swc_name, preset=run_label, root=root)
     if run_holder is not None:
         run_holder["run"] = run
     run.save_json_in("input", "requirements.json", design.requirements_to_dicts(reqs))
-    run.save_state(swc=chosen.swc_name, quick=quick, preset=preset)
+    run.save_state(swc=chosen.swc_name, quick=quick, preset=run_label)
     _emit(progress, "workspace", f"Run workspace: {run.folder}")
 
     # ── 3. generate MUD spec ──────────────────────────────────────────────────
@@ -188,6 +224,7 @@ async def _run_full_chain(
         t0 = time.time()
         spec_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
         review_approved = bool(review.approved)
+        holder["review_approved"] = review_approved
         run.save_json_in("mud", "review.json", review.to_dict())
         run.save_in("mud", "mud_spec.md", spec_md)
         timings["review"] = time.time() - t0
@@ -286,8 +323,9 @@ async def _run_full_chain(
     summary = {
         "run_folder": str(run.folder),
         "swc": chosen.swc_name,
-        "preset": preset,
+        "preset": run_label,
         "quick": quick,
+        "warnings": warnings,
         "timings": timings,
         "tests_generated": generation.get("tests_generated", 0),
         "generation_failed": len(generation.get("failed_functions") or []),
@@ -312,8 +350,9 @@ def _main() -> int:
     parser.add_argument("--requirements", required=True, help="Path to the requirements file (csv/txt/md/xlsx)")
     parser.add_argument("--swc", default=None, help="SWC name to design + test (default: first planned module)")
     parser.add_argument("--quick", action="store_true", help="single_pass spec, skip review (fast demo)")
-    parser.add_argument("--preset", default="local-recommended",
-                        help="model preset id from config/presets.json (local-recommended/local-fast/openrouter-free/nvidia/deepseek)")
+    parser.add_argument("--preset", default=None,
+                        help="apply a preset id from config/presets.json first (default: keep the "
+                             "current per-stage selection from Workflow & Models)")
     args = parser.parse_args()
 
     def progress(event: dict) -> None:

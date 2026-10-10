@@ -61,3 +61,18 @@ bill. Model lists are fetched live — there are no hard-coded IDs.
 - **Local – recommended** (`deepseek-r1:7b` reasoning + `qwen3:8b-ctx16384` code) — highest quality, slowest.
 - **Local – fast** (`qwen2.5-coder:7b` / `qwen2.5:7b`, non-thinking) — fastest local run.
 - **OpenRouter – free** / **NVIDIA** / **DeepSeek** — generation stages on the cloud provider; embeddings stay local.
+
+## Local models: cap the context window (8 GB GPUs)
+
+Ollama loads a model with its full native context unless told otherwise — `deepseek-r1:7b` loads
+**131k tokens** (~12 GB), which spills onto the CPU, runs slowly and can stall Ollama when it swaps
+models. Use capped variants for pipeline stages (the `-ctx16384` models). To make one:
+
+```bash
+printf 'FROM deepseek-r1:7b\nPARAMETER num_ctx 16384\n' > /tmp/Modelfile
+ollama create deepseek-r1:7b-ctx16384 -f /tmp/Modelfile     # shares the weights, no extra download
+```
+
+Then pick it on *Workflow & Models*. The **Local – recommended** preset uses one capped model
+(`qwen3:8b-ctx16384`) for every MUD stage, so Ollama never swaps models mid-design; the chain unloads
+it before test generation.

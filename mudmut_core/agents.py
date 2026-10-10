@@ -41,6 +41,12 @@ class Stage:
     description: str = ""
 
 
+def shared_with(key: str) -> list[str]:
+    """Other stages that read the same model setting (changing one changes them)."""
+    me = STAGES_BY_KEY[key]
+    return [s.key for s in STAGES if s.key != key and s.model_env == me.model_env]
+
+
 # ── stage registry ────────────────────────────────────────────────────────────
 STAGES: list[Stage] = [
     Stage("planner", "Module planner", "mud", "reasoning",
@@ -53,7 +59,7 @@ STAGES: list[Stage] = [
           "Extracts runnables + per-runnable key steps from requirements."),
     Stage("mud_spec_generator", "MUD spec generator (Stage 3)", "mud", "code",
           "MUD_PIPELINE_GENERATOR_MODEL", "MUD_PIPELINE_GENERATOR_PROVIDER",
-          "pipeline_generator_model", "pipeline_generator_provider", "qwen3:8b",
+          "pipeline_generator_model", "pipeline_generator_provider", "qwen3:8b-ctx16384",
           "Fills runnable details: signature, pseudo-code, traceability."),
     Stage("mud_spec_reviewer", "MUD spec reviewer", "mud", "reasoning",
           "MUD_PIPELINE_REVIEWER_MODEL", "MUD_PIPELINE_REVIEWER_PROVIDER",
@@ -65,19 +71,19 @@ STAGES: list[Stage] = [
           "Activity flow topology from Section 7."),
     Stage("activity_generator", "Activity generator (Stage 3)", "mud", "code",
           "MUD_PIPELINE_GENERATOR_MODEL", "MUD_PIPELINE_GENERATOR_PROVIDER",
-          "pipeline_generator_model", "pipeline_generator_provider", "qwen3:8b",
+          "pipeline_generator_model", "pipeline_generator_provider", "qwen3:8b-ctx16384",
           "Per-runnable code-flow diagram generation."),
     Stage("activity_reviewer", "Activity reviewer (Stage 4)", "mud", "reasoning",
           "MUD_ACTIVITY_PIPELINE_REVIEWER_MODEL", "MUD_ACTIVITY_PIPELINE_REVIEWER_PROVIDER",
           "activity_pipeline_reviewer_model", "activity_pipeline_reviewer_provider", "deepseek-r1:7b",
           "Cross-runnable activity review."),
     Stage("visual_qa", "Visual QA (optional)", "mud", "vision",
-          "MUD_VISUAL_QA_MODEL", "MUD_VISUAL_QA_PROVIDER",
-          "visual_qa_model", "visual_qa_provider", "llava:7b",
-          "Vision review of rendered diagrams."),
+          "MUD_VISUAL_QA_MODEL", None,
+          "visual_qa_model", None, "llava:7b",
+          "Vision review of rendered diagrams (Ollama only — native /api/chat)."),
     Stage("guidelines_embed", "Guidelines embeddings", "mud", "embed",
           "MUD_GUIDELINES_EMBED_MODEL", None,
-          "guidelines_embed_model", None, "bge-m3",
+          "guidelines_embed_model", None, "nomic-embed-text:latest",
           "Embedding model for design-guideline RAG (Ollama only)."),
     Stage("test_generator", "Test generator", "mut", "code",
           "GEN_MODEL", "TEST_GEN_PROVIDER",
@@ -128,6 +134,10 @@ def apply_stages_to_env(stages: dict[str, dict[str, str]]) -> None:
             continue
         provider = cfg.get("provider") or "ollama"
         model = cfg.get("model") or ""
+        if not model:
+            # A stage saved without a model (e.g. a cloud stage before a model
+            # was picked) must not blank out the configured/default model.
+            continue
         os.environ[stage.model_env] = model
         if stage.provider_env:
             # Local ollama is the default → empty override (use global backend).
@@ -267,20 +277,27 @@ def apply_preset(name: str) -> dict[str, Any]:
     Cloud stages whose preset model is blank are skipped (the user must pick a
     model from the live list first), so a blank id is never sent to a cloud API.
     """
+    return apply_preset_with_report(name)[0]
+
+
+def apply_preset_with_report(name: str) -> tuple[dict[str, Any], list[str]]:
+    """Like :func:`apply_preset`, also returning the stage keys that were skipped
+    because the preset has no model for a cloud provider (so callers can warn)."""
     presets = load_presets()
     preset = presets.get(name)
     if not preset:
         raise KeyError(f"unknown preset: {name}")
-    stages = preset.get("stages", {})
-    for key, cfg in stages.items():
+    skipped: list[str] = []
+    for key, cfg in preset.get("stages", {}).items():
         if key not in STAGES_BY_KEY:
             continue
         provider = cfg.get("provider", "ollama")
         model = cfg.get("model", "")
         if provider != "ollama" and not model:
-            continue  # blank cloud model — leave unchanged
+            skipped.append(key)  # blank cloud model — leave the stage unchanged
+            continue
         set_stage(key, provider, model)
-    return get_stages()
+    return get_stages(), skipped
 
 
 def reset_defaults() -> dict[str, Any]:
