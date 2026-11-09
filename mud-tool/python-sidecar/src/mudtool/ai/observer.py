@@ -29,6 +29,33 @@ def new_call_id() -> int:
         return next(_counter)
 
 
+class GenerationCancelled(BaseException):
+    """The host asked to stop (raised between AI attempts / per-runnable calls).
+
+    A ``BaseException`` on purpose: the retry loops catch ``Exception`` and must not swallow it.
+    """
+
+
+_cancel_check: Optional[Callable[[], bool]] = None
+
+
+def set_cancel_check(check: Optional[Callable[[], bool]]) -> None:
+    """Register (or clear) a callable that returns True when the current work should stop."""
+    global _cancel_check
+    _cancel_check = check
+
+
+def check_cancel(where: str = "") -> None:
+    """Raise :class:`GenerationCancelled` if the host asked to cancel."""
+    check = _cancel_check
+    try:
+        stop = bool(check and check())
+    except Exception:  # noqa: BLE001 - a broken check never cancels
+        stop = False
+    if stop:
+        raise GenerationCancelled(f"Cancelled {where}".strip())
+
+
 def notify(event: str, **data: Any) -> None:
     """Send ``event`` ("start" | "chunk" | "end" | "error") with ``data`` to the observer."""
     cb = _observer

@@ -79,6 +79,9 @@ if uploaded is not None and not use_sample:
                     mapping[field] = choice
 
 if st.button("Import requirements", type="primary"):
+    from mudmut_core import settings as _settings
+    if _settings.auto_reset_enabled():
+        c.reset_view()   # a new import starts a new design: drop the previous run's screen state
     if use_sample:
         path = SAMPLE
     elif uploaded is not None:
@@ -180,7 +183,7 @@ if reqs is not None:
                 if st.button("Make compilable"):
                     run = workspace.Run.create(module.swc_name)
                     project_dir = run.dir("code")
-                    rep = compilable.make_compilable(code, module.swc_name, project_dir)
+                    rep = compilable.make_compilable(code, module.swc_name, project_dir, spec_md=spec_md)
                     run.save_in("mud", "mud_spec.md", spec_md)
                     run.save_in("code", f"{module.swc_name}.c", rep.c_code)
                     run.save_in("mud", "flow.mmd", flow)
@@ -188,7 +191,7 @@ if reqs is not None:
                         "total": rep.total_statements, "kept": rep.kept_statements,
                         "stubbed": rep.stubbed_statements, "compile_ok": rep.compile_ok,
                     })
-                    st.session_state["current_run_folder"] = str(run.folder)
+                    c.select_run(run.folder)
                     st.session_state["compilability"] = rep
                 rep = st.session_state.get("compilability")
                 if rep is not None:

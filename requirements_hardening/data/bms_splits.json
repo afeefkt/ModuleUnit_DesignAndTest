@@ -1,0 +1,10 @@
+{
+  "set": "bms",
+  "description": "Curated BMS split for SOC clamping vs DTC reporting.",
+  "splits": {
+    "REQ-BMS-022": [
+      "SOC_Clamp() shall ensure the final SOC estimate is clamped to the range [SOC_MIN = 5.0 %, SOC_MAX = 95.0 %] before writing to PP_SOCPercent.",
+      "DTC_BMS_SOC_LIMIT shall be set when the raw SOC estimate exceeds 95.0 % or falls below 5.0 % for more than 10 consecutive cycles."
+    ]
+  }
+}

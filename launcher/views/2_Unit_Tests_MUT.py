@@ -21,16 +21,27 @@ st.title("Unit tests")
 
 runs = c.list_runs()
 if not runs:
-    st.info("No runs yet — create one on the Design page or the Full Chain page.")
+    st.info("No runs yet. Create one with **Full chain**, or step by step on **Requirements & design**.")
+    st.page_link("views/3_Full_Chain.py", label="Open Full chain", icon="🔗")
     st.stop()
 
 run = c.current_run()  # chosen in the run bar at the top of every page
+if run is None:
+    st.info("No run selected. Choose a run in the bar at the top, or create one with **Full chain** or "
+            "**Requirements & design**.")
+    st.stop()
 
 st.caption(f"Run folder: `{run.folder}`")
 
 project_dir = run.dir("code")
-if not project_dir.is_dir():
-    st.error("No `02_code/` directory (C skeleton) found for this run.")
+if not project_dir.is_dir() or not any(project_dir.glob("*.c")):
+    st.warning(f"Run `{run.folder.name}` has no C skeleton yet, so there is nothing to test. "
+               "Pick another run in the bar above, or create the C code first.")
+    l1, l2 = st.columns(2)
+    with l1:
+        st.page_link("views/1_Design_MUD.py", label="Requirements & design → step ⑥ C skeleton", icon="📐")
+    with l2:
+        st.page_link("views/3_Full_Chain.py", label="Full chain", icon="🔗")
     st.stop()
 
 st.subheader("C skeleton (compilable)")
@@ -102,8 +113,8 @@ if generation:
                 code = run.read_in("code", f"{run.swc}.c", "")
                 record = trace_mod.build_trace(run.swc, code, generation)
                 run.save_json_in("trace", "trace.json", record)
-                st.session_state["trace"] = record
-            trace_record = st.session_state.get("trace") or run.read_json_in("trace", "trace.json")
+            # Always this run's own file (a screen copy would leak into other runs).
+            trace_record = run.read_json_in("trace", "trace.json")
             if trace_record:
                 st.subheader("Traceability (requirement → tests)")
                 summary = trace_record.get("summary")

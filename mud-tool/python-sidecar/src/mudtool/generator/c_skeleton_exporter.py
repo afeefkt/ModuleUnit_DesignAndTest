@@ -57,6 +57,103 @@ def _decision_condition(guard: Optional[str], decision_name: Optional[str]) -> s
     return "1"
 
 
+def _safe_comment(text: str) -> str:
+    """Text that cannot open or close a C comment (nested comments make gcc warn)."""
+    return (text or "").replace("/*", "/ *").replace("*/", "* /")
+
+
+def _desc_comment(description: str | None, name: str | None) -> str:
+    """A trailing comment, skipped when it only repeats the statement."""
+    desc = (description or "").strip()
+    stmt = (name or "").rstrip(";").strip()
+    head = desc.rstrip(".").rstrip(";").strip()
+    if not desc or head == stmt or (desc.endswith("...") and stmt.startswith(desc[:-3].rstrip())):
+        return ""          # it only repeats (or truncates) the statement
+    return f"  /* {_safe_comment(desc)} */"
+
+
+def _call_args(text: str, callee: str) -> str:
+    """The argument list the design wrote for ``callee(...)`` (empty if none); nested brackets allowed.
+
+    Every occurrence is tried, so a shortened label such as ``ApplyRamp(...)`` does not hide the
+    real argument list written elsewhere in ``text``.
+    """
+    import re
+    text = text or ""
+    for m in re.finditer(rf"\b{re.escape(callee)}\s*\(", text):
+        depth, start = 1, m.end()
+        for i in range(start, len(text)):
+            if text[i] == "(":
+                depth += 1
+            elif text[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    args = text[start:i].strip()
+                    if args and args not in ("void", "..."):
+                        return args
+                    break
+    return ""
+
+
+_C_KEYWORD_STMTS = {"return", "break", "continue"}
+
+
+def _is_step_title(stmt: str) -> bool:
+    """``Guard`` / ``Read inputs`` / ``Validate calibration``: words only, no C syntax."""
+    import re
+    s = re.sub(r"\s*\[[A-Z][A-Z0-9_,\s-]*\d\]\s*$", "", (stmt or "").strip())   # "Guard [REQ-X-1]"
+    if not s or s in _C_KEYWORD_STMTS:
+        return False
+    if re.search(r"[=()\[\];{}<>!+*%&|^~]", s):
+        return False
+    words = s.split()
+    # A single identifier with an underscore or digits could be a macro call site; keep it as code.
+    if len(words) == 1 and re.search(r"[_0-9]", s):
+        return False
+    # Words plus prose punctuation: "Guard — module not ready", "Read/validate inputs: speed".
+    return bool(re.fullmatch(r"[A-Za-z][\w\-',.:/]*(?:\s+[\w\-–—',.:/]+)*", s))
+
+
+def _is_self_call(stmt: str, func: str | None) -> bool:
+    import re
+    return bool(func) and bool(re.match(rf"^\s*{re.escape(func)}\s*\(", stmt or ""))
+
+
+def _helper_name(sub) -> str:
+    return sub.function_name or sub.name.replace(" Code Flow", "")
+
+
+def _is_empty_helper(sub) -> bool:
+    """True when every working node of a helper sub-diagram only calls the helper itself."""
+    import re
+    name = _helper_name(sub)
+    structural = {ActivityNodeType.INITIAL, ActivityNodeType.FINAL, ActivityNodeType.MERGE,
+                  ActivityNodeType.JOIN, ActivityNodeType.FORK}
+    work = [n for n in sub.nodes if n.node_type not in structural]
+    if not work:
+        return True
+    self_call = re.compile(rf"\b{re.escape(name)}\s*\(")
+    return all(self_call.search(f"{n.code or ''} {n.name or ''}") or (n.callee or "") == name for n in work)
+
+
+def _empty_helper_note(func: str) -> str:
+    return f"/* TODO(design): the MUD calls {func}() but never describes its body */"
+
+
+def _drop_unreachable_returns(body: list[str]) -> list[str]:
+    """Remove a ``return;`` that directly follows another one (dead code)."""
+    out: list[str] = []
+    last_code = ""
+    for line in body:
+        code = line.split("/*", 1)[0].strip()
+        if code == "return;" and last_code == "return;":
+            continue
+        out.append(line)
+        if code:
+            last_code = code
+    return out
+
+
 class CSkeletonExporter:
     """Export ActivityDiagram JSON to C-code skeleton files."""
 
@@ -68,11 +165,19 @@ class CSkeletonExporter:
         """
         lines: list[str] = []
 
+        # A sub-diagram whose only content is a call to itself has no body worth generating:
+        # drop it, so the parent keeps the design's full call (arguments + result) as an external helper.
+        real_subs = [s for s in diagram.sub_diagrams if not _is_empty_helper(s)]
         if not as_helper:
+            # Helpers that get a generated body (sub-diagrams) are called as void(void);
+            # any other helper keeps the design's call statement.
+            self._helper_bodies = {_helper_name(sub) for sub in real_subs}
             # Header comment
             lines.append(f"/* Generated from: {diagram.name} */")
             if diagram.source_requirements:
                 lines.append(f"/* Requirements: {', '.join(diagram.source_requirements)} */")
+            else:
+                lines.append("/* TODO(trace): the design names no requirement IDs for this runnable */")
             if diagram.provenance:
                 lines.append(f"/* Model: {diagram.provenance.ai_model}, confidence: {diagram.provenance.confidence} */")
             lines.append("")
@@ -84,10 +189,10 @@ class CSkeletonExporter:
             lines.append("")
 
             # Forward declare any helper functions from sub_diagrams
-            for sub in diagram.sub_diagrams:
-                fname = sub.function_name or sub.name.replace(" Code Flow", "")
-                lines.append(f"static void {fname}(void);  /* see sub-diagram */")
-            if diagram.sub_diagrams:
+            # Helpers have external linkage so the unit tests can call (and link) them.
+            for sub in real_subs:
+                lines.append(f"void {_helper_name(sub)}(void);  /* see sub-diagram */")
+            if real_subs:
                 lines.append("")
 
             # Collect variable declarations by scanning node names
@@ -101,17 +206,23 @@ class CSkeletonExporter:
         # Function signature
         if as_helper:
             func_name = diagram.function_name or diagram.name.replace(" Code Flow", "")
-            lines.append(f"static void {func_name}(void)")
         else:
             func_name = diagram.owner_runnable or diagram.name.replace(" Code Flow", "")
-            lines.append(f"void {func_name}(void)")
+        lines.append(f"void {func_name}(void)")
         lines.append("{")
-        self._emit_body(diagram, lines)
+        body: list[str] = []
+        outer_func = getattr(self, "_current_func", None)
+        self._current_func = func_name
+        try:
+            self._emit_body(diagram, body)
+        finally:
+            self._current_func = outer_func
+        lines.extend(_drop_unreachable_returns(body))
         lines.append("}")
         lines.append("")
 
-        # Emit sub-diagrams as static helpers
-        for sub in diagram.sub_diagrams:
+        # Emit sub-diagrams as helper functions
+        for sub in real_subs:
             lines.append("")
             lines.append(self.export_diagram(sub, as_helper=True))
 
@@ -244,16 +355,24 @@ class CSkeletonExporter:
             return
 
         elif node.node_type == ActivityNodeType.CALL:
-            desc = f"  /* {node.description} */" if node.description else ""
+            stmt = (node.code or node.name).rstrip(";")
+            desc = _desc_comment(node.description, stmt)
             if trace_line:
                 lines.append(f"{pad}{trace_line}")
-            lines.append(f"{pad}{node.name};{desc}")
+            lines.append(f"{pad}{stmt};{desc}")
 
         elif node.node_type == ActivityNodeType.ACTION:
-            desc = f"  /* {node.description} */" if node.description else ""
+            stmt = (node.code or node.name).rstrip(";")
             if trace_line:
                 lines.append(f"{pad}{trace_line}")
-            lines.append(f"{pad}{node.name};{desc}")
+            if _is_self_call(stmt, getattr(self, "_current_func", None)):
+                lines.append(f"{pad}{_empty_helper_note(self._current_func)}")
+            elif not node.code and _is_step_title(stmt):
+                # A step heading ("Guard", "Read inputs") is a label, not C: keep it as a comment.
+                lines.append(f"{pad}/* {_safe_comment(stmt)} */")
+            else:
+                desc = _desc_comment(node.description, stmt)
+                lines.append(f"{pad}{stmt};{desc}")
 
         elif node.node_type == ActivityNodeType.FUNCTION_CALL:
             callee = (node.callee or node.name or "").strip()
@@ -261,7 +380,29 @@ class CSkeletonExporter:
                 callee = callee[:-2]
             if trace_line:
                 lines.append(f"{pad}{trace_line}")
-            lines.append(f"{pad}{callee}();  /* -> {callee}() */")
+            if callee and callee == getattr(self, "_current_func", None):
+                # The sub-diagram only "calls itself": the MUD never described the helper's body.
+                lines.append(f"{pad}{_empty_helper_note(callee)}")
+            elif node.code and callee not in getattr(self, "_helper_bodies", set()):
+                # No body is generated here for this helper: keep the design's statement whole
+                # (arguments and result), the helper is declared and stubbed as an external function.
+                lines.append(f"{pad}{node.code.rstrip(';')};  /* external helper {callee}() */")
+            else:
+                # Helpers are emitted as void(void); say so when the design passed arguments or used
+                # the result, so the dropped data flow is visible (and counted by the compile quality gate).
+                design_text = f"{node.code or ''} {node.name or ''} {node.description or ''}"
+                args = _call_args(design_text, callee)
+                lhs = node.code.split("=", 1)[0].strip() if node.code and "=" in node.code.split(callee, 1)[0] else ""
+                if args or lhs:
+                    parts = []
+                    if args:
+                        parts.append(f"passes ({_safe_comment(args)})")
+                    if lhs:
+                        parts.append(f"assigns the result to {lhs}")
+                    note = f"  /* TODO(args): the design {' and '.join(parts)} — {callee} is generated as void(void) */"
+                else:
+                    note = f"  /* -> {callee}() */"
+                lines.append(f"{pad}{callee}();{note}")
 
         elif node.node_type == ActivityNodeType.EXCEPTION:
             if trace_line:

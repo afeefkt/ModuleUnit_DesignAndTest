@@ -1,0 +1,141 @@
+{
+  "set": "bms",
+  "description": "Curated BMS hardening overrides. Generic derivation fills the rest.",
+  "requirements": {
+    "REQ-BMS-001": {
+      "rationale": "BMS software architecture allocation. The source CSV has no system/stakeholder hierarchy; a placeholder parent REQ-BMS-000 is injected for traceability.",
+      "verification_method": "review",
+      "open_issues": [
+        "Placeholder system parent REQ-BMS-000; confirm the stakeholder/system requirement and ASIL allocation with the BMS owner."
+      ]
+    },
+    "REQ-BMS-002": {
+      "statement": "RE_EstimateSOC shall execute cyclically every 10 ms and compute the battery State-of-Charge using the specified SOC estimation method, writing the result to PP_SOCPercent.",
+      "rationale": "The source mandates a 10 ms SOC runnable and an EKF-based estimator. The helper-function names are design details and are recorded in design_notes.",
+      "design_notes": "EKF_Predict(), EKF_Update(), SOC_Clamp() are implementation helpers; the equivalent-circuit model and noise values are design/calibration details.",
+      "open_issues": [
+        "Confirm the SOC estimation algorithm, equivalent-circuit parameters and validation tolerance with the BMS algorithm owner."
+      ]
+    },
+    "REQ-BMS-003": {
+      "statement": "RE_BalanceCells shall execute cyclically every 100 ms to compare individual cell voltages and activate passive bleed resistors on cells above the mean.",
+      "rationale": "The source defines a 100 ms balancing runnable; helper names are design details.",
+      "design_notes": "CalcCellDelta(), SelectBalanceCells(), SetBalanceRelays() are implementation helpers."
+    },
+    "REQ-BMS-004": {
+      "statement": "RE_ManageThermal shall execute cyclically every 50 ms to compute the battery temperature gradient, control the cooling pump PWM duty cycle, and apply power derating when thermal limits are approached.",
+      "rationale": "The source defines a 50 ms thermal-management runnable. Helper names are design details.",
+      "design_notes": "CalcTempGradient() and SetCoolingPWM() are implementation helpers."
+    },
+    "REQ-BMS-005": {
+      "statement": "RE_MonitorSafety shall execute cyclically every 5 ms to perform overcurrent, overvoltage, undervoltage, and overtemperature plausibility checks and set the corresponding DTC within the same 5 ms execution when a fault is detected.",
+      "rationale": "The source requires a 5 ms safety monitor and same-cycle fault reporting. OpenContactors() is the fault reaction, specified separately.",
+      "design_notes": "OpenContactors() is invoked by the fault reaction; the safety monitor owns detection and DTC reporting."
+    },
+    "REQ-BMS-006": {
+      "statement": "RE_ControlContactors shall execute on a DataReceivedEvent of VehicleReadyStatus to manage the precharge and main-contactor sequence (OPEN, PRECHARGE, MAIN_CLOSE) and verify the contactor state after each transition.",
+      "rationale": "The source defines the contactor sequence and state verification. Helper names are design details.",
+      "design_notes": "VerifyContactorState() is an implementation helper."
+    },
+    "REQ-BMS-007": {
+      "statement": "RE_Initialize shall execute once on ECU startup to read the last known SOC from NVM, perform a cell voltage scan, validate sensor signals, and set the SWC state to INIT only after RAM CRC and ROM CRC-32 self-tests complete.",
+      "rationale": "Startup initialization including NVM read, sensor validation and self-tests. The source uses NvM_ReadBlock; the block name is a design detail.",
+      "design_notes": "NvM_ReadBlock(NvM_BMS_SOCLog) is the NVM access detail."
+    },
+    "REQ-BMS-010": {
+      "rationale": "Required-port declaration. The source bundles five ports in one requirement; the data dictionary must confirm each interface.",
+      "open_issues": [
+        "Interface requirement bundles five ports; split into per-port requirements in the next revision and confirm ranges/resolutions against the DDS."
+      ]
+    },
+    "REQ-BMS-011": {
+      "rationale": "Provided-port declaration. The source bundles five ports in one requirement; the data dictionary must confirm each interface.",
+      "open_issues": [
+        "Interface requirement bundles five ports; split into per-port requirements in the next revision and confirm ranges/resolutions against the DDS."
+      ]
+    },
+    "REQ-BMS-020": {
+      "statement": "EKF_Predict() shall propagate the state vector [SOC, V_RC1, V_RC2] forward using the specified equivalent-circuit model and calibrated parameters.",
+      "implementation_constraint": true,
+      "constraint_rationale": "The EKF state-propagation equation is retained as a deterministic algorithm/calibration constraint; the exact equation is a design detail recorded in design_notes.",
+      "design_notes": "SOC(k+1) = SOC(k) - (I_pack * DT) / Q_nom; V_RC1/2 update with exp(-DT/tau); DT = 0.01 s; parameters from calibration."
+    },
+    "REQ-BMS-021": {
+      "statement": "EKF_Update() shall compute the Kalman gain and correct the state estimate using the measured pack voltage and the specified equivalent-circuit model.",
+      "implementation_constraint": true,
+      "constraint_rationale": "The Kalman-gain and covariance update are retained as a deterministic algorithm/calibration constraint; the exact equations are design details recorded in design_notes.",
+      "design_notes": "K = P_pred H^T / (H P_pred H^T + R); x_est = x_pred + K(V_meas - V_model); P_est = (I - K H) P_pred; R = 1e-4 V^2; Q_SOC = 1e-8."
+    },
+    "REQ-BMS-022": {
+      "rationale": "SOC clamping protects the usable window and triggers a DTC when the raw estimate leaves 5-95% for 10 consecutive cycles."
+    },
+    "REQ-BMS-023": {
+      "rationale": "Coulomb-counting fallback when the voltage measurement is unavailable; the 2% SOC/hour error is the source's stated accuracy target."
+    },
+    "REQ-BMS-031": {
+      "rationale": "Limits simultaneous bleed resistors to 8 to bound heat generation and selects the highest-delta cells when more than 8 are candidates."
+    },
+    "REQ-BMS-032": {
+      "rationale": "Balancing is inhibited above 5 A pack current to prevent measurement interference; the 1 ms SPI write is a timing constraint."
+    },
+    "REQ-BMS-041": {
+      "implementation_constraint": true,
+      "constraint_rationale": "The PI cooling-control equation is a deterministic calibration/implementation constraint; the gains and target temperature are calibration values.",
+      "design_notes": "duty = K_COOL_P*(T_max - T_TARGET_K) + K_COOL_I*integral; T_TARGET_K = 298.15 K; K_COOL_P = 5.0 %/K; K_COOL_I = 0.1 %/(K*s); clamp 0-100%."
+    },
+    "REQ-BMS-042": {
+      "implementation_constraint": true,
+      "constraint_rationale": "The derating equation is a deterministic calibration/implementation constraint; the start temperature and range are calibration values.",
+      "design_notes": "derate = 1 - clamp((T_max - 313.15 K)/20 K, 0, 1); P_MAX_W = 150 kW."
+    },
+    "REQ-BMS-050": {
+      "rationale": "Overcurrent protection thresholds are 300 A discharge and -150 A charge with a 10 ms debounce. These are narrower than the port range of +/-500 A and must be reconciled with the fuse and sensor range.",
+      "open_issues": [
+        "Reconcile I_MAX_DISCHARGE = 300 A / I_MAX_CHARGE = -150 A with the RP_PackCurrent range +/-500 A and the 500 A fuse; confirm the protection hierarchy."
+      ]
+    },
+    "REQ-BMS-051": {
+      "rationale": "Cell over/undervoltage protection at 4.20 V / 2.50 V with a two-cycle debounce."
+    },
+    "REQ-BMS-052": {
+      "rationale": "Overtemperature protection at 60 C with a 20 ms debounce; recovery is intentionally manual for a thermal event."
+    },
+    "REQ-BMS-053": {
+      "statement": "OpenContactors() shall set PP_ContactorState = OPEN, zero the discharge and charge power limits, report the triggering DTC to DEM, and persist the fault record to NVM within the 5 ms RE_MonitorSafety window.",
+      "rationale": "The source defines a four-step fault reaction within the 5 ms safety-monitor window. NVM persistence inside 5 ms may require a deferred-write mechanism.",
+      "open_issues": [
+        "Confirm whether NVM persistence can complete within 5 ms or whether a deferred/queued write is required; the timing budget must be verified."
+      ]
+    },
+    "REQ-BMS-060": {
+      "rationale": "Precharge sequence with a 2 s timeout and abort-to-OPEN behaviour."
+    },
+    "REQ-BMS-061": {
+      "rationale": "Contactor feedback mismatch for more than 50 ms is treated as a weld fault and drives FAIL_SAFE."
+    },
+    "REQ-BMS-070": {
+      "statement": "RE_EstimateSOC shall update State-of-Health after each charge from 10 % SOC to 90 % SOC by computing Q_meas = integral(I_pack * DT) over that window and setting SOH = (Q_meas / Q_nom_new) * 100 %, where Q_nom_new = 100 Ah.",
+      "rationale": "SOH is updated per defined 10-90% SOC charge window; the charge-window definition must be confirmed.",
+      "design_notes": "Q_meas = integral(I_pack*DT) over the 10-90% SOC window; Q_nom_new = 100 Ah.",
+      "open_issues": [
+        "Confirm the 10-90% SOC charge window, the 100 Ah rated capacity and the SOH accuracy target."
+      ]
+    },
+    "REQ-BMS-081": {
+      "rationale": "Healable DTCs clear after 5 fault-free cycles; the overtemperature latch is intentionally excluded."
+    },
+    "REQ-BMS-090": {
+      "rationale": "E2E Profile 2 protection on safety-relevant CAN inputs; a counter mismatch triggers a CAN-timeout DTC after 3 consecutive failures."
+    },
+    "REQ-BMS-091": {
+      "rationale": "Hardware watchdog trigger every 5 ms; a missed trigger resets the ECU and the reset cause is persisted as a DTC."
+    },
+    "REQ-BMS-080": {
+      "statement": "DTC_BMS_SOC_LIMIT (0xB10003) shall be reported via Dem_ReportErrorStatus when the raw SOC estimate exceeds SOC_MAX = 95 % or falls below SOC_MIN = 5 % for 10 consecutive 10 ms cycles.",
+      "rationale": "SOC-limit DTC reporting with snapshot data.",
+      "open_issues": [
+        "Confirm the snapshot data set and the 10-cycle debounce."
+      ]
+    }
+  }
+}

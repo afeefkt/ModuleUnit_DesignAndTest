@@ -1,0 +1,157 @@
+{
+  "set": "aeb",
+  "description": "Atomic split map for the 37 compound AEB requirements. The first statement keeps the original ID; the remaining statements become new REQ-AEB-1xxx requirements.",
+  "splits": {
+    "REQ-AEB-002": [
+      "The AEB function shall be active over the vehicle speed range 10 km/h to 60 km/h inclusive for car-to-car scenarios, per UNECE R152.",
+      "Below 10 km/h and above 60 km/h, the AEB function shall deactivate the automatic braking demand while AEB monitoring and availability reporting continue.",
+      "Pedestrian forward-collision warning below 10 km/h shall follow REQ-AEB-209."
+    ],
+    "REQ-AEB-004": [
+      "The AEB feature shall provide a forward collision warning using at least two of the acoustic, haptic, and optical modalities.",
+      "The forward collision warning shall be issued no later than the start of the emergency braking intervention."
+    ],
+    "REQ-AEB-005": [
+      "A driver-initiated brake or accelerator action that exceeds the AEB braking demand shall override and cancel the AEB braking request.",
+      "The driver override shall be detected within one 10 ms arbitration cycle (REQ-AEB-301)."
+    ],
+    "REQ-AEB-008": [
+      "Every AEB requirement shall be traceable to one software runnable, one MUD flowchart step, and one or more unit test cases.",
+      "All safety-relevant AEB signals shall be protected with AUTOSAR E2E Profile 2."
+    ],
+    "REQ-AEB-102": [
+      "SWC_AEB_SensorFusion shall read RP_RadarObjects (SR IF_SR_ObjectList, up to 64 objects) via its required port.",
+      "SWC_AEB_SensorFusion shall read RP_CameraObjects (SR IF_SR_ObjectList, up to 32 objects) via its required port.",
+      "Each radar and camera object shall carry object ID, longitudinal distance, lateral offset, relative speed, object class, and existence probability."
+    ],
+    "REQ-AEB-103": [
+      "SWC_AEB_SensorFusion shall publish the fused object list via PP_FusedObjects (SR IF_SR_ObjectList, up to 128 objects) every 10 ms.",
+      "Each fused object shall carry a confidence score in [0.0, 1.0] and a source mask indicating radar, camera, or both."
+    ],
+    "REQ-AEB-104": [
+      "RE_FuseObjects shall time-align radar and camera objects to the current cycle using each sensor's last valid measurement timestamp and the object relative speed.",
+      "RE_FuseObjects shall drop objects older than 200 ms."
+    ],
+    "REQ-AEB-106": [
+      "When one sensor source (radar or camera) is unavailable, RE_FuseObjects shall continue using the remaining sensor, set the source mask accordingly, and mark the fused confidence reduced.",
+      "When running single-source, RE_FuseObjects shall set bit[1] of the PP_FusedObjects status."
+    ],
+    "REQ-AEB-107": [
+      "RE_FuseObjects shall reject fused objects whose longitudinal distance is negative (behind ego), whose relative speed magnitude exceeds 80 m/s, or whose existence probability is below 0.4.",
+      "Rejected objects shall not appear in PP_FusedObjects."
+    ],
+    "REQ-AEB-108": [
+      "RE_FuseObjects shall set a per-source timeout flag when a sensor provides no valid objects for more than 100 ms.",
+      "The per-source timeout flags shall be exposed on the PP_FusedObjects status for consumption by SWC_AEB_SafetyMonitor."
+    ],
+    "REQ-AEB-110": [
+      "RE_FuseObjects shall not allocate dynamic memory.",
+      "RE_FuseObjects shall complete within 2.0 ms worst case on its 10 ms cycle with a fixed computation path."
+    ],
+    "REQ-AEB-202": [
+      "RE_AssessCollisionRisk shall compute TTC = distance / relative_speed for each fused object with positive relative speed (approaching), where distance is longitudinal range in meters and relative_speed is in m/s.",
+      "Objects with relative_speed <= 0 shall be assigned TTC = TTC_MAX (no collision)."
+    ],
+    "REQ-AEB-204": [
+      "RE_AssessCollisionRisk shall raise the FCW warning request when the critical object TTC falls to 2.6 s or below.",
+      "The FCW warning request shall be latched until TTC rises above 2.9 s (hysteresis) to prevent warning flicker."
+    ],
+    "REQ-AEB-205": [
+      "RE_AssessCollisionRisk shall request partial braking (40 percent) when the critical object TTC falls to 1.6 s or below.",
+      "The partial braking request shall remain until TTC rises above 1.8 s."
+    ],
+    "REQ-AEB-206": [
+      "RE_AssessCollisionRisk shall request full braking (100 percent) when the critical object TTC falls to 0.6 s or below.",
+      "The full braking request shall remain until the collision is resolved or the driver overrides."
+    ],
+    "REQ-AEB-209": [
+      "RE_AssessCollisionRisk shall suppress the braking escalation (partial or full) while vehicle speed is below 10 km/h.",
+      "RE_AssessCollisionRisk shall continue issuing the FCW warning when a pedestrian-class object is detected crossing ahead, even below 10 km/h."
+    ],
+    "REQ-AEB-302": [
+      "RE_ArbitrateBrakeDemand shall select the highest braking level among the driver demand, the AEB risk level, and any fail-safe request.",
+      "AEB shall win over driver braking during active emergency braking unless the driver override condition holds."
+    ],
+    "REQ-AEB-303": [
+      "RE_ArbitrateBrakeDemand shall map the risk level to a deceleration demand: NONE to 0.0 m/s2, WARNING to 0.0 m/s2 (warning only), PARTIAL to 4.0 m/s2, and FULL to 9.0 m/s2.",
+      "The FULL deceleration demand shall satisfy the UNECE R152 minimum of 5.0 m/s2."
+    ],
+    "REQ-AEB-304": [
+      "RE_ArbitrateBrakeDemand shall limit the rate of change of the commanded deceleration to 15 m/s3 using a first-order rate limiter to avoid wheel lock and occupant discomfort.",
+      "The rate-limiter state shall be preserved between cycles."
+    ],
+    "REQ-AEB-305": [
+      "RE_ArbitrateBrakeDemand shall cancel the AEB braking demand when the driver brake pressure exceeds the AEB-equivalent brake pressure by 10 bar.",
+      "RE_ArbitrateBrakeDemand shall cancel the AEB braking demand when the accelerator pedal is pressed beyond 80 percent of full travel.",
+      "The driver override shall clear the AEB demand within one 10 ms cycle."
+    ],
+    "REQ-AEB-404": [
+      "RE_CommandBrake shall read back the achieved brake pressure via RP_BrakePressureFeedback and compare it to the commanded value.",
+      "A deviation exceeding 15 bar for more than 50 ms shall be reported to SWC_AEB_SafetyMonitor as a brake actuation fault."
+    ],
+    "REQ-AEB-407": [
+      "RE_CommandBrake shall clamp the commanded brake pressure to the range [0, P_MAX], where P_MAX = 250 bar.",
+      "Commands below 1 bar shall be treated as 0 bar to avoid residual pressure."
+    ],
+    "REQ-AEB-502": [
+      "RE_MonitorSafety shall compare the fused critical object's longitudinal distance and relative speed against the raw radar measurement every 5 ms.",
+      "A deviation above 1.0 m or 3.0 m/s for more than 3 consecutive cycles shall raise a sensor plausibility fault."
+    ],
+    "REQ-AEB-503": [
+      "RE_MonitorSafety shall verify the E2E Profile 2 protection on all safety-relevant input signals (RP_RadarObjects, RP_CameraObjects, RP_VehicleSpeed, RP_YawRate).",
+      "A counter mismatch or CRC failure shall trigger the corresponding fault after 2 consecutive failures."
+    ],
+    "REQ-AEB-504": [
+      "RE_MonitorSafety shall trigger the hardware watchdog via Rte_Call every 5 ms.",
+      "A missed watchdog trigger shall cause the ASIL-D hardware watchdog to reset the ECU."
+    ],
+    "REQ-AEB-508": [
+      "RE_MonitorSafety shall perform RAM checksum and ROM CRC-32 self-tests at startup.",
+      "A RAM/ROM self-test failure shall set the AEB feature to FAULT mode and inhibit automatic braking until ECU service."
+    ],
+    "REQ-AEB-603": [
+      "RE_UpdateEgoMotion shall validate RP_VehicleSpeed against the four wheel speeds.",
+      "If the difference exceeds 3 km/h for more than 100 ms, the vehicle speed signal shall be flagged invalid and the last valid value held."
+    ],
+    "REQ-AEB-703": [
+      "RE_UpdateWarning shall update the cluster warning state on a DataReceivedEvent of PP_RiskAssessment.",
+      "RE_UpdateWarning shall clear the warning within 500 ms of the risk level returning to NONE."
+    ],
+    "REQ-AEB-802": [
+      "The AEB feature shall transition from DEGRADED or FAILSAFE mode back to STANDBY only after the triggering fault is no longer present and the recovery criteria in the safety analysis are satisfied.",
+      "The DEGRADED/FAILSAFE transition and the recovery criteria shall be observable in PP_SafetyStatus."
+    ],
+    "REQ-AEB-804": [
+      "When the commanded brake pressure deviates from the feedback pressure by more than 15 bar for more than 50 ms, the AEB feature shall report a brake actuation fault to SWC_AEB_SafetyMonitor.",
+      "On a brake actuation fault, the AEB feature shall enter FAILSAFE mode unless the safety analysis defines a different reaction."
+    ],
+    "REQ-AEB-805": [
+      "When ABS reports active wheel slip, the AEB deceleration demand shall not exceed the ABS-allowed maximum.",
+      "The AEB feature shall not command a deceleration that conflicts with the ABS request."
+    ],
+    "REQ-AEB-807": [
+      "On ECU startup, the AEB feature shall initialize all outputs to the safe state (no braking demand, no warning) and remain in STANDBY until RAM/ROM self-tests and signal validation pass.",
+      "On shutdown, the AEB feature shall command zero braking demand and clear active warnings before the ECU powers down."
+    ],
+    "REQ-AEB-808": [
+      "A healable AEB fault shall be cleared only after the DEM healing criterion is satisfied with no recurrence of the triggering condition.",
+      "Fault snapshots and healing events shall be persisted in NvM_AEB_FaultLog across power cycles."
+    ],
+    "REQ-AEB-809": [
+      "At startup and after a calibration update, the AEB feature shall verify that every safety-relevant calibration parameter is within its declared minimum/maximum range and that its default/current value is consistent with the vehicle variant.",
+      "A calibration verification failure shall set a calibration fault and inhibit automatic braking until corrected."
+    ],
+    "REQ-AEB-811": [
+      "The AEB feature shall select its speed range, vehicle mass, brake gain and warning modalities from a validated vehicle-variant configuration.",
+      "An unknown or inconsistent variant shall set a configuration fault and inhibit automatic braking."
+    ],
+    "REQ-AEB-812": [
+      "Each AEB runnable shall complete within its allocated WCET budget on ECU_AEB_Main: RE_CommandBrake and RE_MonitorSafety within 5 ms, RE_FuseObjects and RE_ArbitrateBrakeDemand and RE_UpdateEgoMotion within 10 ms, RE_AssessCollisionRisk within 20 ms.",
+      "No cyclic AEB runnable shall perform dynamic memory allocation or unbounded blocking calls."
+    ],
+    "REQ-AEB-813": [
+      "The AEB feature shall expose test hooks to inject sensor loss, E2E failure, brake-feedback deviation, ABS-active and plausibility faults.",
+      "The AEB feature shall publish the resulting mode, fault bitmask and E2E status in PP_SafetyStatus for verification."
+    ]
+  }
+}

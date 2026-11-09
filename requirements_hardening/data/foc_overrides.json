@@ -1,0 +1,60 @@
+{
+  "set": "foc",
+  "description": "Curated FOC architecture hardening overrides. Generic derivation fills the rest.",
+  "requirements": {
+    "ARCH-REQ-001": {
+      "rationale": "Top-level closed-loop motor control architecture. The source is an architecture specification, not a formal requirement baseline; the hardening pass makes it reviewable.",
+      "open_issues": [
+        "Placeholder system parent ARCH-REQ-000; confirm the stakeholder/system requirement and ASIL allocation with the motor-control owner."
+      ]
+    },
+    "ARCH-REQ-004": {
+      "statement": "The architecture shall schedule CurrCtrl faster than SpdCtrl so that the inner current loop reacts before the outer speed loop changes IqRef.",
+      "rationale": "The scheduling relationship is a timing constraint; the source phrase 'because ... shall react' is made a single verifiable statement."
+    },
+    "ARCH-REQ-010": {
+      "rationale": "Typed sender-receiver interfaces with units, ranges and computation methods are a data-dictionary constraint.",
+      "implementation_constraint": true,
+      "constraint_rationale": "Interface/data-dictionary constraint; verified by architecture review and DDS consistency check."
+    },
+    "ARCH-REQ-020": {
+      "statement": "SpdCtrl shall convert speed error into a q-axis current reference using the specified speed-control algorithm with ramping, deadband, saturation and anti-windup.",
+      "design_notes": "PI control algorithm; gains, deadband, ramp rate and anti-windup limit are calibration parameters.",
+      "implementation_constraint": true,
+      "constraint_rationale": "The PI-control structure is retained as a deterministic control-design constraint; the gains are calibration parameters."
+    },
+    "ARCH-REQ-025": {
+      "rationale": "Speed-controller gains, dead zone, ramp rate and anti-windup limit are exposed as calibration parameters.",
+      "implementation_constraint": true,
+      "constraint_rationale": "Calibration interface constraint; verified by calibration review and parameter-range test."
+    },
+    "ARCH-REQ-030": {
+      "statement": "CurrCtrl shall convert d-axis and q-axis current errors into d-axis and q-axis voltage commands using the specified current-control algorithm with decoupling feedforward and voltage limiting.",
+      "design_notes": "PI current control with decoupling feedforward and voltage limiting; d/q gains and electrical parameters are calibration values.",
+      "implementation_constraint": true,
+      "constraint_rationale": "The current-control structure is retained as a deterministic control-design constraint; the gains are calibration parameters."
+    },
+    "ARCH-REQ-036": {
+      "rationale": "d/q PI gains, electrical parameters, nominal DC voltage and voltage limit are exposed as calibration parameters.",
+      "implementation_constraint": true,
+      "constraint_rationale": "Calibration interface constraint; verified by calibration review and parameter-range test."
+    },
+    "ARCH-REQ-047": {
+      "rationale": "Overcurrent, overtemperature, DC-bus, overspeed, nominal Iq and derating parameters are exposed as calibration parameters.",
+      "implementation_constraint": true,
+      "constraint_rationale": "Calibration interface constraint; verified by calibration review and parameter-range test."
+    },
+    "ARCH-REQ-060": {
+      "rationale": "Verification constraint: component integration tests cover nominal run, startup, mode transition, current limit, overcurrent, overtemperature, DC-link fault and overspeed.",
+      "verification_method": "review"
+    },
+    "ARCH-REQ-061": {
+      "rationale": "Traceability constraint: each architecture requirement traces to MUD steps, runnable requirements, ports, calibration parameters and verification cases.",
+      "verification_method": "review"
+    },
+    "ARCH-REQ-005": {
+      "statement": "The architecture shall schedule electrical protection monitoring at 1 ms and thermal monitoring at 10 ms.",
+      "rationale": "Protection-monitoring periods are fixed at 1 ms and 10 ms."
+    }
+  }
+}

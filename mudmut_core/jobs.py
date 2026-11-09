@@ -8,6 +8,7 @@ while you look at other pages.
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 import traceback
@@ -22,12 +23,16 @@ _jobs: dict[str, "Job"] = {}
 _KEEP = 10
 
 
+class Cancelled(Exception):
+    """Raised by work that stopped because the user pressed Cancel."""
+
+
 @dataclass
 class Job:
     id: str
     label: str
     quick: bool = False
-    status: str = "running"            # running | done | error
+    status: str = "running"            # running | done | error | cancelled
     started: float = field(default_factory=time.time)
     finished: Optional[float] = None
     percent: int = 0
@@ -41,6 +46,23 @@ class Job:
     tracker: Optional[progress_mod.ProgressTracker] = None
     expected: Optional[float] = None    # seconds, for jobs without a stage tracker
     fraction: Optional[float] = None    # exact progress reported by the work itself (0..1)
+    run_folder: str = ""                # set when the work reports its run workspace
+    stages_done: list[str] = field(default_factory=list)   # pipeline stages finished (current run folder)
+    cancel_flag: threading.Event = field(default_factory=threading.Event)
+
+    @property
+    def cancel_requested(self) -> bool:
+        return self.cancel_flag.is_set()
+
+    def stage_state(self, stage: str) -> str:
+        """``done`` / ``running`` / ``pending`` for one pipeline stage (drives the live stage rail)."""
+        if stage in self.stages_done:
+            return "done"
+        order = [s for s in progress_mod.ORDER if not (self.quick and s == "review")]
+        remaining = [s for s in order if s not in self.stages_done]
+        if self.running and remaining and remaining[0] == stage:
+            return "running"
+        return "pending"
 
     @property
     def running(self) -> bool:
@@ -88,6 +110,13 @@ def start(label: str, fn: Callable[[Callable[[dict], None]], Any], *, quick: boo
                 _jobs.pop(old.id, None)
 
     def on_event(event: dict) -> None:
+        if event.get("run_folder"):
+            if event["run_folder"] != job.run_folder:
+                # a new run workspace (e.g. the next SWC of a multi-SWC job): restart the rail
+                job.stages_done = [s for s in job.stages_done if s in ("import", "plan")]
+            job.run_folder = event["run_folder"]
+        if event.get("done") and event.get("stage") in progress_mod.ORDER and event["stage"] not in job.stages_done:
+            job.stages_done.append(event["stage"])
         if job.tracker is not None:
             job.tracker.update(event)
         elif event.get("fraction") is not None:
@@ -100,13 +129,24 @@ def start(label: str, fn: Callable[[Callable[[dict], None]], Any], *, quick: boo
             del job.log[:-200]
         job.refresh()
 
+    # The work can poll ``progress.cancelled()`` and stop at a safe point.
+    on_event.cancelled = lambda: job.cancel_flag.is_set()  # type: ignore[attr-defined]
+
     def run() -> None:
         try:
             job.result = fn(on_event)
             if job.tracker is not None:
                 job.tracker.complete()
-                job.percent, job.eta = 100, 0.0
+            job.percent, job.eta = 100, 0.0
             job.status = "done"
+        except (Cancelled, asyncio.CancelledError) as exc:
+            if not isinstance(exc, Cancelled) and not job.cancel_flag.is_set():
+                job.status, job.error = "error", "Interrupted"
+            else:
+                job.status = "cancelled"
+                job.error = str(exc) or "Cancelled by you"
+                job.log.append(f"[cancel] {job.error}")
+            _close_running_calls(job.error or "Cancelled")
         except BaseException as exc:  # noqa: BLE001 - reported to the UI, never raised here
             job.status = "error"
             job.error = f"{type(exc).__name__}: {exc}"
@@ -116,6 +156,15 @@ def start(label: str, fn: Callable[[Callable[[dict], None]], Any], *, quick: boo
 
     threading.Thread(target=run, name=f"job-{job.id}", daemon=True).start()
     return job
+
+
+def _close_running_calls(reason: str) -> None:
+    """Mark model calls still shown as running in the AI monitor as stopped."""
+    try:
+        from mudmut_core.llm import observe
+        observe.cancel_running(reason)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def get(job_id: str) -> Optional[Job]:
@@ -137,7 +186,32 @@ def current(label: Optional[str] = None) -> Optional[Job]:
     return job
 
 
-def clear_finished() -> None:
+def request_cancel(job_id: str) -> bool:
+    """Ask a running job to stop at its next safe point. Returns False if it is not running."""
+    job = _jobs.get(job_id)
+    if job is None or not job.running:
+        return False
+    job.cancel_flag.set()
+    job.message = "Cancelling — stopping the running AI request…"
+    # Abort the request that is running now (closes the connection, so the model server stops
+    # generating) instead of waiting for the current step to finish.
+    try:
+        from mudmut_core import aio
+        aio.cancel_current()
+    except Exception:  # noqa: BLE001
+        pass
+    return True
+
+
+def any_running() -> bool:
     with _lock:
-        for jid in [j.id for j in _jobs.values() if not j.running]:
+        return any(j.running for j in _jobs.values())
+
+
+def clear_finished() -> int:
+    """Forget finished jobs (their run folders stay on disk). Returns how many were removed."""
+    with _lock:
+        ids = [j.id for j in _jobs.values() if not j.running]
+        for jid in ids:
             _jobs.pop(jid, None)
+    return len(ids)

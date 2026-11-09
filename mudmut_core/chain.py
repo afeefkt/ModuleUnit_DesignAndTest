@@ -9,6 +9,7 @@ Headless entry point::
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -21,6 +22,18 @@ from mudmut_core.workspace import Run
 
 class ChainError(RuntimeError):
     pass
+
+
+from mudmut_core.jobs import Cancelled  # noqa: E402
+
+
+class ChainCancelled(Cancelled):
+    """The user pressed Cancel; the run stopped between two stages."""
+
+
+def _check_cancel(cancel: Optional[Callable[[], bool]], before: str) -> None:
+    if cancel is not None and cancel():
+        raise ChainCancelled(f"Cancelled before stage '{before}'")
 
 
 def _emit(progress, stage: str, message: str, **extra: Any) -> None:
@@ -68,8 +81,14 @@ async def run_full_chain(
     progress: Optional[Callable[[dict], None]] = None,
     keep_run: bool = True,
     root: Optional[Path] = None,
+    cancel: Optional[Callable[[], bool]] = None,
+    prepared: Optional[tuple[Any, Any]] = None,
 ) -> dict[str, Any]:
     """Run the whole MUD → MUT pipeline and return a summary dict.
+
+    ``cancel`` (optional) is polled between stages; when it returns True the run stops
+    with :class:`ChainCancelled` and a partial report is written. ``prepared`` =
+    ``(requirement_set, plan)`` skips import + planning (used by :func:`run_all_swcs`).
 
     ``preset=None`` (default) runs with the current per-stage selection
     (Workflow & Models / ``config/stages.json``) and does not change it. Pass a
@@ -91,11 +110,24 @@ async def run_full_chain(
         if progress:
             progress(event)
 
+    observer = _mudtool_observer()
+    if observer is not None:
+        # lets Cancel stop between AI attempts and while a model is streaming
+        observer.set_cancel_check(cancel)
     try:
-        return await _run_full_chain(
-            requirements_file, swc=swc, quick=quick, preset=preset,
-            progress=tracking_progress, keep_run=keep_run, root=root, run_holder=run_holder,
-        )
+        try:
+            return await _run_full_chain(
+                requirements_file, swc=swc, quick=quick, preset=preset,
+                progress=tracking_progress, keep_run=keep_run, root=root, run_holder=run_holder,
+                cancel=cancel, prepared=prepared,
+            )
+        except BaseException as raw:
+            if observer is not None and isinstance(raw, observer.GenerationCancelled):
+                raise ChainCancelled(str(raw)) from raw
+            if isinstance(raw, asyncio.CancelledError) and cancel is not None and cancel():
+                # Cancel aborted a running AI request: finish as a cancelled run (partial report below).
+                raise ChainCancelled("Cancelled while an AI request was running") from raw
+            raise
     except Exception as exc:
         run = run_holder.get("run")
         if run is not None:
@@ -109,6 +141,7 @@ async def run_full_chain(
                     "tests_generated": 0,
                     "generation_failed": 0,
                     "review_approved": run_holder.get("review_approved", True),
+                    "review_ai_empty": run_holder.get("review_ai_empty", False),
                     "compilability": {"compile_ok": False, "stubbed": 0, "kept": 0},
                     "tests": {"status": "error"},
                     "trace": {},
@@ -120,8 +153,20 @@ async def run_full_chain(
                 pass
         raise
     finally:
+        if observer is not None:
+            observer.set_cancel_check(None)
         _unload_models(_mud_models())
         _unload_models([m for m in [_test_model()] if m])
+
+
+def _mudtool_observer():
+    """mud-tool's observer module (cancel hook), or None if mud-tool is not importable."""
+    try:
+        env.ensure_environment()
+        from mudtool.ai import observer
+        return observer
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _failed_stage(last_done: Optional[str], quick: bool) -> str:
@@ -143,6 +188,8 @@ async def _run_full_chain(
     keep_run: bool = True,
     root: Optional[Path] = None,
     run_holder: Optional[dict[str, Any]] = None,
+    cancel: Optional[Callable[[], bool]] = None,
+    prepared: Optional[tuple[Any, Any]] = None,
 ) -> dict[str, Any]:
     """The linear pipeline (run by ``run_full_chain``, which adds error/finally handling)."""
     env.ensure_environment()
@@ -172,25 +219,28 @@ async def _run_full_chain(
             _emit(progress, "preset", msg)
     run_label = preset or "custom"
 
-    # ── 1. import ─────────────────────────────────────────────────────────────
-    t0 = time.time()
-    imported = design.import_requirements(requirements_file)
-    if not imported.requirement_set.requirements:
-        raise ChainError(f"no requirements imported from {requirements_file}: {imported.errors}")
-    reqs = imported.requirement_set
-    _emit(progress, "import", f"Imported {reqs.count} requirement(s)", done=True)
-    timings["import"] = time.time() - t0
+    if prepared is not None:
+        # ── 1+2 done by the caller (multi-SWC run: one import + one plan) ─────
+        reqs, plan = prepared
+        text = design.requirements_text(reqs)
+        _emit(progress, "import", f"Using {reqs.count} imported requirement(s)", done=True)
+    else:
+        # ── 1. import ─────────────────────────────────────────────────────────
+        t0 = time.time()
+        reqs = _import(requirements_file)
+        _emit(progress, "import", f"Imported {reqs.count} requirement(s)", done=True)
+        timings["import"] = time.time() - t0
+        text = design.requirements_text(reqs)
 
-    text = design.requirements_text(reqs)
-
-    # ── 2. plan modules ───────────────────────────────────────────────────────
-    t0 = time.time()
-    observe.set_stage("plan")
-    plan = await design.plan_modules(text)
+        # ── 2. plan modules ───────────────────────────────────────────────────
+        _check_cancel(cancel, "plan")
+        t0 = time.time()
+        observe.set_stage("plan")
+        plan = await design.plan_modules(text)
+        timings["plan"] = time.time() - t0
     modules = plan.modules
     if not modules:
         raise ChainError("module planning returned no SWC modules")
-    timings["plan"] = time.time() - t0
 
     if swc:
         chosen = next((m for m in modules if m.swc_name == swc), None)
@@ -201,6 +251,15 @@ async def _run_full_chain(
         chosen = modules[0]
     _emit(progress, "plan", f"Selected {chosen.swc_name} ({len(modules)} module(s) planned)", done=True)
 
+    # Give the model only this component's requirements (a 120-requirement prompt for one
+    # SWC is beyond small models); fall back to all when the plan has no IDs for it.
+    module_reqs = requirements_for_module(reqs, chosen)
+    scope = (module_reqs.count, reqs.count)
+    if module_reqs is not reqs:
+        text = design.requirements_text(module_reqs)
+        _emit(progress, "plan", f"{chosen.swc_name}: {scope[0]} of {scope[1]} requirements go to the model")
+    max_asil = highest_asil(module_reqs)
+
     # Create the run workspace only once the SWC is known.
     run = Run.create(chosen.swc_name, preset=run_label, root=root)
     if run_holder is not None:
@@ -209,10 +268,11 @@ async def _run_full_chain(
     observe.adopt_orphans(run.folder)
     run.save_json_in("input", "requirements.json", design.requirements_to_dicts(reqs))
     run.save_state(swc=chosen.swc_name, quick=quick, preset=run_label)
-    _emit(progress, "workspace", f"Run workspace: {run.folder}")
+    _emit(progress, "workspace", f"Run workspace: {run.folder}", run_folder=str(run.folder))
 
     # ── 3. generate MUD spec ──────────────────────────────────────────────────
     mode = "single_pass" if quick else "two_stage"
+    _check_cancel(cancel, "spec")
     t0 = time.time()
     observe.set_stage("spec")
     spec_md = await design.generate_mud_spec(chosen, text, mode=mode, progress=progress)
@@ -221,19 +281,77 @@ async def _run_full_chain(
     run.save_in("mud", "mud_spec.md", spec_md)
     timings["spec"] = time.time() - t0
     stage_notes["spec"] = f"{len(spec_md)} chars, mode={mode}"
+    # Strict pseudo-code rule: stop here (before any slow AI step) when Section 7 has no
+    # implementable logic — everything after it would be built on nothing.
+    from mudmut_core import spec_check
+    sc = spec_check.check_spec(spec_md, chosen.swc_name)
+    # Concrete design gaps (a local read but never set, a helper whose logic is written nowhere,
+    # a runnable without logic): one targeted repair call, kept only if the re-check is better.
+    if spec_check.gap_count(sc):
+        _check_cancel(cancel, "spec")
+        _emit(progress, "spec", f"Spec check found {spec_check.gap_count(sc)} design gap(s) — asking the model to fix them")
+        t1 = time.time()
+        try:
+            repaired = await design.repair_spec_from_check(chosen, text, spec_md, sc, progress=progress)
+        except Exception as exc:  # noqa: BLE001 - the repair is optional; keep the first spec
+            repaired = ""
+            warnings.append(f"Spec repair call failed ({exc}); kept the first spec.")
+        if repaired and len(repaired.strip()) >= 200:
+            sc2 = spec_check.check_spec(repaired, chosen.swc_name)
+            better = (sc2["ok"] or not sc["ok"]) and spec_check.gap_count(sc2) < spec_check.gap_count(sc)
+            repair_note = (f"repair: gaps {spec_check.gap_count(sc)} → {spec_check.gap_count(sc2)}, "
+                           f"{'kept' if better else 'discarded'} ({time.time() - t1:.0f}s)")
+            stage_notes["spec"] += f"; {repair_note}"
+            if better:
+                run.save_in("mud", "mud_spec_first.md", spec_md)
+                spec_md, sc = repaired, sc2
+                run.save_in("mud", "mud_spec.md", spec_md)
+            _emit(progress, "spec", "Spec " + repair_note)
+        timings["spec"] = time.time() - t0
+    run.save_json_in("mud", "spec_check.json", sc)
+    for w in spec_check.warnings_for(sc, chosen.swc_name):
+        warnings.append(w)
+        _emit(progress, "spec", w)
+    if not sc["ok"]:
+        raise ChainError("MUD spec rejected: " + " ".join(sc["problems"])
+                         + " The AI activity step was not called. Regenerate the spec or use a stronger model.")
+    stage_notes["spec"] += f"; Section 7: {len(sc['usable'])} of {sc['runnables']} runnable(s) with real logic"
     _emit(progress, "spec", f"MUD spec generated ({len(spec_md)} chars, mode={mode})", done=True)
 
     # ── 4. review (skip in quick mode) ────────────────────────────────────────
     if not quick:
+        _check_cancel(cancel, "review")
         t0 = time.time()
         observe.set_stage("review")
-        spec_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
+        reviewed_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
         review_approved = bool(review.approved)
         holder["review_approved"] = review_approved
+        review_empty = bool(getattr(review, "ai_review_empty", False))
+        holder["review_ai_empty"] = review_empty
         run.save_json_in("mud", "review.json", review.to_dict())
+        # The review may rewrite the spec. Re-run the spec check on the rewrite and keep it only
+        # when it is not worse — a rewrite into prose steps used to reach the activity stage unchecked.
+        review_note = ""
+        if reviewed_md and reviewed_md != spec_md:
+            sc_rev = spec_check.check_spec(reviewed_md, chosen.swc_name)
+            worse = (not sc_rev["ok"]) or len(sc_rev["usable"]) < len(sc["usable"]) \
+                or spec_check.gap_count(sc_rev) > spec_check.gap_count(sc)
+            if worse:
+                run.save_in("mud", "mud_spec_review_rejected.md", reviewed_md)
+                review_note = "; review rewrite discarded (failed the spec check)"
+                warnings.append("The review's rewritten spec was worse in the spec check "
+                                "(saved as 01_mud/mud_spec_review_rejected.md); the checked spec was kept.")
+            else:
+                spec_md, sc = reviewed_md, sc_rev
+                run.save_json_in("mud", "spec_check.json", sc)
+                review_note = "; review rewrite kept"
         run.save_in("mud", "mud_spec.md", spec_md)
         timings["review"] = time.time() - t0
-        stage_notes["review"] = f"approved={review.approved} coverage={review.coverage_pct}%"
+        stage_notes["review"] = f"approved={review.approved} coverage={review.coverage_pct}%{review_note}"
+        if review_empty:
+            stage_notes["review"] += "; ⚠️ the AI reviewer returned no answer — only the deterministic ID check ran"
+            warnings.append("The AI spec reviewer returned an empty answer; the review verdict is the "
+                            "deterministic requirement-ID check only.")
         _emit(
             progress, "review",
             f"Review: approved={review.approved} coverage={review.coverage_pct}% "
@@ -242,15 +360,17 @@ async def _run_full_chain(
         )
 
     # ── 5. activity diagram ───────────────────────────────────────────────────
+    _check_cancel(cancel, "activity")
     t0 = time.time()
     # quick: build the flow straight from Section 7 — on 7-9B models the AI
     # activity step routinely times out and ends in this same fallback anyway.
     observe.set_stage("activity")
     activity = await design.generate_activity(
-        reqs, spec_md, chosen.swc_name, use_ai=not quick, progress=progress
+        module_reqs, spec_md, chosen.swc_name, use_ai=not quick, progress=progress
     )
     if not activity.diagrams:
-        raise ChainError("activity generation produced no diagrams")
+        reason = "; ".join(getattr(activity, "errors", None) or []) or "no diagrams produced"
+        raise ChainError(f"activity generation failed: {reason}")
     run.save_json_in("mud", "activity.json", activity.model_dump() if hasattr(activity, "model_dump") else activity.dict())
     timings["activity"] = time.time() - t0
     _emit(progress, "activity", f"Generated {len(activity.diagrams)} activity diagram(s)", done=True)
@@ -271,8 +391,9 @@ async def _run_full_chain(
 
     # ── 7. make the C compilable ──────────────────────────────────────────────
     project_dir = run.dir("code")
+    _check_cancel(cancel, "compilable")
     t0 = time.time()
-    rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir)
+    rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir, spec_md=spec_md)
     run.save_json_in("code", "compilability.json", {
         "swc": chosen.swc_name,
         "total_statements": rep.total_statements,
@@ -281,6 +402,10 @@ async def _run_full_chain(
         "rounds": rep.rounds,
         "compile_ok": rep.compile_ok,
         "last_error": rep.last_error,
+        "logic_stubbed": rep.logic_stubbed,
+        "stubbed_logic": rep.stubbed_logic,
+        "never_assigned": rep.never_assigned,
+        "dropped_arguments": rep.dropped_arguments,
     })
     timings["compilable"] = time.time() - t0
     stage_notes["compilable"] = rep.summary()
@@ -289,6 +414,7 @@ async def _run_full_chain(
     # (Models are unloaded in run_full_chain's finally.)
 
     # ── 8. analyze + generate tests ───────────────────────────────────────────
+    _check_cancel(cancel, "generate_tests")
     t0 = time.time()
     observe.set_stage("generate_tests")
 
@@ -310,6 +436,7 @@ async def _run_full_chain(
     out_dir = Path(generation.get("output_directory", ""))
     test_result: dict[str, Any] = {"status": "skipped"}
     if out_dir and out_dir.is_dir():
+        _check_cancel(cancel, "build_run")
         t0 = time.time()
         observe.set_stage("build_run")
         test_result = verify.fix_loop(out_dir, max_attempts=2)
@@ -327,6 +454,7 @@ async def _run_full_chain(
         )
 
     # ── 10. traceability ──────────────────────────────────────────────────────
+    _check_cancel(cancel, "trace")
     t0 = time.time()
     trace_record = trace_mod.build_trace(chosen.swc_name, rep.c_code, generation)
     run.save_json_in("trace", "trace.json", trace_record)
@@ -347,11 +475,18 @@ async def _run_full_chain(
         "tests_generated": generation.get("tests_generated", 0),
         "generation_failed": len(generation.get("failed_functions") or []),
         "review_approved": review_approved,
+        "review_ai_empty": holder.get("review_ai_empty", False),
         "compilability": {
             "kept": rep.kept_statements,
             "stubbed": rep.stubbed_statements,
             "compile_ok": rep.compile_ok,
+            "logic_stubbed": rep.logic_stubbed,
+            "uninitialized_uses": len(rep.never_assigned),
+            "never_assigned": rep.never_assigned,
+            "dropped_arguments": rep.dropped_arguments,
         },
+        "max_asil": max_asil,
+        "requirements_for_module": list(scope) if scope[0] != scope[1] else None,
         "tests": test_result,
         "trace": trace_record,
     }
@@ -362,10 +497,112 @@ async def _run_full_chain(
     return summary
 
 
+_ASIL_RANK = {"QM": 0, "ASIL-A": 1, "ASIL-B": 2, "ASIL-C": 3, "ASIL-D": 4}
+
+
+def highest_asil(reqs) -> Optional[str]:
+    """The highest ASIL among the requirements (``None`` if none is set)."""
+    best, rank = None, -1
+    for r in getattr(reqs, "requirements", reqs):
+        level = getattr(getattr(r, "safety_level", None), "value", getattr(r, "safety_level", None))
+        if level in _ASIL_RANK and _ASIL_RANK[level] > rank:
+            best, rank = level, _ASIL_RANK[level]
+    return best
+
+
+def requirements_for_module(reqs, module):
+    """Only the requirements the plan assigned to ``module`` (all of them if it lists none)."""
+    ids = set(getattr(module, "req_ids", None) or [])
+    if not ids:
+        return reqs
+    items = [r for r in reqs.requirements if r.req_id in ids]
+    if not items or len(items) == len(reqs.requirements):
+        return reqs
+    try:
+        return reqs.model_copy(update={"requirements": items})
+    except AttributeError:
+        return reqs.copy(update={"requirements": items})
+
+
+def _import(requirements_file: str | Path):
+    imported = design.import_requirements(requirements_file)
+    if not imported.requirement_set.requirements:
+        raise ChainError(f"no requirements imported from {requirements_file}: {imported.errors}")
+    return imported.requirement_set
+
+
+async def run_all_swcs(
+    requirements_file: str | Path,
+    *,
+    only: Optional[list[str]] = None,
+    quick: bool = False,
+    preset: Optional[str] = None,
+    progress: Optional[Callable[[dict], None]] = None,
+    root: Optional[Path] = None,
+    cancel: Optional[Callable[[], bool]] = None,
+) -> dict[str, Any]:
+    """Design and test every planned SWC (or the ones in ``only``) — one run folder each.
+
+    Requirements are imported and planned **once**, so every SWC sees the same plan. A failing
+    SWC does not stop the others; its partial report is written as usual. Progress events are
+    re-scaled to the whole job (``fraction``) and tagged with the SWC.
+    """
+    env.ensure_environment()
+    env.export_provider_keys()
+    reqs = _import(requirements_file)
+    _emit(progress, "import", f"Imported {reqs.count} requirement(s)", done=True)
+    _check_cancel(cancel, "plan")
+    observe.set_stage("plan")
+    plan = await design.plan_modules(design.requirements_text(reqs))
+    modules = [m for m in plan.modules if not only or m.swc_name in only]
+    if not modules:
+        raise ChainError(f"no planned SWC matches {only}" if only else "module planning returned no SWC modules")
+    names = [m.swc_name for m in modules]
+    _emit(progress, "plan", f"Planned {len(plan.modules)} SWC(s); running {len(modules)}: {', '.join(names)}",
+          done=True)
+
+    results: list[dict[str, Any]] = []
+    for i, module in enumerate(modules):
+        _check_cancel(cancel, f"SWC {module.swc_name}")
+        tracker = progress_mod.ProgressTracker(quick=quick)
+        tracker.update({"stage": "import", "done": True})
+        tracker.update({"stage": "plan", "done": True})
+
+        def scaled(event: dict, i: int = i, tracker=tracker, swc=module.swc_name) -> None:
+            tracker.update(event)
+            if progress:
+                out = dict(event)
+                out["message"] = f"[{swc} {i + 1}/{len(modules)}] {event.get('message', '')}"
+                out["fraction"] = (i + tracker.percent / 100.0) / len(modules)
+                out["swc"] = swc
+                progress(out)
+
+        try:
+            summary = await run_full_chain(
+                requirements_file, swc=module.swc_name, quick=quick, preset=preset if i == 0 else None,
+                progress=scaled, root=root, cancel=cancel, prepared=(reqs, plan),
+            )
+            results.append({"swc": module.swc_name, "status": "done", "run_folder": summary["run_folder"],
+                            "summary": summary})
+        except ChainCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001 - keep going with the next SWC
+            results.append({"swc": module.swc_name, "status": "error", "error": f"{type(exc).__name__}: {exc}"})
+            _emit(progress, "error", f"{module.swc_name} failed: {exc}")
+    done = [r for r in results if r["status"] == "done"]
+    return {
+        "swcs": results,
+        "run_folder": done[-1]["run_folder"] if done else "",
+        "warnings": [f"{r['swc']}: {r['error']}" for r in results if r["status"] == "error"],
+    }
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(description="MUD → MUT end-to-end chain (headless)")
     parser.add_argument("--requirements", required=True, help="Path to the requirements file (csv/txt/md/xlsx)")
-    parser.add_argument("--swc", default=None, help="SWC name to design + test (default: first planned module)")
+    parser.add_argument("--swc", default=None,
+                        help="SWC name to design + test (default: first planned module; 'all' = every planned "
+                             "SWC, one run folder each)")
     parser.add_argument("--quick", action="store_true", help="single_pass spec, skip review (fast demo)")
     parser.add_argument("--preset", default=None,
                         help="apply a preset id from config/presets.json first (default: keep the "
@@ -379,6 +616,15 @@ def _main() -> int:
     print("MUD_MUT chain")
     print(f"  requirements: {args.requirements}")
     print(f"  swc: {args.swc or '(auto)'}   quick={args.quick}   preset={args.preset}\n")
+
+    if args.swc == "all":
+        multi = aio.run_sync(
+            run_all_swcs(args.requirements, quick=args.quick, preset=args.preset, progress=progress)
+        )
+        print("\n=== SUMMARY (all SWCs) ===")
+        print(json.dumps([{k: r.get(k) for k in ("swc", "status", "run_folder", "error")} for r in multi["swcs"]],
+                         indent=2))
+        return 0 if all(r["status"] == "done" for r in multi["swcs"]) else 1
 
     summary = aio.run_sync(
         run_full_chain(args.requirements, swc=args.swc, quick=args.quick, preset=args.preset, progress=progress)

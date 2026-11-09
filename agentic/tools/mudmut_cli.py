@@ -302,7 +302,9 @@ def handle_make_compilable(args) -> dict:
     run_dir = make_run_dir(args.run, swc=args.swc)
     code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
     project_dir = _sec(run_dir, "code")
-    rep = compilable.make_compilable(code, args.swc, project_dir)
+    spec_file = _sec(run_dir, "mud") / "mud_spec.md"
+    spec_md = spec_file.read_text(encoding="utf-8") if spec_file.is_file() else None
+    rep = compilable.make_compilable(code, args.swc, project_dir, spec_md=spec_md)
     (project_dir / "compilability.json").write_text(_json.dumps({
         "swc": args.swc,
         "total_statements": rep.total_statements,

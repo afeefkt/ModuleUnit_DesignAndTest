@@ -236,7 +236,7 @@ class ModulePlanner:
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=8192,   # 120-requirement sets need room: 4096 truncated the JSON plan
                 response_format="json",   # module plan is always structured JSON
             )
         except Exception as exc:
@@ -268,7 +268,7 @@ class ModulePlanner:
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=retry_prompt,
                 temperature=min(temperature, 0.1),
-                max_tokens=2048,
+                max_tokens=8192,
                 response_format="json",
             )
         except Exception as exc:
@@ -669,8 +669,15 @@ def _consolidate_sub_swcs(modules: list[ModuleInfo]) -> list[ModuleInfo]:
     # Build prefix groups: strip SWC_ then take the first PascalCase word
     def _parent_prefix(swc_name: str) -> str:
         base = re.sub(r"^SWC_", "", swc_name)
-        # Split on PascalCase boundary: SWC_MtrMonOvercurrent → ["Mtr", "Mon", "Overcurrent"]
-        parts = re.findall(r"[A-Z][a-z0-9]*", base)
+        # Underscore-separated names (SWC_AEB_SensorFusion, SWC_AEB_Controller) are an explicit
+        # architecture — distinct SWCs of one feature, often named that way by the requirements
+        # themselves. Never merge them. (Splitting "AEB" letter by letter used to turn all seven
+        # AEB SWCs into one fake "SWC_AE" holding every requirement.)
+        if "_" in base:
+            return swc_name
+        # Split on PascalCase boundaries, keeping acronyms whole:
+        # SWC_MtrMonOvercurrent → ["Mtr", "Mon", "Overcurrent"]; SWC_ABSValve → ["ABS", "Valve"]
+        parts = re.findall(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z][a-z0-9]*|[a-z0-9]+", base)
         # Use first 1–2 parts as the canonical parent prefix
         return "SWC_" + "".join(parts[:2]) if len(parts) >= 2 else swc_name
 

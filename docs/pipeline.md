@@ -7,6 +7,7 @@ Everything runs in-process (`mudmut_core`) inside WSL; no Docker, no services re
 
 | # | Stage | Engine call | Model stage (Workflow & Models) | Output in `outputs/<run>/` |
 |---|---|---|---|---|
+| 0 | Harden requirements (optional, deterministic) | `mudmut_core.hardening.run` → `requirements_hardening.cli.run` | — | `outputs/req_hardening/<time>_<set>/`, baseline in `inputs/requirements_hardened/<set>/` |
 | 1 | Import requirements (CSV/XLSX/ReqIF/MD/TXT; DOORS, Polarion, Jira column names recognised, HTML text cleaned, odd IDs normalised) | `design.import_requirements` | — | `00_input/requirements.json` |
 | 2 | Plan modules (SWC split) | `design.plan_modules` | `planner` | (selected SWC in `state.json`) |
 | 3 | MUD spec | `design.generate_mud_spec` (`single_pass` / `two_stage`) | `mud_spec_skeleton`, `mud_spec_generator` | `01_mud/mud_spec.md` |
@@ -17,6 +18,15 @@ Everything runs in-process (`mudmut_core`) inside WSL; no Docker, no services re
 | 8 | Build, run, fix (Makefile generated per run from the CppUTest folder in **Settings**) | `verify.fix_loop` (make in WSL, fix loop, quarantine, smoke fallback) | `test_fixer` | `03_mut/test-results.xml`, `coverage_html/`, `test-report.html`, `quarantined/` |
 | 9 | Traceability | `trace.build_trace` | — | `04_trace/trace.json` |
 | 10 | Report | `report.write_run_report` | — | `RUN_REPORT.md`, `run.json` |
+
+Multi-SWC: `run_all_swcs` imports and plans **once**, then runs stages 3–10 per component (one run folder each);
+each component's prompts contain only the requirements the plan assigned to it.
+
+Quality gate (stage 6): the compile step also records `stubbed_logic` (assignments/calls it had to comment out),
+`never_assigned` (variables read but never set — a dropped computation) and `dropped_arguments` (helper calls emitted
+as `f()` although the design passes arguments, marked `TODO(args)`). Any of these makes **Compilable ❌**. A smoke-test-only
+result makes **Build & run ❌** (and **Tests ❌** when every AI test was quarantined). Coverage is measured on the
+component's own C file (tests, runner and Rte stubs are excluded).
 
 `RUN_REPORT.md` gives a ✅ / ⚠️ / ❌ verdict per stage (a failed run marks the failing stage ❌ and
 later stages "—"), the provider + model used by every stage, timings, compile ratio, JUnit counts,

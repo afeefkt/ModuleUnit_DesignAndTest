@@ -57,6 +57,56 @@ def trace_markdown(trace_record: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def effective_verdicts(run_json: dict[str, Any]) -> dict[str, str]:
+    """Stage verdicts with today's rules applied to an older ``run.json``.
+
+    Runs written before the smoke-test rule stored ✅/⚠️ for a smoke-only result; show them
+    as failures so old and new runs are judged the same way.
+    """
+    verdicts = dict(run_json.get("verdicts") or {})
+    tests = run_json.get("tests") or {}
+    if tests.get("smoke_fallback"):
+        if verdicts.get("build_run") not in (None, "—"):
+            verdicts["build_run"] = "❌"
+        if verdicts.get("generate_tests") not in (None, "—"):
+            verdicts["generate_tests"] = "❌"
+    comp = run_json.get("compilability") or {}
+    if comp.get("logic_stubbed") or comp.get("never_assigned") or comp.get("dropped_arguments"):
+        if verdicts.get("compilable") not in (None, "—"):
+            verdicts["compilable"] = "❌"
+    return verdicts
+
+
+def quality_notes(summary: dict[str, Any]) -> list[str]:
+    """Plain warnings a reviewer must see before trusting the run (shown at the top of the report)."""
+    notes: list[str] = []
+    tests = summary.get("tests") or {}
+    comp = summary.get("compilability") or {}
+    asil = summary.get("max_asil")
+    if asil in ("ASIL-B", "ASIL-C", "ASIL-D"):
+        notes.append(f"🛑 **{asil} requirements:** this is an AI-assisted draft. A safety engineer must review the "
+                     "design, code and tests; nothing here claims ISO 26262 compliance.")
+    if tests.get("smoke_fallback"):
+        notes.append("❌ **No AI-written test compiled.** The smoke test only calls each runnable once "
+                     "(`CHECK(true)`); a pass here does not verify any requirement.")
+    if comp.get("logic_stubbed"):
+        notes.append(f"❌ **{comp['logic_stubbed']} statement(s) of design logic were commented out** to make the C "
+                     "compile (assignments / calls). The code compiles because that logic is missing — see "
+                     "`02_code/compilability.json`.")
+    if comp.get("uninitialized_uses"):
+        names = ", ".join(comp.get("never_assigned") or [])
+        notes.append(f"❌ **Read but never assigned: {names or comp['uninitialized_uses']}.** "
+                     "A computed value was dropped, so the output uses a default (zero) value.")
+    if comp.get("dropped_arguments"):
+        notes.append(f"❌ **{comp['dropped_arguments']} helper call(s) lost the arguments the design passes** "
+                     "(helpers are generated as `void f(void)`); see the `TODO(args)` comments in the C file.")
+    req_scope = summary.get("requirements_for_module")
+    if req_scope:
+        notes.append(f"ℹ️ The model was given {req_scope[0]} of {req_scope[1]} requirements (the ones planned for "
+                     "this component).")
+    return notes
+
+
 def _verdict(ok: bool, warn: bool = False) -> str:
     if ok:
         return "✅"
@@ -84,28 +134,38 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
     cpp = tests.get("cpputest") or {}
     quarantined = tests.get("quarantined_tests") or []
 
+    logic_stubbed = int(comp.get("logic_stubbed") or 0)
+    uninit = int(comp.get("uninitialized_uses") or 0)
+    dropped_args = int(comp.get("dropped_arguments") or 0)
+
     def compilable_v():
-        if not compile_ok:
+        # Compiling is not enough: commenting out real logic (assignments, calls) or reading
+        # uninitialised variables means the design was not implemented — that is a failure.
+        if not compile_ok or logic_stubbed or uninit or dropped_args:
             return "❌"
         return "⚠️" if stubbed else "✅"
 
     def gen_v():
         if tests_generated == 0:
             return "❌"
-        return "⚠️" if generation_failed else "✅"
+        if quarantined and len(quarantined) >= tests_generated:
+            return "❌"          # every AI-written test failed to compile
+        return "⚠️" if (generation_failed or quarantined) else "✅"
 
     def run_v():
         if status == "build_failed":
             return "❌"
-        if status == "passed" and not smoke and not quarantined:
+        if smoke:
+            return "❌"          # only the smoke test ran: CHECK(true) proves nothing
+        if status == "passed" and not quarantined:
             return "✅"
-        if status in ("test_failed", "passed"):
-            return "⚠️"
-        return "⚠️"  # skipped / unknown
+        return "⚠️"  # test failures, quarantined tests, skipped / unknown
 
     def review_v():
         if summary.get("quick"):
             return "—"
+        if summary.get("review_ai_empty"):
+            return "⚠️"   # the reviewer model answered nothing: only the deterministic ID check ran
         return "✅" if summary.get("review_approved", True) else "⚠️"
 
     verdicts: dict[str, str] = {
@@ -142,6 +202,8 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "cloud_notice": cloud_notice,
         "timings": summary.get("timings", {}),
         "failed_stage": failed_stage,
+        "max_asil": summary.get("max_asil"),
+        "quality_notes": quality_notes(summary),
         "error": summary.get("error"),
         "warnings": summary.get("warnings", []),
         "compilability": comp,
@@ -164,6 +226,8 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         lines.append(f"- **❌ Run failed in stage `{failed_stage}`:** {summary.get('error', '')}")
     for warning in summary.get("warnings", []):
         lines.append(f"- ⚠️ {warning}")
+    for note in quality_notes(summary):
+        lines.append(f"- {note}")
     lines += [
         "",
         "## Stage verdicts",

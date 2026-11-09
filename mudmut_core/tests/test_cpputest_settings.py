@@ -62,7 +62,7 @@ def test_makefile_bakes_cpputest_paths(tmp_path):
     text = (tmp_path / "Makefile").read_text()
     assert "CPPUTEST_HOME ?= /opt/cpp\n" in text
     assert "CPPUTEST_LIB ?= /opt/cpp/lib64\n" in text
-    assert "-lCppUTest --coverage" in text and "-lCppUTestExt" not in text
+    assert "-lCppUTest -lm --coverage" in text and "-lCppUTestExt" not in text
     assert "-MMD -MP" in text and "-include $(DEPS)" in text
     assert "CFLAGS += -DUNIT_TEST" in text
     assert "\r" not in text

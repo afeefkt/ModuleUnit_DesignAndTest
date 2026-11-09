@@ -53,13 +53,20 @@ REQUIREMENTS:
    - Error conditions (if applicable)
    - Boundary values
 4. Use appropriate CppUTest macros (CHECK, CHECK_EQUAL, LONGS_EQUAL, STRCMP_EQUAL, etc.)
-5. Dependencies (Rte_*, Dem_*, NvM_* and helper calls) are already plain stub functions that
-   return E_OK. Do NOT mock them, do NOT count calls (no .call_count(), no mock objects).
+5. RTE signals are plain variables (declared for you):
+   - inputs:      set  Rte_Read_<port>   before the call, e.g. Rte_Read_RP_BrakeDemand = 4.0;
+   - calibration: set  Rte_Prm_<port>    (starts at the MUD default), e.g. Rte_Prm_RP_CalPrm_PMax = 250.0F;
+   - outputs:     CHECK Rte_Write_<port> after the call, e.g. DOUBLES_EQUAL(0.0, Rte_Write_PP_BrakePressure, 1e-6);
+   - call Rte_Stubs_Reset(); in setup() so every test starts from the defaults.
+   Other dependencies (Dem_*, NvM_*, helper calls) are plain stub functions returning E_OK / 0.
+   Do NOT mock them, do NOT count calls (no .call_count(), no mock objects).
    Test through inputs and outputs: set the variables the function reads, call it, then CHECK
    the variables it writes
 6. Add comments explaining what each test validates
 7. Follow the style and structure of the reference examples
-8. Use ONLY identifiers that appear in the function source above (or standard C/CppUTest names).
+8. Use ONLY identifiers that appear in the function source above, the signal variables of rule 5
+   (Rte_Read_<port> / Rte_Prm_<port> / Rte_Write_<port> for ports the function uses, Rte_Stubs_Reset),
+   or standard C/CppUTest names.
    Never invent constants, variables, structs or functions. The function under test and the
    variables it uses are already declared for you; do not redeclare them or add #include lines.
 
@@ -333,7 +340,7 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "CXXFLAGS += -I$(CPPUTEST_INC)",
         "CFLAGS += -Wall -Wextra -g -std=c99 --coverage -fprofile-arcs -ftest-coverage -MMD -MP -I.",
         "CFLAGS += -I$(CPPUTEST_INC)",
-        f"LDFLAGS += -L$(CPPUTEST_LIB) -Wl,-rpath,$(CPPUTEST_LIB) -lCppUTest{ext} --coverage",
+        f"LDFLAGS += -L$(CPPUTEST_LIB) -Wl,-rpath,$(CPPUTEST_LIB) -lCppUTest{ext} -lm --coverage",
     ] + ([f"CXXFLAGS += {extra_cflags}", f"CFLAGS += {extra_cflags}"] if extra_cflags.strip() else []) + [
         "",
         "# Source files",
@@ -382,7 +389,9 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "coverage: test",
         tab + '@echo "Generating coverage reports..."',
         tab + '-lcov --capture --directory . --output-file $(COVERAGE_INFO) $(LCOV_OPTS) 2>&1 | grep -v "ignoring data for external file" || true',
-        tab + "-lcov --remove $(COVERAGE_INFO) '/usr/*' '*/CppUTest/*' --output-file $(COVERAGE_INFO) $(LCOV_OPTS) 2>&1 | grep -v \"ignoring data for external file\" || true",
+        # Coverage of the code under test only: test files, the runner and the Rte stubs
+        # would otherwise inflate the numbers.
+        tab + "-lcov --remove $(COVERAGE_INFO) '/usr/*' '*/CppUTest/*' '*/Test_*' '*/AllTests.cpp' '*/Rte_Stubs.c' --output-file $(COVERAGE_INFO) $(LCOV_OPTS) 2>&1 | grep -v \"ignoring data for external file\" || true",
         tab + '-genhtml $(COVERAGE_INFO) --output-directory $(COVERAGE_HTML_DIR) --branch-coverage --legend --title "CppUTest Coverage Report" 2>&1 | tail -5 || true',
         tab + '@if [ -f $(COVERAGE_INFO) ]; then echo "Coverage reports generated successfully"; fi',
         tab + '@echo "HTML coverage: $(COVERAGE_HTML_DIR)/index.html"',

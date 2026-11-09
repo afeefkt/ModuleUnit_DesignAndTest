@@ -1,0 +1,58 @@
+{
+  "version": "0.1.0",
+  "description": "Standards profiles. The pilot uses generic + automotive; all profiles are scoped for future use. Nothing here implies certification.",
+  "profiles": {
+    "generic": {
+      "name": "Generic requirements engineering",
+      "standards": [
+        "ISO/IEC/IEEE 29148:2018 (requirements engineering)",
+        "ISO/IEC/IEEE 12207 (software life cycle)",
+        "INCOSE Guide to Writing Requirements",
+        "EARS (Easy Approach to Requirements Syntax)",
+        "ISO/IEC 25010 (quality model)",
+        "Gherkin/Given-When-Then acceptance criteria"
+      ],
+      "focus": ["atomicity", "unambiguity", "verifiability", "traceability", "completeness", "consistency"]
+    },
+    "automotive": {
+      "name": "Automotive (AEB pilot)",
+      "standards": [
+        "Automotive SPICE 4.0 SWE.1-SWE.6",
+        "ISO 26262-6/-8 (functional safety)",
+        "ISO/PAS 8800 (AI in road vehicles, awareness)",
+        "ISO 21434 (cybersecurity, awareness)",
+        "UNECE R152 (AEB)",
+        "ISO 22839 (forward collision mitigation, context)",
+        "AUTOSAR Classic methodology (SWC/runnable/port/data type)",
+        "FMVSS 127 (reference only)"
+      ],
+      "focus": ["ASIL rationale", "safe state/FTTI", "requirements-based testing", "E2E/diagnostics", "HMI warning", "configuration"]
+    },
+    "aerospace": {
+      "name": "Aerospace",
+      "standards": ["DO-178C", "ARP4754A", "DO-330", "DO-331/332/333 as applicable"],
+      "focus": ["traceability", "verification independence", "tool qualification", "requirements-based testing"]
+    },
+    "medical": {
+      "name": "Medical devices",
+      "standards": ["IEC 62304", "ISO 14971", "IEC 62366-1 (usability, context)"],
+      "focus": ["risk control", "software safety class", "verification", "traceability"]
+    },
+    "rail": {
+      "name": "Rail",
+      "standards": ["EN 50126", "EN 50128", "EN 50129"],
+      "focus": ["SIL", "verification independence", "safety case"]
+    },
+    "machinery": {
+      "name": "Machinery",
+      "standards": ["ISO 13849", "IEC 62061", "IEC 61508 (generic)"],
+      "focus": ["performance level", "safety function", "validation"]
+    },
+    "ai_ml": {
+      "name": "AI/ML-enabled systems (cross-domain)",
+      "standards": ["ISO/PAS 8800 (automotive)", "ISO/IEC 42001 (AI management, awareness)", "NIST AI RMF (reference)"],
+      "focus": ["data quality", "model limitations", "human oversight", "uncertainty", "runtime monitoring"]
+    }
+  },
+  "active_for_pilot": ["generic", "automotive"]
+}

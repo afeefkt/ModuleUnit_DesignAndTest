@@ -17,6 +17,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a runtime circular i
 
 logger = logging.getLogger(__name__)
 
+# With more runnables than this, the AI activity step asks for one runnable at a time.
+PER_RUNNABLE_FROM = 3
+
 
 def _looks_like_placeholder_activity(result_obj: "GenerationResult", mud_context) -> bool:
     """Return True when the AI produced a shallow/placeholder activity diagram.
@@ -160,20 +163,81 @@ async def _generate_activity_from_mud(
                     "Activity built deterministically from MUD Section 7 (AI step skipped)."
                 ],
             )
+        # The caller asked for no AI step: never fall back to it silently (on a small local
+        # model that fallback took 40+ minutes and still failed). Say why instead.
+        return GenerationResult(
+            analyzed_requirements=req_ids,
+            warnings=normalization_warnings,
+            errors=[
+                "Quick mode builds the flow from MUD Section 7 without AI, but Section 7 has no steps the "
+                "builder can read (numbered steps or a C function body per runnable). Regenerate the spec, "
+                "or switch Quick mode off to let the AI draw the flow (slow on local models)."
+            ],
+        )
 
-    result = await orchestrator.generate_diagram(
-        DiagramType.ACTIVITY,
-        requirements,
-        module_context=request.module_context,
-        existing_swcs=request.existing_swcs,
-        temperature=request.temperature,
-        progress_callback=progress_callback,
-        generation_profile=("autosar" if request.autosar_compliant else "generic_c"),
-        activity_label_style=request.activity_label_style,
-        autosar_compliant=request.autosar_compliant,
-        activity_source="mud_spec",
-        mud_activity_context=mud_context,
-    )
+    async def _generate(ctx, reqs):
+        return await orchestrator.generate_diagram(
+            DiagramType.ACTIVITY,
+            reqs,
+            module_context=request.module_context,
+            existing_swcs=request.existing_swcs,
+            temperature=request.temperature,
+            progress_callback=progress_callback,
+            generation_profile=("autosar" if request.autosar_compliant else "generic_c"),
+            activity_label_style=request.activity_label_style,
+            autosar_compliant=request.autosar_compliant,
+            activity_source="mud_spec",
+            mud_activity_context=ctx,
+        )
+
+    # Strict rule: the AI activity step only gets runnables whose Section 7 pseudo code passes
+    # (real assignments / conditions / RTE access). Placeholder or empty runnables are never sent.
+    import dataclasses
+    from mudtool.ai.mud_activity_context import runnable_flow_quality
+    quality = {r.name: runnable_flow_quality(r) for r in mud_context.runnables}
+    rejected = [f"{name} ({q})" for name, q in quality.items() if q != "logic"]
+    runnables = [r for r in mud_context.runnables if quality[r.name] == "logic"]
+    if not runnables:
+        return GenerationResult(
+            analyzed_requirements=req_ids,
+            warnings=normalization_warnings,
+            errors=[
+                "MUD spec Section 7 fails the pseudo-code rule for every runnable, so the AI activity step "
+                f"was not called: {', '.join(rejected)}. Each runnable needs real steps (assignments, "
+                "conditions, Rte_Read/Rte_Write, Dem_ reports), not callback stubs or TODOs. Regenerate the "
+                "spec (a stronger model helps)."
+            ],
+        )
+    if rejected:
+        normalization_warnings = list(normalization_warnings) + [
+            "Not sent to the AI activity step (pseudo code failed the rule): " + ", ".join(rejected)
+        ]
+        mud_context = dataclasses.replace(mud_context, runnables=runnables)
+
+    if len(runnables) > PER_RUNNABLE_FROM:
+        # One answer for many runnables runs into the output-token limit (seen: 8192 of
+        # 8192 tokens, truncated JSON, three slow retries). Ask for one runnable at a time,
+        # with only the requirements that runnable names (so the coverage check does not
+        # demand every module requirement from a single runnable).
+        from mudtool.ai import observer as _observer
+        from mudtool.ai.mud_activity_context import ids_named
+        all_ids = [r.req_id for r in requirements]
+        result = GenerationResult(analyzed_requirements=req_ids)
+        for i, runnable in enumerate(runnables, 1):
+            _observer.check_cancel(f"before activity of {runnable.name}")
+            if progress_callback:
+                progress_callback({
+                    "stage": "activity_runnable", "diagram_type": "activity",
+                    "message": f"[Activity:MUD] Runnable {i}/{len(runnables)}: {runnable.name}",
+                })
+            own = set(ids_named(all_ids, f"{runnable.summary}\n{runnable.functional_description}"))
+            part = await _generate(dataclasses.replace(mud_context, runnables=[runnable]),
+                                   [r for r in requirements if r.req_id in own])
+            result.diagrams.extend(part.diagrams)
+            result.warnings.extend(part.warnings)
+            result.errors.extend(f"{runnable.name}: {e}" for e in part.errors)
+    else:
+        result = await _generate(mud_context, requirements)
 
     if _looks_like_placeholder_activity(result, mud_context):
         synthesized = synthesize_activity_diagrams_from_context(mud_context, req_ids)

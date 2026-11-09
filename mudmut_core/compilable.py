@@ -71,8 +71,85 @@ typedef unsigned char Std_ReturnType;
 #define NULL ((void*) 0)
 #endif
 
+/* The C standard library the design may use (fabsf, fminf, memset, abs …). */
+#include <math.h>
+#include <string.h>
+#include <stdlib.h>
+
 #endif /* RTE_TYPE_H */
 """
+
+
+# Standard C library functions: declared by Rte_Type.h's system includes, never stubbed.
+STDLIB_FUNCS = {
+    "fabs", "fabsf", "fmin", "fminf", "fmax", "fmaxf", "sqrt", "sqrtf", "floor", "floorf",
+    "ceil", "ceilf", "round", "roundf", "trunc", "truncf", "fmod", "fmodf", "pow", "powf",
+    "exp", "expf", "log", "logf", "sin", "sinf", "cos", "cosf", "tan", "tanf", "atan", "atanf",
+    "atan2", "atan2f", "abs", "labs", "llabs", "memset", "memcpy", "memmove", "memcmp",
+    "strlen", "strcmp", "strncmp", "strcpy", "strncpy",
+}
+
+# ── RTE signals as test variables ────────────────────────────────────────────
+# Rte_Read / Rte_Write / Rte_Prm with a port name become macros over one variable per port, so a
+# unit test can set inputs and calibrations and check outputs (a stub function returning 0 cannot
+# be controlled — tests wrote "Rte_Prm(RP_CalPrm_X) = 0.5F;" and were quarantined).
+SIGNAL_APIS = ("Read", "Write", "Prm")
+_RTE_SIGNAL_RE = re.compile(r"\bRte_(Read|Write|Prm)\s*\(\s*([A-Za-z_]\w*)\s*[,)]")
+_CALPRM_ROW_RE = re.compile(
+    r"^\|\s*`?(RP_\w+)`?\s*\|[^|\n]*\|\s*`?(\w+)`?\s*\|\s*`?([-+]?\d+(?:\.\d+)?)[fFuU]?`?\s*\|", re.M)
+_C_TYPES = {"uint8", "uint16", "uint32", "uint64", "sint8", "sint16", "sint32", "sint64",
+            "float32", "float64", "boolean"}
+
+
+def rte_signals(c_code: str) -> dict[str, list[str]]:
+    """``{"Read": [ports], "Write": [ports], "Prm": [ports]}`` used with a plain port name."""
+    found: dict[str, list[str]] = {k: [] for k in SIGNAL_APIS}
+    for kind, port in _RTE_SIGNAL_RE.findall(_COMMENT_RE.sub(" ", c_code)):
+        if port not in found[kind]:
+            found[kind].append(port)
+    return found
+
+
+def calprm_defaults(spec_md: str | None) -> dict[str, tuple[str, str]]:
+    """``{port: (c_type, default)}`` from the spec's calibration table (port | iface | type | default | …)."""
+    out: dict[str, tuple[str, str]] = {}
+    for port, ctype, value in _CALPRM_ROW_RE.findall(spec_md or ""):
+        ctype = ctype if ctype in _C_TYPES else "float64"
+        if ctype.startswith("float") and "." not in value:
+            value += ".0"
+        out[port] = (ctype, value)
+    return out
+
+
+def _signal_decls(signals: dict[str, list[str]], defaults: dict[str, tuple[str, str]]) -> list[tuple[str, str, str]]:
+    """``(c_type, variable, default)`` for every signal variable."""
+    rows: list[tuple[str, str, str]] = []
+    for kind in SIGNAL_APIS:
+        for port in signals.get(kind, []):
+            ctype, value = defaults.get(port, ("float64", "0")) if kind == "Prm" else ("float64", "0")
+            rows.append((ctype, f"Rte_{kind}_{port}", value))
+    return rows
+
+
+_SIGNAL_MACROS = {
+    "Read": "#define Rte_Read(port, dst)  ((*(dst) = Rte_Read_##port), E_OK)",
+    "Write": "#define Rte_Write(port, val) ((Rte_Write_##port = (val)), E_OK)",
+    "Prm": "#define Rte_Prm(port)        (Rte_Prm_##port)",
+}
+
+_BITWISE_USE =r"(?:\b{n}\s*(?:\||\^|%|<<|>>|&(?!&))|(?:\||\^|%|<<|>>|~)\s*{n}\b|[\w)\]]\s*&\s*{n}\b|\b{n}\s*=\s*[^;]*\d+[uU]\b)"
+
+
+def placeholder_type(name: str, code: str) -> str:
+    """Type for an identifier the design uses but never declares.
+
+    Bit masks and counters (``x | MASK``, ``x & BIT``, ``x = 0U``) need an integer type —
+    ``float64`` made every ``irvFaultBitmask | FAULT_BIT`` line fail to compile.
+    """
+    n = re.escape(name)
+    if re.search(_BITWISE_USE.format(n=n), code):
+        return "uint32"
+    return "float64"
 
 
 _TRAILING_COMMENT_RE = re.compile(r"(\s*/\*.*?\*/)+\s*$")
@@ -83,6 +160,7 @@ _UNDECLARED_RE = re.compile("['\"‘](\\w+)['\"’] undeclared")
 _FILE_SCOPE_STATIC_VAR_RE = re.compile(r"^static\s+(\w+)\s+(l_\w+)\s*;", re.MULTILINE)
 _RUNNABLE_DEF_RE = re.compile(r"^void\s+(\w+)\s*\(\s*void\s*\)\s*$", re.MULTILINE)
 _RTE_INCLUDE_RE = re.compile(r'#include\s+"(Rte_\w+)\.h"')
+_STATIC_FUNC_RE = re.compile(r"^static\s+(void\s+\w+\s*\(\s*void\s*\))", re.MULTILINE)
 
 
 def _code_part(line: str) -> str:
@@ -144,19 +222,40 @@ def generate_rte_swc_header(
     *,
     constants: dict[str, int] | None = None,
     variables: set[str] | None = None,
+    types: dict[str, str] | None = None,
+    signals: dict[str, list[str]] | None = None,
+    defaults: dict[str, tuple[str, str]] | None = None,
 ) -> str:
     """Return ``Rte_<SWC>.h``: RTE/helper declarations plus design symbols the
     skeleton uses but the MUD never defined (placeholder constants/variables)."""
+    types = types or {}
+    signals = signals or {}
+    sig_rows = _signal_decls(signals, defaults or {})
+    macro_block = ""
+    if sig_rows:
+        macros = "\n".join(_SIGNAL_MACROS[k] for k in SIGNAL_APIS if signals.get(k))
+        macro_block = (
+            "/* Test interface: every RTE signal is a variable.\n"
+            " *   set   Rte_Read_<port> / Rte_Prm_<port>  before calling a runnable (inputs, calibration)\n"
+            " *   check Rte_Write_<port>                  after it (outputs)\n"
+            " *   call  Rte_Stubs_Reset()                 in setup() to restore the defaults\n"
+            " * Rte_Prm_<port> starts at the default from the MUD's calibration table. */\n"
+            f"{macros}\n"
+        )
     # In C, "f()" accepts any arguments; in C++ it means "no arguments", so the
     # C++ unit tests get a variadic declaration of the same extern "C" symbol.
     decls: list[str] = []
     for name in sorted(rte_functions):
-        decls.append(f"Std_ReturnType {name}(MUDMUT_ANY_ARGS);")
+        decls.append(f"{types.get(name, 'Std_ReturnType')} {name}(MUDMUT_ANY_ARGS);")
     for name in sorted(extra_funcs or ()):
         if name not in rte_functions:
             decls.append(f"void {name}(MUDMUT_ANY_ARGS);")
     for name in sorted(variables or ()):
-        decls.append(f"extern float64 {name};  /* TODO(design): type not defined in the MUD */")
+        decls.append(f"extern {types.get(name, 'float64')} {name};  /* TODO(design): type not defined in the MUD */")
+    for ctype, var, _value in sig_rows:
+        decls.append(f"extern {ctype} {var};")
+    if sig_rows:
+        decls.append("void Rte_Stubs_Reset(void);")
     guard = f"RTE_{swc.upper()}_H"
     body = "\n".join(f"    {d}" for d in decls) if decls else "    /* no RTE API calls found */"
     const_lines = "\n".join(
@@ -179,6 +278,7 @@ def generate_rte_swc_header(
 
 {const_lines}
 
+{macro_block}
 #ifdef __cplusplus
 extern "C" {{
 #endif
@@ -199,16 +299,31 @@ def generate_rte_stubs(
     extra_funcs: set[str] | None = None,
     *,
     variables: set[str] | None = None,
+    types: dict[str, str] | None = None,
+    signals: dict[str, list[str]] | None = None,
+    defaults: dict[str, tuple[str, str]] | None = None,
 ) -> str:
     """Return ``Rte_Stubs.c`` with default definitions so the test binary links."""
+    types = types or {}
+    sig_rows = _signal_decls(signals or {}, defaults or {})
     defs: list[str] = []
+    if sig_rows:
+        defs.append("\n".join(f"{ctype} {var} = {value};" for ctype, var, value in sig_rows))
     for name in sorted(rte_functions):
-        defs.append(f"Std_ReturnType {name}()\n{{\n    (void)0;\n    return E_OK;\n}}")
+        ret_type = types.get(name, "Std_ReturnType")
+        ret = "E_OK" if ret_type == "Std_ReturnType" else "0"
+        defs.append(f"{ret_type} {name}()\n{{\n    (void)0;\n    return {ret};\n}}")
     for name in sorted(extra_funcs or ()):
         if name not in rte_functions:
             defs.append(f"void {name}()\n{{\n    (void)0;\n}}")
     for name in sorted(variables or ()):
-        defs.append(f"float64 {name} = 0;")
+        defs.append(f"{types.get(name, 'float64')} {name} = 0;")
+    if sig_rows:
+        # Reset signals AND the placeholder variables (IRVs …) defined above, so state from one
+        # test (e.g. a deviation timer) does not leak into the next.
+        resets = "\n".join([f"    {var} = {value};" for _ctype, var, value in sig_rows]
+                           + [f"    {name} = 0;" for name in sorted(variables or ())])
+        defs.append(f"void Rte_Stubs_Reset(void)\n{{\n{resets}\n}}")
     body = "\n\n".join(defs) if defs else "/* no stubs needed */"
     return f"""/* Generated by mudmut_core.compilable — stub definitions for {swc}. */
 #include "Rte_Type.h"
@@ -245,8 +360,48 @@ def _comment_line(line: str) -> str:
     if stripped.startswith("/*") and stripped.endswith("*/") and "*/" not in stripped[2:-2]:
         return line
     indent = line[: len(line) - len(line.lstrip())]
-    # Neutralise any comment terminators inside so the wrapper stays one comment.
-    return f"{indent}/* TODO(design): {stripped.replace('*/', '* /')} */"
+    # Neutralise comment openers/terminators inside so the wrapper stays one comment
+    # (an inner "/*" makes gcc warn "/* within comment").
+    inner = stripped.replace("/*", "/ *").replace("*/", "* /")
+    return f"{indent}/* TODO(design): {inner} */"
+
+
+# A stubbed statement is real design logic (not a prose label such as "Guard;") when it
+# assigns something or calls a function.
+_LOGIC_RE = re.compile(r"(?<![=!<>])=(?!=)|\b[A-Za-z_]\w*\s*\(")
+
+_DECL_TYPES = (r"(?:uint8|uint16|uint32|uint64|sint8|sint16|sint32|sint64|float32|float64|boolean|"
+               r"Std_ReturnType|int|float|double|char|unsigned\s+\w+|signed\s+\w+)")
+_DECL_RE = re.compile(rf"^\s*(?:static\s+)?(?:volatile\s+)?{_DECL_TYPES}\s+([A-Za-z_]\w*)\s*(=[^;]*)?;", re.M)
+_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+
+
+def is_logic_statement(code: str) -> bool:
+    body = _code_part(code)
+    return bool(body.strip()) and bool(_LOGIC_RE.search(body))
+
+
+def unassigned_reads(c_code: str) -> list[str]:
+    """Variables the code declares and reads but never assigns (excluding TODO comments).
+
+    File-scope variables are zero-initialised, so gcc's -Wuninitialized cannot see that a
+    computation was dropped; this check can (e.g. ``l_f32Cmd`` used in a clamp but never set).
+    """
+    code = _COMMENT_RE.sub(" ", c_code)
+    names: dict[str, bool] = {}
+    for m in _DECL_RE.finditer(code):
+        names[m.group(1)] = bool(m.group(2))          # declared with an initialiser = assigned
+    out: list[str] = []
+    for name, initialised in names.items():
+        if initialised:
+            continue
+        nm = re.escape(name)
+        assigned = re.search(rf"\b{nm}\s*(\[[^\]]*\])?\s*([-+*/|&^%]|<<|>>)?=(?!=)", code) or \
+            re.search(rf"&\s*{nm}\b|\b{nm}\s*(\+\+|--)|(\+\+|--)\s*{nm}\b", code)
+        uses = len(re.findall(rf"\b{nm}\b", code))
+        if not assigned and uses > 1:                   # more than the declaration itself
+            out.append(name)
+    return out
 
 
 @dataclass
@@ -261,6 +416,13 @@ class CompilabilityReport:
     headers: dict[str, str] = field(default_factory=dict)  # filename → content
     placeholder_constants: list[str] = field(default_factory=list)
     placeholder_variables: list[str] = field(default_factory=list)
+    stubbed_logic: list[str] = field(default_factory=list)       # commented-out assignments / calls
+    never_assigned: list[str] = field(default_factory=list)      # read but never set
+    dropped_arguments: int = 0                                    # helper calls emitted without the design's args
+
+    @property
+    def logic_stubbed(self) -> int:
+        return len(self.stubbed_logic)
 
     @property
     def kept_statements(self) -> int:
@@ -273,9 +435,16 @@ class CompilabilityReport:
                 f"; {len(self.placeholder_constants)} constant(s) and "
                 f"{len(self.placeholder_variables)} variable(s) declared as TODO(design) placeholders"
             )
+        gate = ""
+        if self.stubbed_logic:
+            gate += f"; {len(self.stubbed_logic)} logic statement(s) commented out"
+        if self.dropped_arguments:
+            gate += f"; {self.dropped_arguments} helper call(s) without the design's arguments"
+        if self.never_assigned:
+            gate += f"; read but never assigned: {', '.join(self.never_assigned)}"
         return (
             f"{self.kept_statements} of {self.total_statements} statements kept as C, "
-            f"{self.stubbed_statements} stubbed{extra} (compile_ok={self.compile_ok})"
+            f"{self.stubbed_statements} stubbed{extra}{gate} (compile_ok={self.compile_ok})"
         )
 
 
@@ -285,6 +454,7 @@ def make_compilable(
     workdir: Path,
     *,
     max_rounds: int = 25,
+    spec_md: str | None = None,
 ) -> CompilabilityReport:
     """Write headers + stubs and iteratively repair the skeleton until it compiles.
 
@@ -303,6 +473,9 @@ def make_compilable(
     # File-scope design variables become plain globals so unit tests can set
     # inputs and check outputs through <SWC>.h (white-box testing).
     current = _FILE_SCOPE_STATIC_VAR_RE.sub(r"\1 \2;", c_code)
+    # Helper functions too: a static helper cannot be linked by its unit test
+    # (one "undefined reference" quarantined every AI test file of a run).
+    current = _STATIC_FUNC_RE.sub(r"\1", current)
 
     lines = current.splitlines()
     total = sum(1 for line in lines if _is_statement_line(line))
@@ -314,15 +487,23 @@ def make_compilable(
     current = "\n".join(lines) + "\n"
 
     rte_funcs, _call_idents = collect_identifiers(current)
-    declared = set(rte_funcs)  # start with only Rte_* (user funcs are defined in-place)
+    signals = rte_signals(current)
+    signal_apis = {f"Rte_{k}" for k, ports in signals.items() if ports}
+    defaults = calprm_defaults(spec_md)
+    # start with only Rte_* (user funcs are defined in-place); signal APIs are macros
+    declared = set(rte_funcs) - STDLIB_FUNCS - signal_apis
     constants: dict[str, int] = {}
     variables: set[str] = set()
+    var_types: dict[str, str] = {}
 
     def write_support_files() -> dict[str, str]:
         files = {
             "Rte_Type.h": generate_rte_type_header(),
-            f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants, variables=variables),
-            "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables),
+            f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants,
+                                                    variables=variables, types=var_types,
+                                                    signals=signals, defaults=defaults),
+            "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables, types=var_types,
+                                              signals=signals, defaults=defaults),
             f"{swc}.h": generate_swc_header(swc, current),
         }
         # The skeleton may include Rte_<owner_swc>.h under another SWC name.
@@ -337,6 +518,7 @@ def make_compilable(
     compile_ok = False
     last_error = ""
     rounds = 0
+    stubbed_logic: list[str] = []
 
     for round_no in range(1, max_rounds + 1):
         rounds = round_no
@@ -355,15 +537,20 @@ def make_compilable(
         diagnostics = result.stderr + "\n" + result.stdout
 
         # 1. Declare instead of delete.
-        new_funcs = set(_IMPLICIT_DECL_RE.findall(diagnostics)) - declared
+        new_funcs = set(_IMPLICIT_DECL_RE.findall(diagnostics)) - declared - STDLIB_FUNCS
         new_idents = set(_UNDECLARED_RE.findall(diagnostics)) - set(constants) - variables - declared
         if new_funcs or new_idents:
             declared |= new_funcs
+            for name in new_funcs:
+                # A design helper whose result is used ("x = Map(y);") returns a value, not a status.
+                if not name.startswith("Rte_") and re.search(rf"=\s*{re.escape(name)}\s*\(", current):
+                    var_types[name] = "float64"
             for name in sorted(new_idents):
                 if _is_constant_name(name):
                     constants[name] = len(constants) + 1  # distinct placeholder values
                 else:
                     variables.add(name)
+                    var_types[name] = placeholder_type(name, current)
             headers = write_support_files()
             continue
 
@@ -374,6 +561,8 @@ def make_compilable(
         for lineno in sorted(err_lines):
             idx = lineno - 1
             if 0 <= idx < len(lines) and _is_statement_line(lines[idx]):
+                if is_logic_statement(lines[idx]):
+                    stubbed_logic.append(lines[idx].strip()[:200])
                 lines[idx] = _comment_line(lines[idx])
                 changed += 1
         if not changed:
@@ -394,4 +583,7 @@ def make_compilable(
         headers=headers,
         placeholder_constants=sorted(constants),
         placeholder_variables=sorted(variables),
+        stubbed_logic=stubbed_logic,
+        never_assigned=unassigned_reads(current),
+        dropped_arguments=current.count("TODO(args)"),
     )

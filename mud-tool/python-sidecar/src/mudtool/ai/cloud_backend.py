@@ -15,6 +15,10 @@ from mudtool.config.settings import CloudProvider, Settings
 
 logger = logging.getLogger(__name__)
 
+# Cloud models that think before answering (their reasoning counts against max_tokens).
+CLOUD_REASONING_KEYWORDS = ("reasoner", "deepseek-r1", "-r1", "qwq", "thinking", "gpt-oss", "o1", "o3", "o4-mini")
+REASONING_MIN_TOKENS = 16384
+
 
 class CloudBackend(BaseAIBackend):
     """Cloud AI inference backend.
@@ -96,6 +100,18 @@ class CloudBackend(BaseAIBackend):
             except ImportError:
                 raise RuntimeError("httpx package not installed. Run: pip install httpx")
         return self._openai_client
+
+    def _effective_max_tokens(self, max_tokens: int) -> int:
+        """Cloud reasoning models think inside the same token budget as the answer.
+
+        ``deepseek-reasoner`` with ``max_tokens=2048`` spent all of it thinking and returned an
+        empty answer (finish_reason=length). Give cloud reasoning models at least
+        ``REASONING_MIN_TOKENS``; local models keep the caller's value (their context is small).
+        """
+        model = (self._active_openai_model() or "").lower()
+        if self._is_local_ollama() or not any(k in model for k in CLOUD_REASONING_KEYWORDS):
+            return max_tokens
+        return max(int(max_tokens or 0), REASONING_MIN_TOKENS)
 
     def _is_local_ollama(self) -> bool:
         """Return True if the configured endpoint looks like a local Ollama instance."""
@@ -243,7 +259,7 @@ class CloudBackend(BaseAIBackend):
 
         payload = {
             "model": self._active_openai_model(),
-            "max_tokens": max_tokens,
+            "max_tokens": self._effective_max_tokens(max_tokens),
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -381,7 +397,7 @@ class CloudBackend(BaseAIBackend):
 
         payload = {
             "model": self._active_openai_model(),
-            "max_tokens": max_tokens,
+            "max_tokens": self._effective_max_tokens(max_tokens),
             "temperature": temperature,
             "stream": True,
             "messages": [
@@ -446,6 +462,7 @@ class CloudBackend(BaseAIBackend):
                     except _json.JSONDecodeError:
                         continue
 
+                    _observer.check_cancel("while the model was streaming")   # stop promptly on Cancel
                     delta = (chunk.get("choices") or [{}])[0].get("delta", {})
                     text = delta.get("content") or ""
                     reasoning_delta = (delta.get("reasoning") or delta.get("reasoning_content")

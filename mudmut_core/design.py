@@ -166,6 +166,56 @@ async def review_and_improve(
     return improved, review
 
 
+def spec_check_issues(check: dict) -> list[tuple[str, str]]:
+    """``(severity, message)`` repair instructions from :func:`mudmut_core.spec_check.check_spec`."""
+    issues: list[tuple[str, str]] = []
+    for runnable, names in (check.get("never_set") or {}).items():
+        issues.append(("error", f"{runnable} reads {', '.join(names)} but never assigns it. Assign it earlier "
+                                "in the same runnable (e.g. from an Rte_Read or an IRV) or remove the read."))
+    for runnable, names in (check.get("undescribed_helpers") or {}).items():
+        issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
+                                "functions is written nowhere. Replace each call with the C statements it "
+                                "performs, inline in the step."))
+    for runnable in (check.get("placeholder") or []) + (check.get("empty") or []):
+        issues.append(("error", f"{runnable} has no implementable pseudo-code steps. Write its Guard / Read / "
+                                "Validate / Compute / Write steps as C statements."))
+    return issues
+
+
+async def repair_spec_from_check(
+    module,
+    requirements_text_: str,
+    mud_spec_markdown: str,
+    check: dict,
+    *,
+    progress: Optional[Callable[[dict], None]] = None,
+) -> str:
+    """One targeted regeneration that fixes the deterministic spec-check findings.
+
+    Returns the (possibly unchanged) spec. The caller re-checks it and keeps the better one.
+    """
+    issues = spec_check_issues(check)
+    if not issues:
+        return mud_spec_markdown
+    env.ensure_environment()
+    from mudtool.ai.mud_spec_generator import MudSpecGenerator, ReviewIssue, SpecReviewResult
+    gen = MudSpecGenerator(_orchestrator())
+    review = SpecReviewResult(
+        approved=False, coverage_pct=0,
+        issues=[ReviewIssue(severity=s, section="7. Functional Description", message=m) for s, m in issues],
+    )
+    return await gen.regenerate_spec(
+        swc_name=module.swc_name,
+        asil=module.asil,
+        requirements_text=requirements_text_,
+        current_spec_markdown=mud_spec_markdown,
+        review=review,
+        temperature=0.1,
+        progress_callback=progress,
+        repair_attempt=True,
+    )
+
+
 # ── activity diagram ─────────────────────────────────────────────────────────
 async def generate_activity(
     requirements,

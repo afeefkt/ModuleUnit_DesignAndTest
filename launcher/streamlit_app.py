@@ -28,6 +28,7 @@ pages = {
         st.Page("views/0_Overview.py", url_path="overview", title="Overview", icon="🏠", default=True),
     ],
     "Design": [
+        st.Page("views/10_Harden_Requirements.py", url_path="harden", title="Harden requirements", icon="🧱"),
         st.Page("views/1_Design_MUD.py", url_path="design", title="Requirements & design", icon="📐"),
     ],
     "Verify": [

@@ -97,7 +97,7 @@ def test_real_guard_is_preserved():
     assert "if (l_u8Mode == 1)" in code
 
 
-def test_sub_diagram_emitted_as_static_helper_without_repeated_includes():
+def test_sub_diagram_emitted_as_linkable_helper_without_repeated_includes():
     sub = ActivityDiagram(
         name="Helper Code Flow", function_name="Helper",
         nodes=[
@@ -119,11 +119,70 @@ def test_sub_diagram_emitted_as_static_helper_without_repeated_includes():
     )
     code = CSkeletonExporter().export_diagram(parent)
 
-    assert "static void Helper(void);" in code   # forward declaration
-    assert "static void Helper(void)" in code    # helper definition
+    # External linkage: a static helper cannot be linked by its unit test.
+    assert "static void Helper" not in code
+    assert "void Helper(void);" in code          # forward declaration
+    assert "\nvoid Helper(void)\n" in code       # helper definition
     assert "Helper();" in code                   # actual call
     # Includes appear only once (in the top-level block), not in the helper.
     assert code.count('#include "Rte_Type.h"') == 1
+
+
+def test_helper_without_body_keeps_design_statement_and_titles_become_comments():
+    d = ActivityDiagram(
+        name="RE_Foo Code Flow", owner_runnable="RE_Foo",
+        nodes=[
+            _node("n0", "Start", ActivityNodeType.INITIAL),
+            _node("n1", "Validate calibration", ActivityNodeType.ACTION),
+            ActivityNode(id="n2", name="l_f32T = Map(...)", node_type=ActivityNodeType.FUNCTION_CALL,
+                         callee="Map", code="l_f32T = Map(l_f32D, 2.0F)"),
+            _node("n3", "End", ActivityNodeType.FINAL),
+        ],
+        edges=[_edge("n0", "n1"), _edge("n1", "n2"), _edge("n2", "n3")],
+    )
+    code = CSkeletonExporter().export_diagram(d)
+    assert "/* Validate calibration */" in code
+    assert "Validate calibration;" not in code
+    assert "l_f32T = Map(l_f32D, 2.0F);" in code      # arguments and result kept
+    assert "TODO(args)" not in code
+
+
+def test_helper_sub_diagram_that_only_calls_itself_is_marked_empty():
+    sub = ActivityDiagram(
+        name="ReadInputs Code Flow", function_name="ReadInputs",
+        nodes=[
+            _node("s0", "Start", ActivityNodeType.INITIAL),
+            _node("s1", "ReadInputs(...)", ActivityNodeType.ACTION),
+            _node("s2", "End", ActivityNodeType.FINAL),
+        ],
+        edges=[_edge("s0", "s1"), _edge("s1", "s2")],
+    )
+    parent = ActivityDiagram(
+        name="RE_Foo Code Flow", owner_runnable="RE_Foo",
+        nodes=[_node("n0", "Start", ActivityNodeType.INITIAL),
+               _node("n1", "ReadInputs", ActivityNodeType.FUNCTION_CALL),
+               _node("n2", "End", ActivityNodeType.FINAL)],
+        edges=[_edge("n0", "n1"), _edge("n1", "n2")],
+        sub_diagrams=[sub],
+    )
+    code = CSkeletonExporter().export_diagram(parent)
+    # No body to generate: no helper definition; the call stays and is stubbed as an external function.
+    assert "void ReadInputs(void)" not in code
+    assert "ReadInputs(...);" not in code
+    assert "ReadInputs();" in code
+
+
+def test_step_title_with_dash_and_ids_is_a_comment():
+    d = ActivityDiagram(
+        name="RE_Foo Code Flow", owner_runnable="RE_Foo",
+        nodes=[_node("n0", "Start", ActivityNodeType.INITIAL),
+               _node("n1", "Guard — module not ready [REQ-AEB-406, REQ-AEB-807]", ActivityNodeType.ACTION),
+               _node("n2", "End", ActivityNodeType.FINAL)],
+        edges=[_edge("n0", "n1"), _edge("n1", "n2")],
+    )
+    code = CSkeletonExporter().export_diagram(d)
+    assert "/* Guard — module not ready [REQ-AEB-406, REQ-AEB-807] */" in code
+    assert "module not ready [REQ-AEB-406, REQ-AEB-807];" not in code
 
 
 def test_export_result_only_top_level_diagrams():

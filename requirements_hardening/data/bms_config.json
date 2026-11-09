@@ -1,0 +1,5 @@
+{
+  "root_parent": "REQ-BMS-000",
+  "child_prefix": "REQ-BMS",
+  "description": "BMS pilot: a placeholder system parent is injected because the source CSV has no hierarchy."
+}

@@ -46,3 +46,15 @@ if col2.button("🔍 Check"):
 
 if current["cpputest_home"] and os.environ.get("MUDMUT_CPPUTEST_HOME"):
     st.info("`MUDMUT_CPPUTEST_HOME` is set in the environment and overrides the saved value.")
+
+st.header("Screen state between runs")
+auto = st.toggle(
+    "Clear the previous run's results from the screen when a new run starts",
+    value=settings.auto_reset_enabled(),
+    help="Clears the Full chain panel, the AI call list, the design wizard and cached lookups when you start "
+         "a Full chain or import new requirements. Saved runs are never deleted. "
+         "You can always do it by hand with Reset view in the top bar.",
+)
+if auto != settings.auto_reset_enabled():
+    settings.save_settings(auto_reset_view="on" if auto else "off")
+    st.success("Saved.")

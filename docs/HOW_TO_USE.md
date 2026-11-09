@@ -62,7 +62,9 @@ Notes:
 │ Start         │  [Import][Plan][Spec][Review][Activity][Compilable][Tests][Build & run][Trace]
 │  Overview     │  ───────────────────────────────────────────────────────────
 │ Design        │  Page title
-│  Requirements │  …page content…
+│  Harden       │  …page content…
+│  requirements │
+│  Requirements │
 │  & design     │
 │ Verify        │
 │  Unit tests   │
@@ -81,13 +83,17 @@ Notes:
 └───────────────┘
 ```
 
-- **Current run** (top of every page): the run you are looking at. Pick another run here and every page follows.
-  The badge says **local only** or lists the cloud providers that were used.
+- **Current run** (top of every page): the run you are looking at, **newest first** (by creation time). Pick another
+  run here and every page follows. The badge says **local only** or lists the cloud providers that were used.
 - **Stage rail** (the coloured strip): one box per pipeline stage for the current run.
   Green **pass**, amber **partial**, red **failed**, grey **not run**. This is the fastest way to see where a run
   broke or was only partly good.
-- **Running job chip**: while a Full chain runs you see "Full chain running — 42 %" on every page. The run
-  keeps going when you switch pages.
+- **While a run is going** a second, live rail appears ("Running now: Full chain · SWC_…") with each stage shown as
+  done / running / waiting, plus "Full chain running — 42 %". The run keeps going when you switch pages.
+- **Reset view** (top bar): clears the previous run's results from the screen — the Full-chain panel, error
+  messages, the AI call list, the design wizard, provider test results and cached lookups. Afterwards **no run is
+  selected** and the stage rail is grey until you choose a run or a new run finishes. Saved runs are never deleted. It is disabled while a run is in progress. With the default setting it happens
+  automatically when you start a new run (see [Settings](#3-first-time-check)).
 
 ---
 
@@ -106,6 +112,8 @@ Do this once, in this order:
    Cloud providers also have **Probe free models** (see [section 7](#7-choosing-models)).
 4. **Review ▸ AI monitor** — in *Test chat* pick *Ollama (local)* and press **Quick test**. A reply "OK" means the
    local model works. This is the quickest way to confirm a model before a long run.
+5. **Setup ▸ Settings ▸ Screen state between runs** — "Clear the previous run's results from the screen when a new
+   run starts" is on by default. Turn it off if you want to keep the last results visible while starting another run.
 
 ---
 
@@ -114,25 +122,53 @@ Do this once, in this order:
 **Verify ▸ Full chain** runs everything: import → plan → spec → activity flow → C skeleton → compilable →
 generate tests → build and run → traceability → report.
 
-1. **Requirements file** — a path. The default is the sample `inputs/requirements/samples/bms_requirements.csv`.
-   (Use a WSL path such as `/mnt/d/…`.)
+1. **Requirements file** — choose from the list of files under `inputs/requirements*/` (hardened baselines are
+   marked *(hardened)*), or pick *Other file* and type a path. **Check file** imports it without AI and tells you how
+   many requirements were recognised.
 2. **Quick mode** (default on) — single-pass spec, no review round, flow built straight from the spec. About
    **13 minutes** on a local 7–8 B model. Switch it off for the two-stage spec plus a review round (slower, more
    thorough).
-3. **Models** — *Current selection* uses what you set on the **Models** page and leaves it unchanged. Choosing a
-   preset replaces every stage's model first and saves it as your selection.
-4. Open **Which model runs each stage** to see exactly which provider and model each stage will use.
-5. If any stage uses a **cloud** provider, a warning lists the providers and you must tick
+3. **Software components** — a feature-level requirement set (for example the AEB set) plans into several SWCs.
+   - *The first planned component* (default): one run, like before.
+   - *Every planned component (one run each)*: the requirements are planned **once**, then each SWC gets its own run
+     folder and report; a failing SWC does not stop the others.
+   - *Specific components…*: type the SWC names (comma separated), as the planner writes them.
+   Each component's model prompt contains **only the requirements planned for it** (the report says "N of M").
+4. **Models** — *Current selection* uses what you set on the **Models** page and leaves it unchanged. Choosing a
+   preset replaces every stage's model first and saves it as your selection. For safety functions, small local models
+   struggle; *Hybrid - quality* runs spec and tests on a large free Ollama Cloud model (data goes to ollama.com).
+5. Open **Which model runs each stage** to see exactly which provider and model each stage will use.
+6. If any stage uses a **cloud** provider, a warning lists the providers and you must tick
    **I understand — send data to these providers**. Local-only runs need no confirmation.
-6. Press **Start full chain**. You see:
+7. Press **Start full chain**. You see:
    - a **progress bar with a percentage**, the stage ("spec 3/8"), elapsed time and an estimated time left
      (an estimate: it gets better after a few runs; the long spec stage holds the bar at about 70 % until it finishes);
+   - the live stage rail at the top;
+   - **Cancel run** — stops after the current step; the partial report is kept;
    - the **AI activity** list on the right — every request to the model, live;
-   - a **Step log** (expand it) with the messages from each stage.
-7. When it finishes, the new run becomes the current run. Open **Review ▸ Runs & reports** to read the results
-   ([section 6](#6-read-the-result-runs--reports)).
+   - a **Step log** (expand it); the latest failure line is shown above it.
+8. When it finishes, the new run becomes the current run (once — you can pick another run afterwards). For a
+   multi-SWC run the panel lists each component with ✅/❌. Press **New run — clear these results** to start clean.
+   Open **Review ▸ Runs & reports** to read the results ([section 6](#6-read-the-result-runs--reports)).
 
 If a run stops with an error, the message says which stage failed; the partial report is still written.
+
+---
+
+## 4a. Optional first step — Design ▸ Harden requirements
+
+Raw exports are often compound, vague or untestable. **Harden requirements** runs the deterministic hardening tool
+(`requirements_hardening/`) before design:
+
+1. Pick the **Requirement set** (sets with curated rules: `aeb`, `bms`, `eps`, `foc`) and the **Original requirement
+   file**. Press **Harden requirements** (a few seconds). The original is copied, never changed.
+2. Read the run: requirement count, quality score and critical findings **before → after**, blocking reviews, and the
+   tabs **Review packet**, **Run report**, **Change log**, **Findings**.
+3. Press **Use this baseline in Full chain** to run the pipeline on the hardened CSV
+   (`inputs/requirements_hardened/<set>/<set>_requirements_hardened.csv`).
+
+The hardened baseline is an L2-oriented draft for human review, not a certified baseline. Runs are kept in
+`outputs/req_hardening/<time>_<set>/`.
 
 ---
 
@@ -203,14 +239,18 @@ The page works on the **current run** (top bar). It needs the run's C skeleton (
 
 **Review ▸ Runs & reports** is where you judge a run.
 
-1. **Runs** lists every run with its stage verdicts (✅ pass · ⚠️ partial · ❌ failed · — not run) and whether it
-   stayed local.
-2. Choose **Single run** (the current run) or **Compare two runs** (preset, cloud use, compile result, tests, timings
-   side by side).
+1. **All runs** is a table: created, SWC, preset, local/cloud, stage verdicts, C kept/stubbed, tests passed/failed,
+   *Smoke test only*, line coverage and duration. Filter by component or local/cloud; **click a row** to make it the
+   current run.
+2. Choose **Single run** (the current run), **Compare two runs** (headline numbers, stage verdicts and models per
+   stage side by side with differences marked ≠, and a bar chart of time per stage), or **Archive** (move runs you no
+   longer need to `outputs/_archive/`; nothing is deleted and **Restore** brings them back).
 3. **Test results and coverage** (single run):
-   - cards: tests passed / failed, **line coverage %**, **branch coverage %**;
-   - a warning lists **quarantined** test files; an info note appears if the results come from the **smoke test**
-     instead of AI-written tests;
+   - cards: tests passed / failed, **line coverage %**, **branch coverage %** — coverage of the component's own C
+     file only (test files, the runner and the Rte stubs are excluded; hover for the all-files number);
+   - a warning lists **quarantined** test files; a **red** note appears if the results come from the **smoke test**
+     (it only calls each runnable and checks nothing);
+   - the run's quality notes (see "How to judge a run" below);
    - tabs: **Test report** (the HTML report), **Coverage** (the lcov report with a page per source file — both open
      inside the page, or in a new tab with the *Open … in a new tab* button), **Run report** (the Markdown report),
      **Test cases** (a table per test: pass/fail/time/message);
@@ -222,11 +262,18 @@ The page works on the **current run** (top bar). It needs the run's C skeleton (
 **How to judge a run**
 
 - ✅ everywhere: all stages completed as designed.
-- ⚠️ **Compilable**: some statements could not be turned into valid C and were commented out — compare the count
-  kept vs stubbed.
-- ⚠️ **Build & run**: tests were quarantined, only the smoke test ran, or some tests failed. Test failures are real
-  results — compare them with the design before trusting either side.
-- ❌: the stage failed; the report says why and later stages show "not run".
+- **Compilable** ❌ when real design logic was lost to make the C compile: an assignment or call was commented out,
+  a variable is read but never assigned (a computed value was dropped), or a helper call lost the arguments the
+  design passes (marked `TODO(args)` in the C). ⚠️ when only prose labels (e.g. `Guard;`) were commented out.
+- **Tests** ❌ when every AI-written test failed to compile (all quarantined); ⚠️ when some were.
+- **Build & run** ❌ when only the **smoke test** ran — "1 passed" then proves nothing; ⚠️ for quarantined tests or
+  real test failures. Test failures are real results — compare them with the design before trusting either side.
+- ❌ (any stage after an error): the stage failed; the report says why and later stages show "not run".
+- Older runs are shown with these rules too.
+- The report flags **ASIL-B/C/D** requirements: the result is an AI-assisted draft that a safety engineer must review.
+
+Each C statement now carries only the requirement IDs its own design step names (no more 100+ IDs on every line). A
+runnable whose design names no IDs gets a `TODO(trace)` comment instead, which is a signal to add IDs in the MUD spec.
 
 ---
 
@@ -329,6 +376,8 @@ python -m mudmut_core.chain --requirements inputs/requirements/samples/bms_requi
 
 - Without `--preset` the run uses your current per-stage choices and does not change them. `--preset <id>` (see
   `config/presets.json`) applies a preset first.
+- `--swc all` designs and tests every planned component (one run folder each); `--swc <name>` one specific component.
+- Hardening: `python -m requirements_hardening.cli run --input inputs/requirements/aeb/aeb_requirements.csv --set aeb`.
 - The agent's step-by-step tools: `python agentic/tools/mudmut_cli.py <command> --run <id> …` with the commands
   `import-reqs`, `show-req`, `validate-activity`, `export-c`, `render-mermaid`, `make-compilable`, `gen-tests`,
   `build-run`, `trace`, `report` (`--help` on each shows the options).
@@ -390,7 +439,15 @@ Runs are never overwritten — every run gets its own folder. To start from scra
 | Coverage / report buttons do nothing | Reload with Ctrl+F5 after an update. Reports are served from `http://localhost:8502`; if that port is busy the app uses the next free one. |
 | Icons show words like `arrow_right` | Hard-reload the page (Ctrl+F5). |
 | Page goes blank after a long idle | Reload the page; a running job keeps running in the background. |
-| All AI tests quarantined, only smoke test passed | Normal for small local models. Try a bigger model or a cloud model on the *Test generator* stage, and compare runs on **Runs & reports**. |
+| All AI tests quarantined, only smoke test passed (Tests/Build ❌) | Common for small local models on large requirement sets. Harden the requirements first, run per component, try *Hybrid - quality* (or a bigger model on the *Test generator* stage), and compare runs on **Runs & reports**. |
+| Compilable ❌ "read but never assigned" / "logic statement(s) commented out" | The generated C compiles only because logic was dropped. Look at `02_code/compilability.json` (`stubbed_logic`, `never_assigned`) and the MUD spec's Section 7 for that step; a bigger spec model usually helps. |
+| Only one of several SWCs was built | Choose **Every planned component** (or `--swc all`) on Full chain. |
+| "MUD spec rejected: Section 7 has no implementable logic" | The strict pseudo-code rule: every runnable in Section 7 needs real steps (assignments, conditions, `Rte_Read`/`Rte_Write`, `Dem_` reports), not callback stubs or TODOs. The run stops before any AI flow step. Regenerate the spec, plan per component, or use a stronger model. |
+| Run report warns "reads X but never sets it" or "calls F() whose logic is not written anywhere" | The spec check found a design gap in Section 7. The chain already asked the model once to fix it (`Spec … repair: gaps N → M, kept/discarded`; the first spec is kept as `01_mud/mud_spec_first.md`). What remains is a real gap: a never-set variable fails the Compilable verdict, and an undescribed helper is stubbed (returns 0). Fix the spec, or use a stronger model for the spec stage. |
+| All AI test files quarantined with `undefined reference to 'Helper'` | Fixed: helpers are no longer `static`, so tests can link them. Rerun the chain for runs made before 2026-11-09. |
+| "Quick mode builds the flow … no steps the builder can read" | Quick mode never calls the AI for the flow. Section 7 may use numbered steps or a C function body per runnable; anything else stops the stage with this message. |
+| Cancel | Stops the running AI request immediately (the connection is closed, so the model stops generating), writes the partial report and unloads the model. |
+| Old results or an old error message stay on screen | Press **Reset view** in the top bar (or keep the auto-reset setting on). |
 | Build ⚠️ but tests pass | Quarantined files or the smoke-test fallback — read the notes under the result cards. |
 
 **Limits to keep in mind:** results come from AI models and need an engineer's review; nothing here is ISO 26262 /

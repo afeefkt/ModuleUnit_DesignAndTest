@@ -322,5 +322,59 @@
         "model": "all-minilm:latest"
       }
     }
+  },
+  "hybrid-quality": {
+    "label": "Hybrid - quality (cloud spec + tests)",
+    "note": "Spec, review, the shared generator stage and test generation on a large free Ollama Cloud model (gpt-oss:120b, probed OK); planning, activity skeleton/review and embeddings stay local. Sends requirements and designs to ollama.com.",
+    "stages": {
+      "planner": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "mud_spec_skeleton": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
+      },
+      "mud_spec_generator": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
+      },
+      "mud_spec_reviewer": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
+      },
+      "activity_skeleton": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "activity_generator": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
+      },
+      "activity_reviewer": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
+      },
+      "visual_qa": {
+        "provider": "ollama",
+        "model": "llava:7b"
+      },
+      "guidelines_embed": {
+        "provider": "ollama",
+        "model": "nomic-embed-text:latest"
+      },
+      "test_generator": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
+      },
+      "test_fixer": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
+      },
+      "rag_embed": {
+        "provider": "ollama",
+        "model": "all-minilm:latest"
+      }
+    }
   }
 }

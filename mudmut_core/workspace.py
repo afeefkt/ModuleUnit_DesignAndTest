@@ -19,6 +19,7 @@ LATEST = "LATEST"
 RUN_REPORT = "RUN_REPORT.md"
 RUN_JSON = "run.json"
 STATE = "state.json"
+ARCHIVE = "_archive"
 
 # Stage subfolders (order = pipeline order).
 SECTIONS = {
@@ -103,11 +104,22 @@ class Run:
         base = root or RUNS_ROOT
         if not base.is_dir():
             return []
-        runs = []
-        for d in sorted(base.iterdir(), reverse=True):
-            if d.is_dir() and (d / STATE).is_file():
-                runs.append(cls.load(d))
+        runs = [cls.load(d) for d in base.iterdir() if d.is_dir() and (d / STATE).is_file()]
+        # Newest first by creation time — not by folder name, so agent runs with
+        # free-form names (e.g. "eps") do not sort above newer dated runs.
+        runs.sort(key=lambda r: (r.created_key, r.folder.name), reverse=True)
         return runs
+
+    @property
+    def created_key(self) -> str:
+        """Sortable creation stamp (``YYYYMMDD_HHMMSS``): from state.json, else the folder time."""
+        stamp = str(self.state.get("created") or "")
+        if stamp:
+            return stamp
+        try:
+            return datetime.fromtimestamp((self.folder / STATE).stat().st_mtime).strftime("%Y%m%d_%H%M%S")
+        except OSError:
+            return ""
 
     @classmethod
     def latest(cls, *, root: Optional[Path] = None) -> Optional["Run"]:
@@ -120,6 +132,51 @@ class Run:
         if folder.is_dir():
             return cls.load(folder)
         return None
+
+    # ── archive (tidy the run list without deleting anything) ────────────────
+    def archive(self) -> Path:
+        """Move this run to ``outputs/_archive/`` (restorable) and repoint ``LATEST``."""
+        import shutil
+        base = self.folder.parent
+        target_dir = base / ARCHIVE
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / self.folder.name
+        n = 1
+        while target.exists():
+            n += 1
+            target = target_dir / f"{self.folder.name}__{n}"
+        shutil.move(str(self.folder), str(target))
+        remaining = Run.list_runs(root=base)
+        marker = base / LATEST
+        if remaining:
+            marker.write_text(remaining[0].folder.name, encoding="utf-8")
+        elif marker.exists():
+            marker.unlink()
+        return target
+
+    @classmethod
+    def list_archived(cls, *, root: Optional[Path] = None) -> list["Run"]:
+        base = (root or RUNS_ROOT) / ARCHIVE
+        if not base.is_dir():
+            return []
+        runs = [cls.load(d) for d in base.iterdir() if d.is_dir() and (d / STATE).is_file()]
+        runs.sort(key=lambda r: (r.created_key, r.folder.name), reverse=True)
+        return runs
+
+    @classmethod
+    def restore_archived(cls, name: str, *, root: Optional[Path] = None) -> "Run":
+        """Move an archived run back into ``outputs/`` (refuses to overwrite)."""
+        import shutil
+        base = root or RUNS_ROOT
+        src = base / ARCHIVE / name
+        if not (src / STATE).is_file():
+            raise FileNotFoundError(f"no archived run '{name}'")
+        head, _, tail = name.rpartition("__")
+        dest = base / (head if head and tail.isdigit() else name)   # drop the "__2" added on a name clash
+        if dest.exists():
+            raise FileExistsError(f"a run named '{dest.name}' already exists")
+        shutil.move(str(src), str(dest))
+        return cls.load(dest)
 
     def mark_latest(self) -> None:
         marker = self.folder.parent / LATEST

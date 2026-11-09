@@ -303,6 +303,8 @@ class ActivityNode(BaseModel):
     element: Optional[str]  = Field(None, description="Data element or operation name")
     callee: Optional[str]   = Field(None, description="For FUNCTION_CALL: name of the called function, e.g. EPS_CalcAssistTorque")
     description: Optional[str] = None
+    code: Optional[str]     = Field(None, description="Full C statement the node stands for; the C exporter "
+                                                    "uses it instead of the short display label")
     trace_reqs: list[str]   = Field(default_factory=list)
     confidence: float        = Field(0.8, ge=0.0, le=1.0)
 

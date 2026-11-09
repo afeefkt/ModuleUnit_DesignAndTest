@@ -220,6 +220,32 @@ def _failed_test_files(stderr: str, test_dir: Path) -> list[Path]:
     return files
 
 
+_GROUP_RE = re.compile(r"\bTEST_GROUP\s*\(\s*(\w+)\s*\)")
+
+_TEST_API_HINT = (
+    "\nTEST INTERFACE of the code under test (from Rte_<SWC>.h): RTE signals are plain variables. "
+    "Set Rte_Read_<port> and Rte_Prm_<port> before calling a runnable, check Rte_Write_<port> after, "
+    "and call Rte_Stubs_Reset() in setup(). Rte_Prm(<port>) is assignable too.\n"
+)
+
+
+def same_test_groups(original: str, fixed: str) -> bool:
+    """A fix must keep the file's TEST_GROUP names (it may not turn into another file's tests)."""
+    before = set(_GROUP_RE.findall(original))
+    return not before or set(_GROUP_RE.findall(fixed)) == before
+
+
+def errors_for_file(stderr: str, filename: str, limit: int = 3000) -> str:
+    """Only the compiler/linker lines about ``filename`` (plus the lines that follow each one)."""
+    lines = (stderr or "").splitlines()
+    keep: list[str] = []
+    for i, line in enumerate(lines):
+        if filename in line:
+            keep.extend(lines[i:i + 3])
+    text = "\n".join(dict.fromkeys(keep)) or (stderr or "")[-limit:]
+    return text[:limit]
+
+
 def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
     """Rebuild; when a ``Test_*.cpp`` fails to compile, ask the model to fix it."""
     env.ensure_environment()
@@ -250,9 +276,11 @@ def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
             code = f.read_text(encoding="utf-8", errors="ignore")
             prompt = (
                 "The following CppUTest file fails to compile. Fix the compile errors "
-                "and return ONLY the corrected, complete file (no markdown fences, no explanation).\n\n"
-                f"COMPILER ERRORS:\n{stderr[-3000:]}\n\n"
+                "and return ONLY the corrected, complete file (no markdown fences, no explanation). "
+                f"Keep its TEST_GROUP and TEST names; do not write tests for other functions.\n\n"
+                f"COMPILER ERRORS (for {f.name} only):\n{errors_for_file(stderr, f.name)}\n\n"
                 f"FILE ({f.name}):\n```cpp\n{code}\n```\n"
+                f"{_TEST_API_HINT}"
             )
             fixed = _fixer_generate(prompt)
             if not fixed:
@@ -261,6 +289,11 @@ def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
             fixed = re.sub(r"^```(?:cpp|c\+\+)?\s*", "", fixed)
             fixed = re.sub(r"\s*```$", "", fixed)
             if fixed and fixed != code:
+                if not same_test_groups(code, fixed):
+                    # The model answered with another file's tests (seen: Test_RE_CommandBrake.cpp
+                    # replaced by RE_Init tests → duplicate symbols at link time). Keep the original.
+                    print(f"[mudmut_core] test fixer reply for {f.name} changed its TEST_GROUPs — rejected")
+                    continue
                 f.write_text(fixed, encoding="utf-8")
         result = build_and_run(test_dir)
 

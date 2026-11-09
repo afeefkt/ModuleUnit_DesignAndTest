@@ -58,7 +58,10 @@ with h3:
 # ── Next step ────────────────────────────────────────────────────────────────
 st.header("What to do next")
 run = c.current_run()
-if run is None:
+if run is None and c.list_runs():
+    st.info("No run selected (the view was reset). Choose a run in the top bar to see where it stands, "
+            "or start a new one on **Full chain**.")
+elif run is None:
     st.info("Nothing has been run yet. Open **Full chain** for a one-click run on the sample requirements, "
             "or **Requirements & design** to go step by step.")
 else:

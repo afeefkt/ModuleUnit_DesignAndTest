@@ -1,0 +1,1309 @@
+{
+  "set": "eps",
+  "input": "inputs/requirements/samples/eps_requirements.csv",
+  "input_hash": "7124f2f2850d541b67ddc7ef58bb97244a9daef6d33be9d7c32b58add6c056c2",
+  "run_dir": "outputs/req_hardening/20261108_221904_eps",
+  "hardened_dir": "inputs/requirements_hardened/eps",
+  "requirements": 55,
+  "hardened_requirements": 98,
+  "baseline_metrics": {
+    "requirements": 55,
+    "findings": 345,
+    "critical": 55,
+    "major": 188,
+    "minor": 17,
+    "info": 85,
+    "average_score": 38.3,
+    "with_acceptance_criteria": 0,
+    "with_verification_method": 55,
+    "with_parent": 0,
+    "traceable_total": 55,
+    "with_test_link": 0,
+    "with_safety_goal": 0,
+    "with_interface_data": 0,
+    "interface_total": 9,
+    "with_timing_data": 0,
+    "timing_total": 3,
+    "with_safe_state": 0,
+    "safety_total": 13,
+    "atomic": 36,
+    "compound_candidates": 14,
+    "per_requirement": [
+      {
+        "id": "REQ-EPS-001",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-002",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-003",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-004",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-005",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-006",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-007",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-008",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-010",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-011",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-012",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-013",
+        "score": 37,
+        "critical": 1,
+        "major": 3,
+        "minor": 2,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-014",
+        "score": 55,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-015",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-016",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-017",
+        "score": 55,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-018",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-019",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-020",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-021",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-022",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-023",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-024",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-030",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-031",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-032",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-033",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-034",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-035",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-036",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-037",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-040",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-041",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-042",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-043",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-044",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-045",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-046",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-047",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-048",
+        "score": 31,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-049",
+        "score": 48,
+        "critical": 1,
+        "major": 2,
+        "minor": 2,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-050",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-051",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-052",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-053",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-054",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-055",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-056",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-060",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-061",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-062",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-063",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-064",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-EPS-065",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-EPS-066",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      }
+    ]
+  },
+  "hardened_metrics": {
+    "requirements": 98,
+    "findings": 0,
+    "critical": 0,
+    "major": 0,
+    "minor": 0,
+    "info": 0,
+    "average_score": 100.0,
+    "with_acceptance_criteria": 98,
+    "with_verification_method": 98,
+    "with_parent": 96,
+    "traceable_total": 96,
+    "with_test_link": 98,
+    "with_safety_goal": 89,
+    "with_interface_data": 11,
+    "interface_total": 11,
+    "with_timing_data": 3,
+    "timing_total": 3,
+    "with_safe_state": 34,
+    "safety_total": 34,
+    "atomic": 98,
+    "compound_candidates": 0,
+    "per_requirement": [
+      {
+        "id": "REQ-EPS-000",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-005",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-008",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-010",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-011",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-012",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-013",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-014",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-015",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-016",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-017",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-018",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-019",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-020",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-021",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-022",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-023",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-024",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-030",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-031",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-032",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-033",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-034",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-035",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-036",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-037",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-040",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-041",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-042",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-043",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-044",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-045",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-046",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-047",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-048",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-049",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-050",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-051",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-052",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-053",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-054",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-055",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-056",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-060",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-061",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-062",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-063",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-064",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-065",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-066",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-801",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-802",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-803",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-804",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-805",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-806",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-807",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-808",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-809",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-810",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1005",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1008",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1009",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1010",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1011",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1012",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1013",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1014",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1015",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1016",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1017",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1018",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1019",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1020",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1021",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1022",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1023",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1024",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1025",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1026",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1027",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1028",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1029",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1030",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1031",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-EPS-1032",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "independent-reviewer-v0.1",
+    "requirements": 98,
+    "decisions": {
+      "accept_with_open_issues": 94,
+      "accept": 4
+    },
+    "accept": 98,
+    "blocking": 0
+  },
+  "paths": {
+    "findings": "outputs/req_hardening/20261108_221904_eps/02_findings/findings.json",
+    "review": "outputs/req_hardening/20261108_221904_eps/04_reviews/review.json",
+    "metrics": "outputs/req_hardening/20261108_221904_eps/05_verified/metrics.json",
+    "extended_json": "inputs/requirements_hardened/eps/eps_requirements_extended.json",
+    "hardened_csv": "inputs/requirements_hardened/eps/eps_requirements_hardened.csv",
+    "extended_csv": "inputs/requirements_hardened/eps/eps_requirements_extended.csv",
+    "test_design": "inputs/requirements_hardened/eps/test_design.csv",
+    "trace": "inputs/requirements_hardened/eps/trace_matrix.csv",
+    "change_log": "outputs/req_hardening/20261108_221904_eps/change_log.md",
+    "run_report": "outputs/req_hardening/20261108_221904_eps/RUN_REPORT.md",
+    "review_packet": "outputs/req_hardening/20261108_221904_eps/REVIEW_PACKET.md",
+    "readme": "inputs/requirements_hardened/eps/README.md",
+    "polished_markdown": "inputs/requirements_hardened/eps/EPS_REQUIREMENTS_POLISHED.md"
+  },
+  "status": "L2-oriented draft; human review required; not certified"
+}

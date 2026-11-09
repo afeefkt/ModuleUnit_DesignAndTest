@@ -20,7 +20,7 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
         sys.path.insert(0, p)
 
 import _common as c  # noqa: E402
-from mudmut_core import agents, env  # noqa: E402
+from mudmut_core import agents, env, jobs  # noqa: E402
 from mudmut_core.llm import get_providers, has_key, observe, probe  # noqa: E402
 from mudmut_core.llm.client import stream_blocking  # noqa: E402
 
@@ -169,10 +169,24 @@ if calls_now:
                        file_name="llm_calls.jsonl", mime="application/json")
 
 
-@st.fragment(run_every=1)
-def _feed() -> None:
-    c.ai_feed(25, stage=st.session_state.get("feed_stage", ""), provider=st.session_state.get("feed_provider", ""),
+def _feed_body() -> None:
+    c.ai_feed(15, stage=st.session_state.get("feed_stage", ""), provider=st.session_state.get("feed_provider", ""),
               only_problems=st.session_state.get("feed_problems", False))
 
 
-_feed()
+@st.fragment(run_every=2)
+def _feed_live() -> None:
+    _feed_body()
+    # Stop refreshing as soon as nothing is in flight any more.
+    if not (jobs.any_running() or any(x["status"] == "running" for x in observe.recent(50))):
+        st.rerun(scope="app")
+
+
+# Live refresh only while a model call or a run is in flight — redrawing every call each second
+# made the browser hang once a run had produced long answers.
+if jobs.any_running() or any(x["status"] == "running" for x in observe.recent(50)):
+    st.caption("Updating live while a request is running…")
+    _feed_live()
+else:
+    st.button("Refresh", key="feed_refresh", help="Nothing is running, so the list does not update by itself.")
+    _feed_body()

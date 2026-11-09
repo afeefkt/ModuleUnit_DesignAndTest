@@ -404,8 +404,8 @@ class TestGenerateAndValidateRoutes:
 
 ## 7. Functional Description
 ### RE_Stream
-1. Start processing
-2. Write output
+1. l_u8Out = 1;
+2. Rte_Write_PP_Out(l_u8Out);
 3. End
 """,
                     "activity_source": "mud_spec",
@@ -569,8 +569,8 @@ class TestGenerateAndValidateRoutes:
 
 ## 7. Functional Description
 ### RE_Stream
-1. Start processing
-2. Write output
+1. l_u8Out = 1;
+2. Rte_Write_PP_Out(l_u8Out);
 3. End
 """,
                     "activity_source": "mud_spec",
@@ -1056,7 +1056,7 @@ class TestExportRoutes:
         assert payload["files"]
         file_text = next(iter(payload["files"].values()))
         assert "void RE_Test(void)" in file_text
-        assert "Compute assist torque;" in file_text
+        assert "/* Compute assist torque */" in file_text   # a step title is a comment, not a statement
 
     def test_export_c_skeleton_rejects_non_activity_result(self, api_client, sample_generation_result):
         response = api_client.post(

@@ -1,0 +1,399 @@
+{
+  "set": "aeb",
+  "description": "Proposed new requirements from the AEB gap analysis. All are 'review' status and require human approval.",
+  "requirements": [
+    {
+      "id": "REQ-AEB-009",
+      "title": "AEB Feature Behaviour",
+      "statement": "The AEB feature shall detect an imminent forward collision, warn the driver using at least two warning modalities, and request service braking of at least 5.0 m/s2 to avoid or mitigate the collision, in accordance with UNECE R152.",
+      "type": "functional",
+      "level": "system",
+      "allocated_to": "System",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Split from REQ-AEB-001; UNECE R152",
+      "rationale": "Separates the feature-level behaviour from the architecture allocation so each can be verified independently.",
+      "standards": [
+        "UNECE R152",
+        "ISO 26262"
+      ],
+      "links": {
+        "design": [
+          "System"
+        ]
+      },
+      "open_issues": [
+        "Split from REQ-AEB-001; confirm with the feature owner."
+      ]
+    },
+    {
+      "id": "REQ-AEB-801",
+      "title": "Sensor Source Loss Safe State",
+      "statement": "When one sensor source (radar or camera) is unavailable, the AEB feature shall continue with the remaining source in single-source degraded mode, raise a sensor-source fault within 100 ms, and transition to FAILSAFE mode as specified in REQ-AEB-505 when both sources are unavailable.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: ISO 26262-6 fault reaction, ASPICE SWE.4, REQ-AEB-106/108/505",
+      "rationale": "The source set defines single-source fusion and a degraded mode but does not state the system-level safe state and timing for complete sensor loss.",
+      "standards": [
+        "ISO 26262",
+        "Automotive SPICE",
+        "UNECE R152"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor",
+          "RE_MonitorSafety"
+        ]
+      },
+      "open_issues": [
+        "The 100 ms fault-reaction value is derived from the per-source timeout in REQ-AEB-108; confirm with the safety analysis."
+      ]
+    },
+    {
+      "id": "REQ-AEB-802",
+      "title": "Degraded and Failsafe Recovery",
+      "statement": "The AEB feature shall transition from DEGRADED or FAILSAFE mode back to STANDBY only after the triggering fault is no longer present and the recovery criteria in the safety analysis are satisfied. The transition and the recovery criteria shall be observable in PP_SafetyStatus.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: ISO 26262-6 safe state/recovery, REQ-AEB-505/507",
+      "rationale": "The source defines entry into DEGRADED/FAILSAFE but not the recovery condition or its observability.",
+      "standards": [
+        "ISO 26262",
+        "Automotive SPICE"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor",
+          "RE_MonitorSafety"
+        ]
+      },
+      "open_issues": [
+        "Recovery criteria are not defined in the source; they must come from the safety analysis and FTTI. This requirement is a placeholder for that decision."
+      ]
+    },
+    {
+      "id": "REQ-AEB-803",
+      "title": "E2E Fault Reaction",
+      "statement": "On an E2E Profile 2 counter mismatch or CRC failure on a safety-relevant input, the AEB feature shall raise the corresponding fault after two consecutive failures, enter DEGRADED mode within 10 ms of the second failure, and report and persist the fault to DEM and NVM.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: AUTOSAR E2E, REQ-AEB-503/506/507",
+      "rationale": "The source defines E2E detection but not the reaction time, degraded-mode entry or persistence.",
+      "standards": [
+        "AUTOSAR",
+        "ISO 26262"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor",
+          "RE_MonitorSafety"
+        ]
+      },
+      "open_issues": [
+        "The 10 ms reaction time is proposed from the 5 ms monitor cycle plus one confirmation cycle; confirm with the safety analysis."
+      ]
+    },
+    {
+      "id": "REQ-AEB-804",
+      "title": "Brake Feedback Fault Handling",
+      "statement": "When the commanded brake pressure deviates from the feedback pressure by more than 15 bar for more than 50 ms, the AEB feature shall report a brake actuation fault to SWC_AEB_SafetyMonitor and shall enter FAILSAFE mode unless the safety analysis defines a different reaction.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-404/505, ISO 26262-6",
+      "rationale": "The source defines detection and reporting but not the resulting system reaction.",
+      "standards": [
+        "ISO 26262",
+        "Automotive SPICE"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_BrakeActuator",
+          "RE_CommandBrake",
+          "SWC_AEB_SafetyMonitor"
+        ]
+      },
+      "open_issues": [
+        "Confirm whether FAILSAFE is the correct reaction for a brake feedback fault or whether a controlled stop is required."
+      ]
+    },
+    {
+      "id": "REQ-AEB-805",
+      "title": "ABS Interaction Limit",
+      "statement": "When ABS reports active wheel slip, the AEB deceleration demand shall not exceed the ABS-allowed maximum. The AEB feature shall not command a deceleration that conflicts with the ABS request.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_Controller",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-311, ISO 26262-6",
+      "rationale": "The source requires ABS arbitration but not the conflict-free limit or the verification condition.",
+      "standards": [
+        "ISO 26262",
+        "Automotive SPICE"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_Controller",
+          "RE_ArbitrateBrakeDemand"
+        ]
+      },
+      "open_issues": [
+        "The ABS-allowed maximum is supplied by the brake system; confirm its range, update rate and failure behaviour."
+      ]
+    },
+    {
+      "id": "REQ-AEB-806",
+      "title": "HMI Warning Priority and Clearing",
+      "statement": "When the FCW warning request is active, the AEB feature shall activate at least two warning modalities, clear the warning within 500 ms after the risk level returns to NONE, and ensure a higher-priority warning is not masked by a lower-priority one.",
+      "type": "functional",
+      "level": "system",
+      "allocated_to": "SWC_AEB_HMI",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-004/701/702/703, UNECE R152",
+      "rationale": "Combines the warning-modality, clearing and priority expectations into one verifiable HMI requirement.",
+      "standards": [
+        "UNECE R152",
+        "ISO 26262"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_HMI",
+          "RE_UpdateWarning"
+        ]
+      },
+      "open_issues": [
+        "Confirm the warning priority table and whether a haptic modality is available on all variants."
+      ]
+    },
+    {
+      "id": "REQ-AEB-807",
+      "title": "Startup and Shutdown Safe State",
+      "statement": "On ECU startup, the AEB feature shall initialize all outputs to the safe state (no braking demand, no warning) and remain in STANDBY until RAM/ROM self-tests and signal validation pass. On shutdown, the AEB feature shall command zero braking demand and clear active warnings before the ECU powers down.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-007/406/508, ISO 26262-6",
+      "rationale": "The source covers startup self-tests and safe default output, but not an explicit shutdown-to-safe-state requirement.",
+      "standards": [
+        "ISO 26262",
+        "Automotive SPICE"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor",
+          "SWC_AEB_BrakeActuator"
+        ]
+      },
+      "open_issues": [
+        "Confirm the shutdown timing budget and whether a controlled stop is required before power-down."
+      ]
+    },
+    {
+      "id": "REQ-AEB-808",
+      "title": "Fault Healing and Persistence",
+      "statement": "A healable AEB fault shall be cleared only after the DEM healing criterion is satisfied with no recurrence of the triggering condition. Fault snapshots and healing events shall be persisted in NvM_AEB_FaultLog across power cycles.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-506, AUTOSAR DEM/NvM",
+      "rationale": "The source requires fault reporting and NVM storage but not healing or persistence of healing events.",
+      "standards": [
+        "AUTOSAR",
+        "ISO 26262"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor",
+          "RE_MonitorSafety"
+        ]
+      },
+      "open_issues": [
+        "The DEM healing criterion is configuration-dependent; confirm the configured values and the list of non-healable faults."
+      ]
+    },
+    {
+      "id": "REQ-AEB-809",
+      "title": "Calibration Verification",
+      "statement": "At startup and after a calibration update, the AEB feature shall verify that every safety-relevant calibration parameter is within its declared minimum/maximum range and that its default/current value is consistent with the vehicle variant. A violation shall set a calibration fault and inhibit automatic braking until corrected.",
+      "type": "safety",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-109/312/408/509, ISO 26262-8 configuration",
+      "rationale": "The source exposes calibration parameters but does not require their verification or the reaction to an invalid value.",
+      "standards": [
+        "ISO 26262",
+        "AUTOSAR"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor"
+        ]
+      },
+      "open_issues": [
+        "The safety-relevant calibration list and the variant matrix must be confirmed."
+      ]
+    },
+    {
+      "id": "REQ-AEB-810",
+      "title": "Software and Calibration Update Integrity",
+      "statement": "The AEB feature shall only accept authenticated and integrity-protected software and calibration updates, prevent activation on a failed authenticity or integrity check, and record a fault.",
+      "type": "constraint",
+      "level": "system",
+      "allocated_to": "System",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: ISO 21434, UNECE R155/R156 context",
+      "rationale": "A safety-critical braking function needs update integrity; the source set does not address cybersecurity.",
+      "standards": [
+        "ISO 21434"
+      ],
+      "links": {
+        "design": [
+          "System"
+        ]
+      },
+      "open_issues": [
+        "Cybersecurity requirements must be developed with the ISO 21434 process; this is a placeholder, not a complete cybersecurity specification."
+      ],
+      "implementation_constraint": true,
+      "constraint_rationale": "Security constraint on the update path; verified by security review and update-integration test."
+    },
+    {
+      "id": "REQ-AEB-811",
+      "title": "Vehicle Variant Configuration",
+      "statement": "The AEB feature shall select its speed range, vehicle mass, brake gain and warning modalities from a validated vehicle-variant configuration. An unknown or inconsistent variant shall set a configuration fault and inhibit automatic braking.",
+      "type": "constraint",
+      "level": "system",
+      "allocated_to": "System",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-402/408, ISO 26262-8 configuration",
+      "rationale": "The source uses vehicle-dependent calibration values but does not define variant selection or mismatch handling.",
+      "standards": [
+        "ISO 26262",
+        "AUTOSAR"
+      ],
+      "links": {
+        "design": [
+          "System"
+        ]
+      },
+      "open_issues": [
+        "The variant matrix and the configuration source (coding plug, dataset, end-of-line) must be confirmed."
+      ],
+      "implementation_constraint": true,
+      "constraint_rationale": "Configuration constraint; verified by variant matrix review and end-of-line test."
+    },
+    {
+      "id": "REQ-AEB-812",
+      "title": "Runtime Resource Budget",
+      "statement": "Each AEB runnable shall complete within its allocated WCET budget on ECU_AEB_Main: RE_CommandBrake and RE_MonitorSafety within 5 ms, RE_FuseObjects and RE_ArbitrateBrakeDemand and RE_UpdateEgoMotion within 10 ms, RE_AssessCollisionRisk within 20 ms. No cyclic runnable shall perform dynamic memory allocation or unbounded blocking calls.",
+      "type": "timing",
+      "level": "system",
+      "allocated_to": "System",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: REQ-AEB-101/201/301/401/501/601/110, ISO 26262-6",
+      "rationale": "The source defines cycles but does not state a system-level WCET/resource budget or a no-dynamic-memory rule for every runnable.",
+      "standards": [
+        "ISO 26262",
+        "Automotive SPICE"
+      ],
+      "links": {
+        "design": [
+          "System"
+        ]
+      },
+      "open_issues": [
+        "The WCET numbers reuse the runnable periods as a conservative budget; actual WCET must be measured on the target."
+      ]
+    },
+    {
+      "id": "REQ-AEB-813",
+      "title": "Fault Injection and Observability",
+      "statement": "The AEB feature shall expose test hooks to inject sensor loss, E2E failure, brake-feedback deviation, ABS-active and plausibility faults, and shall publish the resulting mode, fault bitmask and E2E status in PP_SafetyStatus for verification.",
+      "type": "constraint",
+      "level": "system",
+      "allocated_to": "SWC_AEB_SafetyMonitor",
+      "asil": "ASIL-D",
+      "priority": "must",
+      "parent_ids": [
+        "REQ-AEB-001"
+      ],
+      "source": "Gap analysis: ASPICE SWE.4 verification, ISO 26262-6 fault injection",
+      "rationale": "Verification of the safety mechanisms requires controllability and observability; the source defines status outputs but not injection hooks.",
+      "standards": [
+        "Automotive SPICE",
+        "ISO 26262"
+      ],
+      "links": {
+        "design": [
+          "SWC_AEB_SafetyMonitor"
+        ]
+      },
+      "open_issues": [
+        "Test hooks must not weaken production safety/security; confirm the production-disable mechanism."
+      ],
+      "implementation_constraint": true,
+      "constraint_rationale": "Verification-enabling constraint; reviewed for production isolation."
+    }
+  ]
+}

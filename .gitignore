@@ -84,3 +84,6 @@ test_examples_meta.pkl
 **/data/test_examples_meta.pkl
 cpputest_generator.log
 **/generated_tests/tests_*/
+
+# Private development plan (local only, never pushed)
+DevPlan/

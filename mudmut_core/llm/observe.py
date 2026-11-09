@@ -218,6 +218,21 @@ def error_call(call_id: str, error: str) -> None:
         _persist(call)
 
 
+def cancel_running(reason: str = "Cancelled") -> int:
+    """Mark every call still running as stopped (e.g. after the user pressed Cancel)."""
+    n = 0
+    with _lock:
+        for call in _calls.values():
+            if call.status == "running":
+                call.status = "error"
+                call.error = f"Stopped: {reason}"
+                call.ended = time.time()
+                call.latency_ms = int((call.ended - call.started) * 1000)
+                _persist(call)
+                n += 1
+    return n
+
+
 def _persist(call: LLMCall) -> None:
     try:
         path = Path(call.run) / "llm_log.jsonl" if call.run else STATE_LOG

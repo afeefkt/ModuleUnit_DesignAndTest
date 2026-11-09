@@ -30,7 +30,8 @@ def test_run_full_chain_quick_with_stubs(tmp_path, monkeypatch):
         return SimpleNamespace(modules=[_module()], architecture_summary="x")
 
     async def fake_spec(module, text, mode="two_stage", progress=None):
-        return "# MUD Spec\n## 7. Runnable RE_Foo\nl_u8X = 1;\n" * 20
+        return ("# MUD Spec: SWC_Test\n" + "Overview text for the test component. " * 6 +
+                "\n## 7. Functional Description\n### RE_Foo\n1. l_u8X = 1;\n2. Rte_Write_PP_X(l_u8X);\n")
 
     async def fake_activity(requirements, spec, swc, use_ai=True, progress=None):
         assert use_ai is False  # quick mode builds the flow deterministically

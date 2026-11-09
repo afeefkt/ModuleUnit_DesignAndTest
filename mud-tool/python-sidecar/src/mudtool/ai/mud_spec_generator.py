@@ -222,6 +222,12 @@ RULES (follow ALL — do not deviate):
     * SAFE_STATE output value (0 or fail-safe) for every ASIL-C/D validation step
     * Dem_ReportErrorStatus() with named DEM event ID (SWC_DEM_E_*) on every error path
     * Sub-function calls as standalone statements referencing names from Section 3.2
+    * TRACEABILITY: put the requirement IDs a step implements in its title, e.g.
+      "3. Validate calibration [REQ-XYZ-012, REQ-XYZ-013]" (IDs from "Linked Requirement IDs")
+    * Every local variable a step READS must be ASSIGNED earlier in the same runnable
+      (or be an IRV produced by another runnable) — no reads of never-set variables
+    * Do NOT call a sub-function whose logic you do not write out — write its statements
+      inline in the step instead (an undescribed helper becomes an empty function)
 - Signal ranges must use engineering units (Nm, deg, m/s, %, A, V)
 - Every CalPrm must have a default value and valid range in Section 2.3
 - If an IRV is shared between runnables in different OS tasks, list the ExclusiveArea name
@@ -400,6 +406,7 @@ class SpecReviewResult:
     error_count: int = 0        # computed on first access
     warning_count: int = 0
     info_count: int = 0
+    ai_review_empty: bool = False   # the reviewer model returned nothing; approval is ID-check only
 
     def __post_init__(self):
         self.error_count   = sum(1 for i in self.issues if i.severity == "error")
@@ -426,6 +433,7 @@ class SpecReviewResult:
             "error_count": self.error_count,
             "warning_count": self.warning_count,
             "info_count": self.info_count,
+            "ai_review_empty": self.ai_review_empty,
         }
 
     @classmethod
@@ -1217,6 +1225,9 @@ class MudSpecGenerator:
             len(response.content), swc_name, response.content[:200].replace("\n", " "),
         )
         result = self._parse_review(response.content, iteration=iteration)
+        # Say so when the reviewer model produced no answer (e.g. a reasoning model that used its
+        # whole token budget thinking): any approval below comes only from the deterministic ID check.
+        result.ai_review_empty = not (response.content or "").strip()
         deterministic = deterministic_requirement_coverage(
             mud_spec_markdown=mud_spec_markdown,
             requirements_text=requirements_text,

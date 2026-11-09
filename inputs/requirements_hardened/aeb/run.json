@@ -1,0 +1,1572 @@
+{
+  "set": "aeb",
+  "input": "inputs/requirements/aeb/aeb_requirements.csv",
+  "input_hash": "9ce592dceabe18d65c2db1dd10aeda8232d029b969eccd017995f9c1942ed5c8",
+  "run_dir": "outputs/req_hardening/20261108_221902_aeb",
+  "hardened_dir": "inputs/requirements_hardened/aeb",
+  "requirements": 66,
+  "hardened_requirements": 120,
+  "baseline_metrics": {
+    "requirements": 66,
+    "findings": 394,
+    "critical": 66,
+    "major": 174,
+    "minor": 36,
+    "info": 118,
+    "average_score": 45.2,
+    "with_acceptance_criteria": 0,
+    "with_verification_method": 66,
+    "with_parent": 58,
+    "traceable_total": 58,
+    "with_test_link": 0,
+    "with_safety_goal": 0,
+    "with_interface_data": 0,
+    "interface_total": 13,
+    "with_timing_data": 0,
+    "timing_total": 6,
+    "with_safe_state": 0,
+    "safety_total": 15,
+    "atomic": 36,
+    "compound_candidates": 29,
+    "per_requirement": [
+      {
+        "id": "REQ-AEB-001",
+        "score": 51,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-002",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-003",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-004",
+        "score": 51,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-005",
+        "score": 38,
+        "critical": 1,
+        "major": 3,
+        "minor": 2,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-006",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-007",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-008",
+        "score": 48,
+        "critical": 1,
+        "major": 2,
+        "minor": 2,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-101",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-102",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-103",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-104",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-105",
+        "score": 53,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-106",
+        "score": 51,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-107",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-108",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-109",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-110",
+        "score": 47,
+        "critical": 1,
+        "major": 2,
+        "minor": 2,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-201",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-202",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-203",
+        "score": 53,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-204",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-205",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-206",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-207",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-208",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-209",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-301",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-302",
+        "score": 51,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-303",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-304",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-305",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-306",
+        "score": 53,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-307",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-308",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-309",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-310",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-311",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-312",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-401",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-402",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-403",
+        "score": 53,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-404",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-405",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-406",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-407",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-408",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-501",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-502",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-503",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-504",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-505",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-506",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-507",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-508",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-509",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-601",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-602",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-603",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-604",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-605",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-606",
+        "score": 53,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-701",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-702",
+        "score": 54,
+        "critical": 1,
+        "major": 2,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-703",
+        "score": 50,
+        "critical": 1,
+        "major": 2,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-AEB-704",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      }
+    ]
+  },
+  "hardened_metrics": {
+    "requirements": 120,
+    "findings": 6,
+    "critical": 0,
+    "major": 0,
+    "minor": 0,
+    "info": 6,
+    "average_score": 100.0,
+    "with_acceptance_criteria": 120,
+    "with_verification_method": 120,
+    "with_parent": 84,
+    "traceable_total": 84,
+    "with_test_link": 120,
+    "with_safety_goal": 120,
+    "with_interface_data": 16,
+    "interface_total": 16,
+    "with_timing_data": 8,
+    "timing_total": 8,
+    "with_safe_state": 41,
+    "safety_total": 41,
+    "atomic": 120,
+    "compound_candidates": 0,
+    "per_requirement": [
+      {
+        "id": "REQ-AEB-001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-002",
+        "score": 99,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-005",
+        "score": 99,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-008",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-009",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-101",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-102",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-103",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-104",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-105",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-106",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-107",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-108",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-109",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-110",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-201",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-202",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-203",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-204",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-205",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-206",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-207",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-208",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-209",
+        "score": 99,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-301",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-302",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-303",
+        "score": 99,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-304",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-305",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-306",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-307",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-308",
+        "score": 99,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-309",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-310",
+        "score": 99,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-AEB-311",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-312",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-401",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-402",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-403",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-404",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-405",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-406",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-407",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-408",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-501",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-502",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-503",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-504",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-505",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-506",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-507",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-508",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-509",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-601",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-602",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-603",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-604",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-605",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-606",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-701",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-702",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-703",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-704",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-801",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-802",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-803",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-804",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-805",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-806",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-807",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-808",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-809",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-810",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-811",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-812",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-813",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1005",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1008",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1009",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1010",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1011",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1012",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1013",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1014",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1015",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1016",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1017",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1018",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1019",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1020",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1021",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1022",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1023",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1024",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1025",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1026",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1027",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1028",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1029",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1030",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1031",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1032",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1033",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1034",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1035",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1036",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1037",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1038",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1039",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-AEB-1040",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "independent-reviewer-v0.1",
+    "requirements": 120,
+    "decisions": {
+      "accept_with_open_issues": 120
+    },
+    "accept": 120,
+    "blocking": 0
+  },
+  "paths": {
+    "findings": "outputs/req_hardening/20261108_221902_aeb/02_findings/findings.json",
+    "review": "outputs/req_hardening/20261108_221902_aeb/04_reviews/review.json",
+    "metrics": "outputs/req_hardening/20261108_221902_aeb/05_verified/metrics.json",
+    "extended_json": "inputs/requirements_hardened/aeb/aeb_requirements_extended.json",
+    "hardened_csv": "inputs/requirements_hardened/aeb/aeb_requirements_hardened.csv",
+    "extended_csv": "inputs/requirements_hardened/aeb/aeb_requirements_extended.csv",
+    "test_design": "inputs/requirements_hardened/aeb/test_design.csv",
+    "trace": "inputs/requirements_hardened/aeb/trace_matrix.csv",
+    "change_log": "outputs/req_hardening/20261108_221902_aeb/change_log.md",
+    "run_report": "outputs/req_hardening/20261108_221902_aeb/RUN_REPORT.md",
+    "review_packet": "outputs/req_hardening/20261108_221902_aeb/REVIEW_PACKET.md",
+    "readme": "inputs/requirements_hardened/aeb/README.md",
+    "polished_markdown": "inputs/requirements_hardened/aeb/AEB_REQUIREMENTS_POLISHED.md"
+  },
+  "status": "L2-oriented draft; human review required; not certified"
+}
