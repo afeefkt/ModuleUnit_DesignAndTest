@@ -29,7 +29,8 @@ def _write(path: Path, text: str = "x") -> None:
 
 def _fake_run(tmp_path: Path, *, build="✅", passed=3, failures=0,
               failed_names=(), stubbed=0, logic=0, never=(), dropped=0,
-              generated=2, quarantined=(), smoke=False) -> Path:
+              generated=2, quarantined=(), smoke=False,
+              placeholders=()) -> Path:
     run = tmp_path / "run_x"
     _write(run / "state.json", json.dumps({"swc": run_loop.SWC, "preset": run_loop.PRESET,
                                            "quick": False, "code_source": "pinned"}))
@@ -51,6 +52,7 @@ def _fake_run(tmp_path: Path, *, build="✅", passed=3, failures=0,
         "stubbed_statements": stubbed, "rounds": 1, "compile_ok": True,
         "logic_stubbed": logic, "stubbed_logic": ["x"] * logic,
         "never_assigned": list(never), "dropped_arguments": dropped,
+        "placeholder_constants": list(placeholders), "placeholder_variables": [],
     }))
     _write(run / "02_code" / f"{run_loop.SWC}.c", "/* Requirements: REQ-1 */\nvoid f(void){}\n")
     gen = {"tests_generated": generated, "failed_functions": [], "output_directory": str(run / "03_mut")}
@@ -113,6 +115,20 @@ def test_verdicts_stub_blocks_tool_green(loop, tmp_path):
     v = loop.verdicts(_fake_run(tmp_path, stubbed=2))
     assert v["pipeline_green"] is False
     assert any("stubbed" in x for x in v["test_app_issues"])
+
+
+def test_verdicts_placeholder_blocks_tool_green(loop, tmp_path):
+    v = loop.verdicts(_fake_run(tmp_path, placeholders=["K_MAX_PRESSURE"]))
+    assert v["pipeline_green"] is False
+    assert any("TODO(design) constant" in x for x in v["test_app_issues"])
+
+
+def test_freeze_blocks_on_placeholders(loop, tmp_path):
+    run = _fake_run(tmp_path, placeholders=["K_MAX_PRESSURE"])
+    loop.it_dir(0).mkdir(parents=True, exist_ok=True)
+    (loop.it_dir(0) / "run.txt").write_text(str(run) + "\n", encoding="utf-8")
+    with pytest.raises(run_loop.LoopError, match="freeze blocked"):
+        loop.freeze(0)
 
 
 def test_freeze_accepts_zero_stub_baseline(loop, tmp_path):

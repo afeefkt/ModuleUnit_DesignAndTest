@@ -43,7 +43,7 @@ if str(_REPO_ROOT) not in sys.path:
 from mudmut_core import env as _env  # noqa: E402
 _env.ensure_environment()
 
-from mudmut_core import aio, benchmark, chain, report  # noqa: E402
+from mudmut_core import aio, benchmark, chain, compilable, design_run, report  # noqa: E402
 from mudmut_core.workspace import Run  # noqa: E402
 
 LOOPS_ROOT = _REPO_ROOT / "outputs" / "_loops"
@@ -56,13 +56,13 @@ WALL_SECONDS = 3600
 GATE_STAGES = ("import", "plan", "spec", "review", "activity", "compilable", "generate_tests")
 STAGE_ORDER = report.STAGE_ORDER
 CLOUD_AGENTS = {
-    "orchestrator": "deepseek/deepseek-chat",
-    "analyst": "deepseek/deepseek-reasoner",
-    "design-fixer": "deepseek/deepseek-chat",
-    "c-implementer": "deepseek/deepseek-chat",
-    "test-fixer": "deepseek/deepseek-chat",
-    "verifier": "deepseek/deepseek-chat",
-    "auditor": "deepseek/deepseek-chat",
+    "orchestrator": "deepseek/deepseek-flash",
+    "analyst": "deepseek/deepseek-v4-pro",
+    "design-fixer": "deepseek/deepseek-flash",
+    "c-implementer": "deepseek/deepseek-flash",
+    "test-fixer": "deepseek/deepseek-flash",
+    "verifier": "deepseek/deepseek-flash",
+    "auditor": "deepseek/deepseek-flash",
 }
 
 _SNAPSHOT_FILES = (
@@ -237,7 +237,7 @@ class Loop:
         return checks
 
     # run -----------------------------------------------------------------
-    def run_full(self, iteration: int, baseline: Optional[Path]) -> dict:
+    def run_full(self, iteration: int, baseline: Optional[Path], *, use_preset: bool = True) -> dict:
         if iteration >= int(self.config().get("max_runs", MAX_RUNS)):
             raise LoopError(f"iteration {iteration} exceeds max_runs={self.config().get('max_runs')}")
         if self.remaining() <= 0:
@@ -257,7 +257,8 @@ class Loop:
         summary: dict[str, Any] = {}
         try:
             summary = aio.run_sync(chain.run_full_chain(
-                str(_REPO_ROOT / REQUIREMENTS), swc=SWC, quick=False, preset=PRESET,
+                str(_REPO_ROOT / REQUIREMENTS), swc=SWC, quick=False,
+                preset=(PRESET if use_preset else None),
                 root=_REPO_ROOT / "outputs", progress=progress,
                 code_baseline=baseline,
             ))
@@ -344,9 +345,15 @@ class Loop:
             issues.append(f"{comp['dropped_arguments']} helper call(s) lost arguments")
         if int(comp.get("stubbed_statements") or 0) > 0:
             issues.append(f"{comp['stubbed_statements']} stubbed statement(s)")
+        if comp.get("placeholder_constants"):
+            issues.append(f"{len(comp['placeholder_constants'])} TODO(design) constant(s)")
+        if comp.get("placeholder_variables"):
+            issues.append(f"{len(comp['placeholder_variables'])} TODO(design) variable(s)")
 
         gates_ok = (all(verdicts.get(s) == "✅" for s in GATE_STAGES)
-                    and int(comp.get("stubbed_statements") or 0) == 0)
+                    and int(comp.get("stubbed_statements") or 0) == 0
+                    and not comp.get("placeholder_constants")
+                    and not comp.get("placeholder_variables"))
         build = verdicts.get("build_run")
         pipeline_green = bool(gates_ok and build in ("✅", "⚠️") and not issues)
         failed = int(row.get("failed") or 0)
@@ -366,7 +373,8 @@ class Loop:
             "timings": data.get("timings") or {},
             "compilability": {k: comp.get(k) for k in (
                 "compile_ok", "kept_statements", "stubbed_statements", "logic_stubbed",
-                "never_assigned", "dropped_arguments")},
+                "never_assigned", "dropped_arguments", "placeholder_constants",
+                "placeholder_variables")},
             "tests": {k: tests.get(k) for k in (
                 "status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
             "code_source": (run.state or {}).get("code_source", "generated"),
@@ -398,6 +406,38 @@ class Loop:
                 out += int(d.get("output_tokens") or 0)
         return {"calls": calls, "input": inp, "output": out, "total": inp + out}
 
+    # recheck the C gate after agent completion -----------------------------
+    def recheck_c(self, iteration: int) -> dict:
+        """Recompute the compilability gate for the current 02_code (after agent completion)."""
+        it = self.it_dir(iteration)
+        run_folder = Path((it / "run.txt").read_text(encoding="utf-8").strip())
+        code = run_folder / "02_code"
+        cfile = code / f"{SWC}.c"
+        if not cfile.is_file():
+            raise LoopError(f"no {SWC}.c in {code}")
+        spec_file = run_folder / "01_mud" / "mud_spec.md"
+        spec_md = spec_file.read_text(encoding="utf-8") if spec_file.is_file() else None
+        before = cfile.read_text(encoding="utf-8")
+        rep = compilable.make_compilable(before, SWC, code, spec_md=spec_md)
+        record = design_run.compilability_json(rep, SWC)
+        record["placeholder_constants"] = list(rep.placeholder_constants)
+        record["placeholder_variables"] = list(rep.placeholder_variables)
+        _write_json(code / "compilability.json", record)
+        after = cfile.read_text(encoding="utf-8")
+        out = {
+            "iteration": iteration,
+            "run_folder": str(run_folder),
+            "changed_c": before != after,
+            "summary": rep.summary(),
+            **{k: record.get(k) for k in (
+                "compile_ok", "kept_statements", "stubbed_statements", "logic_stubbed",
+                "never_assigned", "dropped_arguments", "placeholder_constants",
+                "placeholder_variables")},
+            "checked": _now(),
+        }
+        _write_json(it / "recheck_c.json", out)
+        return out
+
     # freeze ---------------------------------------------------------------
     def freeze(self, iteration: int, *, agent_authored: bool = True) -> dict:
         it = self.it_dir(iteration)
@@ -410,6 +450,8 @@ class Loop:
             "logic_stubbed": comp.get("logic_stubbed"),
             "never_assigned": comp.get("never_assigned") or [],
             "dropped_arguments": comp.get("dropped_arguments") or 0,
+            "placeholder_constants": comp.get("placeholder_constants") or [],
+            "placeholder_variables": comp.get("placeholder_variables") or [],
         }
         failures = []
         if not gate["compile_ok"]:
@@ -422,6 +464,10 @@ class Loop:
             failures.append(f"read but never assigned: {gate['never_assigned']}")
         if int(gate["dropped_arguments"] or 0) != 0:
             failures.append(f"{gate['dropped_arguments']} helper call(s) lost arguments")
+        if gate["placeholder_constants"]:
+            failures.append(f"{len(gate['placeholder_constants'])} TODO(design) constant(s)")
+        if gate["placeholder_variables"]:
+            failures.append(f"{len(gate['placeholder_variables'])} TODO(design) variable(s)")
         if failures:
             _write_json(self.dir / "freeze_blocked.json", {"iteration": iteration, "gate": gate,
                                                            "failures": failures, "when": _now()})
@@ -483,6 +529,10 @@ class Loop:
             add("dropped_arguments", "mud-c-implementer", f"{comp['dropped_arguments']} helper call(s) lost args", "restore the helper arguments", False)
         if int(comp.get("stubbed_statements") or 0) > 0:
             add("stubbed_statements", "mud-c-implementer", f"{comp['stubbed_statements']} TODO(design) stub(s)", "fill the remaining placeholders", False)
+        if comp.get("placeholder_constants"):
+            add("placeholder_constants", "mud-c-implementer", f"{len(comp['placeholder_constants'])} TODO(design) constant(s): {', '.join(comp['placeholder_constants'][:8])}", "use the values from the design", False)
+        if comp.get("placeholder_variables"):
+            add("placeholder_variables", "mud-c-implementer", f"{len(comp['placeholder_variables'])} TODO(design) variable(s): {', '.join(comp['placeholder_variables'][:8])}", "declare and assign them from the design", False)
         if v.get("generate_tests") not in (None, "✅"):
             add("test_generation", "mud-test-fixer", "generate_tests verdict is not ✅", "fix the generated tests; patch the test prompt if it recurs", True)
         if tests.get("smoke_fallback"):
@@ -563,8 +613,11 @@ class Loop:
                         h, p = line.split("  ", 1)
                         expected[p] = h
             actual = _hash_files(baseline)
-            if expected and actual != expected:
-                failures.append("code_baseline hash mismatch")
+            if expected:
+                for name, digest in expected.items():
+                    if actual.get(name) != digest:
+                        failures.append(f"code_baseline hash mismatch: {name}")
+                        break
         else:
             actual = {}
             if int(iteration) >= 1:
@@ -701,11 +754,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp.add_argument("--iteration", type=int, required=True)
     sp.add_argument("--baseline", default=None,
                     help="'auto' uses code_baseline/ when it exists; a path pins that folder")
+    sp.add_argument("--no-preset", action="store_true",
+                    help="use the current config/stages.json instead of applying the preset")
 
     sp = sub.add_parser("freeze")
     sp.add_argument("--loop-id", default=None)
     sp.add_argument("--iteration", type=int, required=True)
     sp.add_argument("--human-authored", action="store_true")
+
+    sp = sub.add_parser("recheck-c")
+    sp.add_argument("--loop-id", default=None)
+    sp.add_argument("--iteration", type=int, required=True)
 
     for name in ("analyze", "verify"):
         sp = sub.add_parser(name)
@@ -729,9 +788,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                 baseline = candidate if candidate.is_dir() else None
             elif args.baseline:
                 baseline = Path(args.baseline).resolve()
-            out = loop.run_full(args.iteration, baseline)
+            out = loop.run_full(args.iteration, baseline, use_preset=not args.no_preset)
         elif args.cmd == "freeze":
             out = loop.freeze(args.iteration, agent_authored=not args.human_authored)
+        elif args.cmd == "recheck-c":
+            out = loop.recheck_c(args.iteration)
         elif args.cmd == "analyze":
             out = loop.analyze(args.iteration)
         elif args.cmd == "verify":
