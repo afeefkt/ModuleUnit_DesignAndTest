@@ -72,7 +72,9 @@ _SNAPSHOT_FILES = (
     "03_mut/generation.json", "03_mut/results.json", "03_mut/test-results.xml",
     "04_trace/trace.json", "04_trace/trace.md",
 )
-_SNAPSHOT_GLOBS = ("02_code/*.c", "02_code/*.h", "03_mut/quarantined/*")
+_SNAPSHOT_GLOBS = ("02_code/*.c", "02_code/*.h", "03_mut/quarantined/*",
+                   "03_mut/Test_*.cpp", "03_mut/AllTests.cpp", "03_mut/Makefile",
+                   "03_mut/cpputest_*.xml", "03_mut/coverage.info")
 
 
 class LoopError(RuntimeError):
@@ -82,6 +84,10 @@ class LoopError(RuntimeError):
 # ── helpers ───────────────────────────────────────────────────────────────────
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _dash(value: Any) -> str:
+    return "—" if value is None or value == "" else str(value)
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -368,6 +374,11 @@ class Loop:
             "test_app_issues": issues,
             "code_defect_candidates": failed_tests if failed and not issues else [],
             "failed_tests": failed_tests,
+            "tests_generated": row.get("tests_generated"),
+            "tests_compiled": row.get("tests_compiled"),
+            "tests_quarantined": row.get("tests_quarantined"),
+            "tests_passed": row.get("passed"),
+            "tests_failed": failed,
             "trace": {k: row.get(k) for k in ("traced", "verified", "verified_real", "noop_files", "failing")},
             "models": data.get("models") or {},
             "timings": data.get("timings") or {},
@@ -677,15 +688,13 @@ class Loop:
         for name, v in rows:
             vs = v.get("verdicts") or {}
             gates = " ".join(f"{s[0].upper()}{vs.get(s, '·')}" for s in GATE_STAGES)
-            t = v.get("tests") or {}
-            junit = t.get("junit") or {}
             tr = v.get("trace") or {}
             tok = v.get("tokens") or {}
             lines.append(
                 f"| {name} | `{Path(v.get('run_folder') or '').name}` | {gates} | {vs.get('build_run', '·')} | "
                 f"{v.get('tool_green')} | {v.get('pipeline_green')} | {v.get('strict_green')} | "
-                f"{(v.get('tests_generated') or '—')} / — / {len(t.get('quarantined_tests') or [])} | "
-                f"{junit.get('passed', '—')} / {junit.get('failures', '—')} | "
+                f"{_dash(v.get('tests_generated'))} / {_dash(v.get('tests_compiled'))} / {_dash(v.get('tests_quarantined'))} | "
+                f"{_dash(v.get('tests_passed'))} / {_dash(v.get('tests_failed'))} | "
                 f"{tr.get('traced')}/{tr.get('verified')}/{tr.get('verified_real')} | {tok.get('total', '—')} |")
         lines += ["", "Trace is reported as numbers, not as a gate.", "",
                   "AI-assisted draft — not certified.", ""]
@@ -714,17 +723,19 @@ class Loop:
                  f"- data sent to cloud: {cfg.get('data_sent_to_cloud')}",
                  f"- budget: {cfg.get('max_runs')} full-chain runs, {cfg.get('wall_seconds')}s wall clock, no token cap",
                  "", "## Runs", "",
-                 "| iteration | run | tool_green | pipeline_green | strict_green | test-app issues |",
-                 "|---|---|---|---|---|---|"]
+                 "| iteration | run | tool_green | pipeline_green | strict_green | gen/comp/quar | pass/fail | test-app issues |",
+                 "|---|---|---|---|---|---|---|---|"]
         for name, v in rows:
             lines.append(f"| {name} | `{Path(v.get('run_folder') or '').name}` | {v.get('tool_green')} | "
                          f"{v.get('pipeline_green')} | {v.get('strict_green')} | "
+                         f"{_dash(v.get('tests_generated'))}/{_dash(v.get('tests_compiled'))}/{_dash(v.get('tests_quarantined'))} | "
+                         f"{_dash(v.get('tests_passed'))}/{_dash(v.get('tests_failed'))} | "
                          f"{'; '.join(v.get('test_app_issues') or []) or 'none'} |")
         lines += ["", f"**Two consecutive TOOL_GREEN with no patch between:** {consecutive}", "",
                   "## What this proves", "",
-                  "- The DeepSeek full chain ran end to end for the component; every run saved its artifacts.",
-                  "- Test-application issues are listed per run; TOOL_GREEN requires none in that iteration.",
-                  "- The C was completed once by an agent, then frozen (see `code_baseline/provenance.json`).",
+                  "- The baseline full chain (`it_00`) ran end to end through DeepSeek and saved its artifacts.",
+                  "- The C was completed once by an agent and the compilability gate is clean and frozen.",
+                  "- Test-application issues are reported per run; TOOL_GREEN requires none in that iteration.",
                   "", "## What this does not prove", "",
                   "- Requirements verified by design: **0**. Trace is reported as numbers, not a gate.",
                   "- No ISO 26262 / ASIL claim. AEB is ASIL-D; a safety engineer must review.",

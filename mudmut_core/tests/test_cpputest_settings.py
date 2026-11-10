@@ -68,6 +68,16 @@ def test_makefile_bakes_cpputest_paths(tmp_path):
     assert "\r" not in text
 
 
+def test_makefile_cleans_stale_junit_groups(tmp_path):
+    tg = _test_generator()
+    tg.create_makefile(tmp_path)
+    text = (tmp_path / "Makefile").read_text()
+    # The per-group cpputest_*.xml files must be removed before a run and on clean,
+    # otherwise stale suites from earlier (quarantined) runs leak into test-results.xml.
+    assert "rm -f cpputest_cpputest_*.xml" in text
+    assert "rm -f test-results.xml cpputest_cpputest_*.xml" in text
+
+
 def test_build_reports_missing_cpputest(tmp_path, monkeypatch):
     monkeypatch.setattr(toolchain, "find_cpputest", lambda home="": toolchain.CppUTestInfo(detail="CppUTest not found"))
     monkeypatch.setattr(verify, "write_makefile", lambda d: toolchain.CppUTestInfo(detail="CppUTest not found"))

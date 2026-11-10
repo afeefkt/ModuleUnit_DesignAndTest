@@ -375,6 +375,7 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "",
         "# Run tests with JUnit XML output; record the real exit code (re-raised by coverage).",
         "test: $(TEST_TARGET)",
+        tab + "@rm -f cpputest_cpputest_*.xml",
         tab + "-./$(TEST_TARGET) -ojunit -k cpputest; echo $$? > .test_exit_code",
         tab + '@echo "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?><testsuites>" > test-results.xml',
         tab + '@for f in cpputest_cpputest_*.xml; do \\',
@@ -407,7 +408,7 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "clean:",
         tab + "rm -f $(ALL_OBJS) $(DEPS) $(TEST_TARGET) $(GCOV_FILES) $(COVERAGE_INFO) .test_exit_code",
         tab + "rm -rf $(COVERAGE_HTML_DIR)",
-        tab + "rm -f test-results.xml",
+        tab + "rm -f test-results.xml cpputest_cpputest_*.xml",
         "",
         ".PHONY: all clean test coverage",
     ]
