@@ -1,11 +1,24 @@
-# MUD_MUT — Local-AI AUTOSAR Module Unit Design → Unit Tests
+# MUD_MUT — open, local-first, design-derived unit-test evidence for AUTOSAR
 
-> **From architectural requirements → validated MUD flow charts → AUTOSAR CppUTest unit tests.**
-> One ASPICE-aligned pipeline. Runs on **local models by default** — your requirements, designs, and code
+> **From architectural requirements → schema-checked draft MUD flow charts → AUTOSAR CppUTest unit tests.**
+> One ASPICE-aware pipeline. Runs on **local models by default** — your requirements, designs, and code
 > stay on your machine. Cloud models (Ollama Cloud, OpenRouter, NVIDIA, DeepSeek, Google) are optional, switched
 > on per stage, and every run report says whether any data left the machine. One Streamlit platform, **no Docker**.
 >
 > **New here? Read the step-by-step guide: [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md).**
+
+**Status in five lines**
+
+- **What it does:** requirements → Module Unit Design (MUD) spec → activity flow → C skeleton → CppUTest tests →
+  build, run and coverage in WSL → requirement ↔ test trace, with a per-stage ✅/⚠️/❌ report for every run.
+- **What it does not do:** it does not prove that a requirement is met, it does not replace engineering review, and
+  it is not qualified or certified tooling.
+- **Current result:** no requirement has reached `verified_by_test` yet. BMS sample, local 8B models, three runs
+  on 2026-10-10: **0 of 30**. AEB set, one cloud run on 2026-11-09: **0 of 118** (10 of 15 generated tests passed).
+- **Why not yet:** in the local runs the AI-written test files mostly did not compile; in the cloud run they
+  compiled, but a requirement counts as verified only when every test of its function passes. A design-derived
+  test oracle that links each test to its requirement ID is the open work.
+- **AI-assisted draft, not qualified tooling.** Every output needs engineer review (see `AGENTS.md`).
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-red)
@@ -46,8 +59,8 @@ flowchart LR
 
     subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
         direction TB
-        SET["⚙️ Providers & Keys · Workflow & Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
-        P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain<br/>first / every / named SWC · live % + stage rail<br/>cancel · reset view"]
+        SET["⚙️ Keys & providers · Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
+        P1["① Requirements & design"] --- P2["② Unit tests"] --- P3["③ Full chain<br/>first / every / named SWC · live % + stage rail<br/>cancel · reset view"]
         RR["📊 Runs & Reports<br/>stage rail · test report · coverage · ZIP"]
         AIM["🛰️ AI monitor<br/>every request / answer / thinking · test chat"]
         OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
@@ -136,7 +149,7 @@ requirements.csv
 |---|---|---|
 | [`launcher/`](launcher/) | The Streamlit platform (router + `views/`: Overview · Requirements & design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent) | `./launch.sh` / `launch.bat` |
 | [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry) | used by the UI, the CLI, the agent and the tests |
-| [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR flow charts → C-skeleton export | in-process library |
+| [`mud-tool/`](mud-tool/) | Requirements → MUD spec → schema-checked draft AUTOSAR flow charts → C-skeleton export | in-process library |
 | [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage | in-process library |
 | [`agentic/`](agentic/) | OpenCode agent layer (`mudmut_cli.py` tools on `mudmut_core`) | [agentic/README.md](agentic/README.md) |
 | `inputs/` · `outputs/` | Requirements, guidelines, skills, test examples · one folder per run | `config/` holds presets + your stage selection |
@@ -264,8 +277,9 @@ Every stage is guarded, so the chain always finishes with a truthful report rath
   - Test files that still don't compile are moved to `quarantined/` and listed.
   - If none compile, a deterministic smoke test runs every runnable once (clearly labelled).
   - Test failures are real results: compare them with the design before trusting either side.
-- **Traceability:** a requirement is marked `verified_by_test` only when a test exercises a function
-  whose design carries its ID. Everything else is reported as `not_verified`.
+- **Traceability:** a requirement is marked `verified_by_test` only when the test file of a function
+  whose design carries its ID ran and every case in it passed. Otherwise it is `failing_test` (a case
+  failed), `test_not_run` (the file produced no results) or `not_verified` (no test for that function).
 
 All output is an AI-assisted draft, not certified tooling (see `AGENTS.md`).
 
@@ -324,14 +338,6 @@ MUD_MUT/
 
 ---
 
-## Publishing to GitHub
-
-```bash
-gh repo create MUD_MUT --public --source=. --remote=origin --push
-```
-
-CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
 ## Agentic mode (OpenCode layer)
 
 An optional extra layer: the **OpenCode Agent** page starts `opencode serve` inside WSL and lets the
@@ -350,3 +356,4 @@ See [agentic/README.md](agentic/README.md).
 ## License
 
 [Apache License 2.0](LICENSE). Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+CI runs on push/PR to `main` via [.github/workflows/ci.yml](.github/workflows/ci.yml).
