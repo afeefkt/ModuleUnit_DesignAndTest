@@ -592,18 +592,19 @@ def requirements_for_module(reqs, module):
     """Only the requirements that belong to ``module`` (all of them if nothing says which do).
 
     The requirement file's own allocation ("Allocated To" / module hint) decides first: every
-    requirement allocated to this SWC is in, and one allocated to another SWC of the plan is
-    out, whatever the planner model answered. Planner IDs add requirements the file does not
-    allocate to a component (system-level ones). ``module.req_ids`` is updated to the result,
-    so the spec and the review work on the same scope.
+    requirement allocated to this SWC is in, and one allocated elsewhere (another SWC, or
+    "System") is out, whatever the planner model answered — run 20261111_001000 got 19
+    system-level requirements on top of its own 10 and designed other components' runnables
+    (object fusion, driver warning) inside the brake actuator. Planner IDs only add
+    requirements the file leaves unallocated. ``module.req_ids`` is updated to the result, so
+    the spec and the review work on the same scope.
     """
     name = getattr(module, "swc_name", None)
     planned = set(getattr(module, "req_ids", None) or [])
     hints = {r.req_id: (getattr(r, "module_hint", None) or "").strip() for r in reqs.requirements}
     allocated = {rid for rid, hint in hints.items() if name and hint == name}
     if allocated:
-        swc_hints = {h for h in hints.values() if h.startswith("SWC_")}
-        ids = allocated | {rid for rid in planned if hints.get(rid, "") not in swc_hints}
+        ids = allocated | {rid for rid in planned if not hints.get(rid, "")}
     else:
         ids = planned
     if not ids:

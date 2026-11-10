@@ -21,6 +21,22 @@ def _fake_cpputest(root: Path, libdir: str, ext: bool = True) -> Path:
     return root
 
 
+def test_test_prompt_lists_the_symbols_that_exist(tmp_path):
+    """Run 20261111_001000: tests used STATUS_NOT_READY / ACT_STATUS_OK, which exist nowhere."""
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import available_symbols
+    (tmp_path / "SWC_T.c").write_text('#include "Rte_SWC_T.h"\n#define LOCAL_LIMIT (5U)\nvoid RE_Run(void)\n{\n}\n')
+    (tmp_path / "Rte_SWC_T.h").write_text(
+        "#ifndef RTE_SWC_T_H\n#define RTE_SWC_T_H\n#define STATUS_READY (1)  /* TODO(design) */\n"
+        "#define Rte_Read_RP_A_B(dst) ((*(dst) = Rte_Read_RP_A_B), E_OK)\n"
+        "    extern float64 Rte_Read_RP_A_B;\n    extern uint8 irvState;\n#endif\n")
+    text = available_symbols(tmp_path / "SWC_T.c")
+    assert "#define STATUS_READY (1)" in text and "#define LOCAL_LIMIT (5U)" in text
+    assert "float64 Rte_Read_RP_A_B;" in text and "uint8 irvState;" in text
+    assert "RTE_SWC_T_H" not in text and "dst" not in text        # no guards, no function-like macros
+
+
 def test_settings_roundtrip_and_env_override(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "SETTINGS_FILE", tmp_path / "settings.json")
     monkeypatch.delenv("MUDMUT_CPPUTEST_HOME", raising=False)

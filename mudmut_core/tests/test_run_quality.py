@@ -129,11 +129,11 @@ def test_requirements_scope_uses_the_allocation_column():
     assert [r.req_id for r in only.requirements] == ["R-1", "R-4"]
     assert mod.req_ids == ["R-1", "R-4"]              # the spec and the review use the same scope
 
-    # planner IDs are added unless the file allocates them to another component
+    # planner IDs are added only when the file allocates them nowhere (not to another SWC, not to "System")
     mod = SimpleNamespace(swc_name="SWC_A", req_ids=["R-2", "R-3", "R-5"])
     only = chain.requirements_for_module(reqs, mod)
-    assert [r.req_id for r in only.requirements] == ["R-1", "R-3", "R-4", "R-5"]
-    assert mod.req_ids == ["R-1", "R-3", "R-4", "R-5"]
+    assert [r.req_id for r in only.requirements] == ["R-1", "R-4", "R-5"]
+    assert mod.req_ids == ["R-1", "R-4", "R-5"]
 
     # a component the file never names keeps the planner's scope
     mod = SimpleNamespace(swc_name="SWC_Z", req_ids=["R-3"])

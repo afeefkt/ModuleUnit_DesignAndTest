@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 # Cloud models that think before answering (their reasoning counts against max_tokens).
 CLOUD_REASONING_KEYWORDS = ("reasoner", "deepseek-r1", "-r1", "qwq", "thinking", "gpt-oss", "o1", "o3", "o4-mini")
-REASONING_MIN_TOKENS = 16384
+# 16384 was not enough for deepseek-reasoner on the MUD spec skeleton: two calls of ~70 s each
+# ended with finish_reason=length and no usable answer (run 20261111_001000).
+REASONING_MIN_TOKENS = 32768
 
 
 class CloudBackend(BaseAIBackend):

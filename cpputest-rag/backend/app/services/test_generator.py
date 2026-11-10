@@ -14,8 +14,49 @@ from app.services.rag_engine import retrieve_similar_examples
 logger = logging.getLogger(__name__)
 
 
+import re
+
+_SYM_DEFINE_RE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)[ \t]+([^\n/]*)", re.MULTILINE)
+_SYM_EXTERN_RE = re.compile(r"^[ \t]*extern[ \t]+([\w \t\*]+?)[ \t]+(\w+)[ \t]*;", re.MULTILINE)
+_SYM_SKIP = ("_H", "MUDMUT_ANY_ARGS", "TRUE", "FALSE", "E_OK", "E_NOT_OK", "NULL")
+
+
+def available_symbols(source_file: Path, limit: int = 120) -> str:
+    """Constants (with values) and variables a test of ``source_file`` can use.
+
+    Read from the C file and the generated headers next to it. The model only sees one function;
+    without this list it invents names such as STATUS_NOT_READY next to STATUS_READY, and the
+    test file does not compile.
+    """
+    source_file = Path(source_file)
+    constants: dict[str, str] = {}
+    variables: dict[str, str] = {}
+    files = [source_file] + sorted(source_file.parent.glob("*.h"))
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for name, value in _SYM_DEFINE_RE.findall(text):
+            value = value.strip()
+            if value and not name.endswith("_H") and name not in _SYM_SKIP and "(" not in name:
+                constants.setdefault(name, value)
+        if f.suffix == ".h":
+            for ctype, name in _SYM_EXTERN_RE.findall(text):
+                variables.setdefault(name, " ".join(ctype.split()))
+    lines = [f"  #define {n} {v}" for n, v in constants.items()][:limit]
+    lines += [f"  {t} {n};" for n, t in variables.items()][:limit]
+    return "\n".join(lines)
+
+
 async def generate_cpputest(function_info: FunctionInfo, examples: List[Dict]) -> str:
     """Generate CppUTest case using CodeLlama"""
+    symbols = available_symbols(Path(function_info.file_path)) if getattr(function_info, "file_path", None) else ""
+    symbols_block = (
+        "\nAVAILABLE SYMBOLS (already declared — the only constants and variables that exist):\n"
+        f"{symbols}\n"
+        "For \"a value different from X\" write (X + 1); never make up a new constant name.\n"
+    ) if symbols else ""
 
     # Build context from examples
     examples_context = "\n\n".join([
@@ -40,7 +81,7 @@ Function Details:
 - Return Type: {function_info.return_type}
 - Parameters: {params_str}
 - Complexity Score: {function_info.complexity_score}
-
+{symbols_block}
 REFERENCE TEST EXAMPLES:
 {examples_context}
 
@@ -58,7 +99,12 @@ REQUIREMENTS:
    - calibration: set  Rte_Prm_<port>    (starts at the MUD default), e.g. Rte_Prm_RP_CalPrm_PMax = 250.0F;
    - outputs:     CHECK Rte_Write_<port> after the call, e.g. DOUBLES_EQUAL(0.0, Rte_Write_PP_BrakePressure, 1e-6);
    - call Rte_Stubs_Reset(); in setup() so every test starts from the defaults.
-   Other dependencies (Dem_*, NvM_*, helper calls) are plain stub functions returning E_OK / 0.
+   The same for accessors with an element name: when the function calls Rte_Read_<port>_<elem>(&x),
+   x = Rte_IRead_<port>_<elem>() or Rte_Write_<port>_<elem>(v), then Rte_Read_<port>_<elem>,
+   Rte_IRead_<port>_<elem> and Rte_Write_<port>_<elem> are variables you set / check in the same way,
+   e.g. Rte_Read_RP_Speed_Speed = 10.0; ... DOUBLES_EQUAL(20.0, Rte_Write_PP_Out_Value, 1e-6);
+   Never call these accessors from the test and never compare them with a function call.
+   Other dependencies (Dem_*, NvM_*, Rte_Call_*, helper calls) are plain stub functions returning E_OK / 0.
    Do NOT mock them, do NOT count calls (no .call_count(), no mock objects).
    Test through inputs and outputs: set the variables the function reads, call it, then CHECK
    the variables it writes

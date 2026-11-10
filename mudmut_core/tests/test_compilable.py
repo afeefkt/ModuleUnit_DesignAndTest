@@ -110,6 +110,56 @@ def test_variable_defined_after_its_first_use_compiles(tmp_path):
         assert r.returncode == 0, r.stderr
 
 
+def test_explicit_rte_accessors_are_test_variables(tmp_path):
+    """``Rte_Read_<port>_<elem>(&x)`` must be controllable by a test like ``Rte_Read(port, &x)`` is.
+
+    Run 20261111_001000: these were stub functions that returned E_OK and wrote nothing, so a test
+    could not set an input. The tests wrote ``Rte_Read_RP_Speed_Speed = 10.0F;`` (as the test
+    interface note says for signals) and 4 of 9 files were quarantined for "assignment of function".
+    """
+    from mudmut_core import toolchain
+    code = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+        "static float32 l_f32Speed;\nstatic uint8 l_u8Mode;\n\n"
+        "void RE_Run(void)\n{\n"
+        "    Rte_Read_RP_Speed_Speed(&l_f32Speed);  /* in */\n"
+        "    l_u8Mode = Rte_IRead_RP_Mode_Mode();  /* in */\n"
+        "    if (l_u8Mode == 1U)\n    {\n"
+        "        Rte_Write_PP_Out_Value(l_f32Speed * 2.0F);  /* out */\n"
+        "    }\n"
+        "    Rte_Call_RP_Dem_SetEventStatus(1U, 2U);  /* stays a function */\n"
+        "}\n"
+    )
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert rep.stubbed_statements == 0
+    hdr = (tmp_path / "Rte_SWC_T.h").read_text()
+    for var in ("Rte_Read_RP_Speed_Speed", "Rte_IRead_RP_Mode_Mode", "Rte_Write_PP_Out_Value"):
+        assert f"extern float64 {var};" in hdr, var
+    assert "Rte_Call_RP_Dem_SetEventStatus(MUDMUT_ANY_ARGS);" in hdr
+    if not toolchain.check_toolchain().ok:
+        return
+    # A C++ test sets the inputs, runs the runnable, checks the output and resets.
+    (tmp_path / "t.cpp").write_text(
+        '#include "SWC_T.h"\n'
+        "int main(){\n"
+        "  Rte_Stubs_Reset();\n"
+        "  Rte_Read_RP_Speed_Speed = 10.0F; Rte_IRead_RP_Mode_Mode = 1;\n"
+        "  RE_Run();\n"
+        "  if (Rte_Write_PP_Out_Value != 20.0) return 1;\n"
+        "  Rte_Stubs_Reset();\n"
+        "  return (Rte_Write_PP_Out_Value == 0.0 && Rte_Read_RP_Speed_Speed == 0.0) ? 0 : 2; }\n",
+        encoding="utf-8")
+    for src in ("SWC_T.c", "Rte_Stubs.c"):
+        r = toolchain.run_c(["gcc", "-std=c99", "-w", "-c", f"-I{tmp_path}", str(tmp_path / src),
+                             "-o", str(tmp_path / (src + ".o"))], cwd=str(tmp_path))
+        assert r.returncode == 0, r.stderr
+    r = toolchain.run_c(["g++", f"-I{tmp_path}", str(tmp_path / "t.cpp"), str(tmp_path / "SWC_T.c.o"),
+                         str(tmp_path / "Rte_Stubs.c.o"), "-o", str(tmp_path / "t")], cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert toolchain.run_c([str(tmp_path / "t")]).returncode == 0
+
+
 def test_declarations_are_not_prose():
     """``uint8 count;`` is two words like ``Restore defaults;`` but it is C and must be kept."""
     for decl in ("    uint8 count;", "    float32 l_f32Tmp;", "    static const uint16 limit;",

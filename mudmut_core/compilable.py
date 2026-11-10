@@ -121,13 +121,16 @@ def calprm_defaults(spec_md: str | None) -> dict[str, tuple[str, str]]:
     return out
 
 
-def _signal_decls(signals: dict[str, list[str]], defaults: dict[str, tuple[str, str]]) -> list[tuple[str, str, str]]:
+def _signal_decls(signals: dict[str, list[str]], defaults: dict[str, tuple[str, str]],
+                  accessors: dict[str, str] | None = None) -> list[tuple[str, str, str]]:
     """``(c_type, variable, default)`` for every signal variable."""
     rows: list[tuple[str, str, str]] = []
     for kind in SIGNAL_APIS:
         for port in signals.get(kind, []):
             ctype, value = defaults.get(port, ("float64", "0")) if kind == "Prm" else ("float64", "0")
             rows.append((ctype, f"Rte_{kind}_{port}", value))
+    seen = {var for _c, var, _v in rows}
+    rows += [("float64", name, "0") for name in sorted(accessors or {}) if name not in seen]
     return rows
 
 
@@ -136,6 +139,39 @@ _SIGNAL_MACROS = {
     "Write": "#define Rte_Write(port, val) ((Rte_Write_##port = (val)), E_OK)",
     "Prm": "#define Rte_Prm(port)        (Rte_Prm_##port)",
 }
+
+# Explicit accessors — Rte_Read_<port>_<elem>(&x), x = Rte_IRead_<port>_<elem>(), Rte_Write_<port>_<elem>(v),
+# Rte_IrvRead/IrvWrite… — get the same treatment: one variable per accessor plus a function-like
+# macro of the same name. "Rte_Read_P_E(&x)" expands to a read of the variable, while a test's
+# "Rte_Read_P_E = 5;" (no parenthesis, so no expansion) sets it.
+_ACCESSOR_CALL_RE = re.compile(
+    r"\b(Rte_(Read|IRead|IrvRead|IrvIRead|Write|IWrite|IrvWrite|IrvIWrite)_[A-Za-z0-9_]+)\s*\(([^()]*)\)")
+
+
+def rte_accessors(c_code: str) -> dict[str, str]:
+    """``{accessor name: #define line}`` for explicit RTE accessors that are used in one consistent way."""
+    shapes: dict[str, set[str]] = {}
+    for name, kind, args in _ACCESSOR_CALL_RE.findall(_COMMENT_RE.sub(" ", c_code)):
+        args = args.strip()
+        if not args:
+            shape = "get"                                    # x = Rte_IRead_P_E();
+        elif "," in args:
+            shape = "other"
+        elif "Read" in kind and args.startswith("&"):
+            shape = "read"                                   # Rte_Read_P_E(&x);
+        elif "Write" in kind:
+            shape = "write"                                  # Rte_Write_P_E(v);
+        else:
+            shape = "other"
+        shapes.setdefault(name, set()).add(shape)
+    macros = {
+        "get": "#define {n}() ({n})",
+        "read": "#define {n}(dst) ((*(dst) = {n}), E_OK)",
+        "write": "#define {n}(val) (({n} = (val)), E_OK)",
+    }
+    return {name: macros[next(iter(kinds))].format(n=name)
+            for name, kinds in sorted(shapes.items()) if len(kinds) == 1 and "other" not in kinds}
+
 
 _BITWISE_USE =r"(?:\b{n}\s*(?:\||\^|%|<<|>>|&(?!&))|(?:\||\^|%|<<|>>|~)\s*{n}\b|[\w)\]]\s*&\s*{n}\b|\b{n}\s*=\s*[^;]*\d+[uU]\b)"
 
@@ -249,20 +285,25 @@ def generate_rte_swc_header(
     types: dict[str, str] | None = None,
     signals: dict[str, list[str]] | None = None,
     defaults: dict[str, tuple[str, str]] | None = None,
+    accessors: dict[str, str] | None = None,
 ) -> str:
     """Return ``Rte_<SWC>.h``: RTE/helper declarations plus design symbols the
     skeleton uses but the MUD never defined (placeholder constants/variables)."""
     types = types or {}
     signals = signals or {}
-    sig_rows = _signal_decls(signals, defaults or {})
+    accessors = accessors or {}
+    rte_functions = set(rte_functions) - set(accessors)
+    sig_rows = _signal_decls(signals, defaults or {}, accessors)
     macro_block = ""
     if sig_rows:
-        macros = "\n".join(_SIGNAL_MACROS[k] for k in SIGNAL_APIS if signals.get(k))
+        macros = "\n".join([_SIGNAL_MACROS[k] for k in SIGNAL_APIS if signals.get(k)] + list(accessors.values()))
         macro_block = (
             "/* Test interface: every RTE signal is a variable.\n"
             " *   set   Rte_Read_<port> / Rte_Prm_<port>  before calling a runnable (inputs, calibration)\n"
             " *   check Rte_Write_<port>                  after it (outputs)\n"
             " *   call  Rte_Stubs_Reset()                 in setup() to restore the defaults\n"
+            " * The same holds for explicit accessors: Rte_Read_<port>_<elem>, Rte_IRead_<port>_<elem>,\n"
+            " * Rte_Write_<port>_<elem> … are variables too (the call form used by the code is a macro).\n"
             " * Rte_Prm_<port> starts at the default from the MUD's calibration table. */\n"
             f"{macros}\n"
         )
@@ -326,10 +367,12 @@ def generate_rte_stubs(
     types: dict[str, str] | None = None,
     signals: dict[str, list[str]] | None = None,
     defaults: dict[str, tuple[str, str]] | None = None,
+    accessors: dict[str, str] | None = None,
 ) -> str:
     """Return ``Rte_Stubs.c`` with default definitions so the test binary links."""
     types = types or {}
-    sig_rows = _signal_decls(signals or {}, defaults or {})
+    rte_functions = set(rte_functions) - set(accessors or {})
+    sig_rows = _signal_decls(signals or {}, defaults or {}, accessors)
     defs: list[str] = []
     if sig_rows:
         defs.append("\n".join(f"{ctype} {var} = {value};" for ctype, var, value in sig_rows))
@@ -530,6 +573,7 @@ def make_compilable(
 
     rte_funcs, _call_idents = collect_identifiers(current)
     signals = rte_signals(current)
+    accessors = rte_accessors(current)
     signal_apis = {f"Rte_{k}" for k, ports in signals.items() if ports}
     defaults = calprm_defaults(spec_md)
     # start with only Rte_* (user funcs are defined in-place); signal APIs are macros
@@ -544,9 +588,9 @@ def make_compilable(
             "Rte_Type.h": generate_rte_type_header(),
             f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants,
                                                     variables=variables | forward, types=var_types,
-                                                    signals=signals, defaults=defaults),
+                                                    signals=signals, defaults=defaults, accessors=accessors),
             "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables, types=var_types,
-                                              signals=signals, defaults=defaults),
+                                              signals=signals, defaults=defaults, accessors=accessors),
             f"{swc}.h": generate_swc_header(swc, current),
         }
         # The skeleton may include Rte_<owner_swc>.h under another SWC name.
