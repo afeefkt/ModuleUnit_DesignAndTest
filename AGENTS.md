@@ -14,3 +14,19 @@ spike lives under `agentic/` and drives the deterministic `mudtool` library via
    artifacts are produced by the CLI, not hand-written. The agent writes only
    `outputs/<id>/01_mud/activity.json`.
 5. **Least privilege.** Run only the tools your agent is permitted to run.
+
+## Agentic loop experiment (temporary, branch `AgenticFullChainTest`)
+
+This exception exists only for the AEB full-chain loop experiment and must be removed before
+merging to `main`.
+
+- Agent-authored files are allowed **only** inside the current loop's run folders
+  (`outputs/<run>/02_code`, `outputs/<run>/03_mut`) and are recorded under
+  `outputs/_loops/<loop>/` (`provenance.json`, `patches/`, `audit.json`).
+- Rule 4 still applies to the deterministic artifacts: `run.json`, `RUN_REPORT.md`, verdicts,
+  traceability and the compilability gate are produced by the tool, never hand-edited.
+- Gate logic (`report.py`, `trace.py`, `compilable.py`, `spec_check.py`), `inputs/` and
+  `requirements_hardening/` stay untouched by the loop.
+- Every run states that the C was completed by an agent, and reports
+  "requirements verified by design: 0". No ASIL / ISO 26262 claim.
+

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -83,6 +84,7 @@ async def run_full_chain(
     root: Optional[Path] = None,
     cancel: Optional[Callable[[], bool]] = None,
     prepared: Optional[tuple[Any, Any]] = None,
+    code_baseline: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Run the whole MUD → MUT pipeline and return a summary dict.
 
@@ -119,7 +121,7 @@ async def run_full_chain(
             return await _run_full_chain(
                 requirements_file, swc=swc, quick=quick, preset=preset,
                 progress=tracking_progress, keep_run=keep_run, root=root, run_holder=run_holder,
-                cancel=cancel, prepared=prepared,
+                cancel=cancel, prepared=prepared, code_baseline=code_baseline,
             )
         except BaseException as raw:
             if observer is not None and isinstance(raw, observer.GenerationCancelled):
@@ -194,6 +196,7 @@ async def _run_full_chain(
     run_holder: Optional[dict[str, Any]] = None,
     cancel: Optional[Callable[[], bool]] = None,
     prepared: Optional[tuple[Any, Any]] = None,
+    code_baseline: Optional[Path] = None,
 ) -> dict[str, Any]:
     """The linear pipeline (run by ``run_full_chain``, which adds error/finally handling)."""
     env.ensure_environment()
@@ -405,7 +408,113 @@ async def _run_full_chain(
     stage_notes["compilable"] = rep.summary()
     _emit(progress, "compilable", f"Compilability: {rep.summary()}", done=True)
 
+    # ── 7b. pin an already completed code baseline (loop experiment) ──────────
+    code_source = "generated"
+    if code_baseline is not None:
+        project_dir, c_code, comp_record = _pin_code_baseline(
+            code_baseline, chosen.swc_name, project_dir, run, warnings, progress)
+        code_source = "pinned"
+        stage_notes["compilable"] = _pinned_compilability_note(comp_record)
+        run.save_state(code_baseline=str(Path(code_baseline).resolve()))
+    run.save_state(code_source=code_source)
+
     # (Models are unloaded in run_full_chain's finally.)
+
+    # ── 8-10. tests, build/run, trace ─────────────────────────────────────────
+    code_result = await test_existing_code(
+        run, chosen.swc_name, project_dir, c_code=c_code,
+        progress=progress, cancel=cancel, timings=timings,
+    )
+    generation = code_result["generation"]
+    test_result = code_result["test_result"]
+    trace_record = code_result["trace_record"]
+
+    run.save_state(timings=timings)
+    progress_mod.record_timings(timings, quick=quick)
+
+    summary = {
+        "run_folder": str(run.folder),
+        "swc": chosen.swc_name,
+        "preset": run_label,
+        "quick": quick,
+        "warnings": warnings,
+        "timings": timings,
+        "tests_generated": generation.get("tests_generated", 0),
+        "generation_failed": len(generation.get("failed_functions") or []),
+        "review_approved": review_approved,
+        "review_ai_empty": holder.get("review_ai_empty", False),
+        "compilability": design_run.compilability_summary(comp_record),
+        "max_asil": max_asil,
+        "requirements_for_module": list(scope) if scope[0] != scope[1] else None,
+        "tests": test_result,
+        "trace": trace_record,
+        "code_source": code_source,
+    }
+
+    # ── 11. run report ────────────────────────────────────────────────────────
+    report_mod.write_run_report(run, summary, stage_notes=stage_notes)
+    run.mark_finished("done")
+
+    return summary
+
+
+def _pinned_compilability_note(record: dict[str, Any]) -> str:
+    return (f"pinned code baseline: {record.get('kept_statements', '?')} kept / "
+            f"{record.get('stubbed_statements', '?')} stubbed "
+            f"(compile_ok={record.get('compile_ok')})")
+
+
+def _pin_code_baseline(
+    baseline: str | Path,
+    swc: str,
+    project_dir: Path,
+    run: Run,
+    warnings: list[str],
+    progress: Optional[Callable[[dict], None]],
+) -> tuple[Path, str, dict[str, Any]]:
+    """Replace the generated ``02_code`` with a completed, frozen baseline."""
+    pinned = Path(baseline).resolve()
+    pinned_c = pinned / f"{swc}.c"
+    pinned_comp = pinned / "compilability.json"
+    if not pinned_c.is_file():
+        raise ChainError(f"code_baseline has no {swc}.c: {pinned}")
+    if not pinned_comp.is_file():
+        raise ChainError(f"code_baseline has no compilability.json: {pinned}")
+    try:
+        record = json.loads(pinned_comp.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - malformed baseline is a hard stop
+        raise ChainError(f"code_baseline compilability.json is invalid: {exc}") from exc
+    if record.get("swc") not in (None, swc):
+        raise ChainError(f"code_baseline is for {record.get('swc')!r}, not {swc!r}")
+    if not record.get("compile_ok"):
+        raise ChainError("code_baseline did not compile; refusing to pin it")
+    project_dir.mkdir(parents=True, exist_ok=True)
+    for path in sorted(pinned.iterdir()):
+        if path.is_file():
+            shutil.copy2(path, project_dir / path.name)
+    pinned_text = pinned_c.read_text(encoding="utf-8")
+    run.save_in("code", f"{swc}.c", pinned_text)
+    run.save_json_in("code", "compilability.json", record)
+    warnings.append(f"Code pinned from {pinned} (completed baseline; not regenerated).")
+    _emit(progress, "compilable", f"Pinned code baseline: {pinned}", done=True)
+    return project_dir, pinned_text, record
+
+
+async def test_existing_code(
+    run: Run,
+    swc: str,
+    project_dir: Path,
+    *,
+    c_code: str,
+    progress: Optional[Callable[[dict], None]] = None,
+    cancel: Optional[Callable[[], bool]] = None,
+    timings: Optional[dict[str, float]] = None,
+) -> dict[str, Any]:
+    """Generate tests, build/run them and write traceability for an existing code folder.
+
+    Shared by the full chain and the agentic loop, so the test/build/trace steps exist once.
+    """
+    timings = timings if timings is not None else {}
 
     # ── 8. analyze + generate tests ───────────────────────────────────────────
     _check_cancel(cancel, "generate_tests")
@@ -450,38 +559,13 @@ async def _run_full_chain(
     # ── 10. traceability ──────────────────────────────────────────────────────
     _check_cancel(cancel, "trace")
     t0 = time.time()
-    trace_record = trace_mod.build_trace(chosen.swc_name, rep.c_code, generation)
+    trace_record = trace_mod.build_trace(swc, c_code, generation)
     run.save_json_in("trace", "trace.json", trace_record)
     run.save_in("trace", "trace.md", report_mod.trace_markdown(trace_record))
     timings["trace"] = time.time() - t0
     _emit(progress, "trace", f"Traceability: {len(trace_record['source_requirements'])} requirement(s)", done=True)
 
-    run.save_state(timings=timings)
-    progress_mod.record_timings(timings, quick=quick)
-
-    summary = {
-        "run_folder": str(run.folder),
-        "swc": chosen.swc_name,
-        "preset": run_label,
-        "quick": quick,
-        "warnings": warnings,
-        "timings": timings,
-        "tests_generated": generation.get("tests_generated", 0),
-        "generation_failed": len(generation.get("failed_functions") or []),
-        "review_approved": review_approved,
-        "review_ai_empty": holder.get("review_ai_empty", False),
-        "compilability": design_run.compilability_summary(comp_record),
-        "max_asil": max_asil,
-        "requirements_for_module": list(scope) if scope[0] != scope[1] else None,
-        "tests": test_result,
-        "trace": trace_record,
-    }
-
-    # ── 11. run report ────────────────────────────────────────────────────────
-    report_mod.write_run_report(run, summary, stage_notes=stage_notes)
-    run.mark_finished("done")
-
-    return summary
+    return {"generation": generation, "test_result": test_result, "trace_record": trace_record}
 
 
 _ASIL_RANK = {"QM": 0, "ASIL-A": 1, "ASIL-B": 2, "ASIL-C": 3, "ASIL-D": 4}
