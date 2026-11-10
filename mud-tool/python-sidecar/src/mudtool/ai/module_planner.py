@@ -539,16 +539,21 @@ def _derive_modules_from_free_text(requirements_text: str) -> dict[str, ModuleIn
     calprm_names = set(_CALPRM_RE.findall(requirements_text or ""))
     if "calibration parameter" in (requirements_text or "").lower():
         calprm_names.add("calibration_parameter")
+    # Free text does not say which runnable or requirement belongs to which SWC. With one SWC
+    # everything is its own; with several, handing every SWC everything put other components'
+    # runnables and all requirement IDs into each module, so those stay empty here and come
+    # from the model's plan (and from the requirement file's allocation column in the chain).
+    single = len(swc_names) == 1
     for swc_name in swc_names:
         modules[swc_name] = ModuleInfo(
             swc_name=swc_name,
             short_name=_short_name_from_swc(swc_name),
             description=_default_module_description(swc_name, req_ids),
             asil=asil,
-            runnables=all_runnables,
-            req_ids=req_ids,
-            port_count=port_count,
-            calprm_count=len(calprm_names),
+            runnables=all_runnables if single else [],
+            req_ids=req_ids if single else [],
+            port_count=port_count if single else 0,
+            calprm_count=len(calprm_names) if single else 0,
             complexity=_derive_complexity(len(req_ids), len(all_runnables), port_count, len(calprm_names)),
         )
     return modules

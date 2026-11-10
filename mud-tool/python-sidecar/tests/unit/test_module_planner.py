@@ -56,6 +56,33 @@ async def test_module_planner_recovers_from_empty_ai_output_using_requirement_ev
     assert module.port_count >= 3
 
 
+AEB_TEXT = """[REQ-1] (functional) Architecture
+  Description: The feature is composed of SWC_A and SWC_B.
+[REQ-2] (functional) A runnable
+  Description: SWC_A shall run RE_DoA every 10 ms.
+[REQ-3] (functional) B runnable
+  Description: SWC_B shall run RE_DoB every 20 ms.
+"""
+
+
+@pytest.mark.asyncio
+async def test_free_text_evidence_does_not_give_every_swc_every_runnable_and_requirement():
+    """The chain sends "[ID] (type) title / Description" text, not CSV rows. For several SWCs the
+    text evidence then gave EVERY component ALL runnables and ALL requirement IDs. Seen on the AEB
+    set: SWC_AEB_BrakeActuator was planned with 2 runnables by the model and reached the spec with
+    9 (object fusion, driver warning …) and all 120 requirements."""
+    planner = ModulePlanner(_FakeOrchestrator(["""
+        {"modules": [
+          {"swc_name": "SWC_A", "runnables": ["RE_DoA"], "req_ids": ["REQ-2"]},
+          {"swc_name": "SWC_B", "runnables": ["RE_DoB"], "req_ids": ["REQ-3"]}]}"""]))
+
+    result = await planner.plan_modules(AEB_TEXT, temperature=0.1)
+
+    by_name = {m.swc_name: m for m in result.modules}
+    assert by_name["SWC_A"].runnables == ["RE_DoA"] and by_name["SWC_A"].req_ids == ["REQ-2"]
+    assert by_name["SWC_B"].runnables == ["RE_DoB"] and by_name["SWC_B"].req_ids == ["REQ-3"]
+
+
 @pytest.mark.asyncio
 async def test_module_planner_falls_back_when_backend_connection_fails():
     planner = ModulePlanner(_FailingOrchestrator())
