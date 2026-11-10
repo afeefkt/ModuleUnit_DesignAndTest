@@ -60,8 +60,8 @@ flowchart LR
     subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
         direction TB
         SET["⚙️ Keys & providers · Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
-        P1["① Requirements & design"] --- P2["② Unit tests"] --- P3["③ Full chain<br/>first / every / named SWC · live % + stage rail<br/>cancel · reset view"]
-        RR["📊 Runs & Reports<br/>stage rail · test report · coverage · ZIP"]
+        P1["① Requirements & design<br/>step by step · background steps + cancel<br/>one run folder per component"] --- P2["② Unit tests<br/>background build · verdicts updated"] --- P3["③ Full chain<br/>first / every / named SWC · live % + stage rail<br/>cancel · reset view"]
+        RR["📊 Runs & Reports<br/>stage rail · run state (interrupted / damaged)<br/>test report · coverage · trace table · ZIP"]
         AIM["🛰️ AI monitor<br/>every request / answer / thinking · test chat"]
         OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
     end
@@ -320,7 +320,9 @@ MUD_MUT/
 ├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
 │   ├── streamlit_app.py      ← router: theme, run bar + stage rail, grouped menu
-│   └── views/                ← Overview · Design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent
+│   ├── views/                ← Overview · Design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent
+│   ├── static/vendor/        ← pinned Mermaid + svg-pan-zoom (flow charts work offline)
+│   └── tests/                ← headless page tests (Streamlit AppTest), run in CI
 ├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
 ├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)
