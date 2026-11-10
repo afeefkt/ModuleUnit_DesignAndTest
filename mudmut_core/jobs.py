@@ -208,6 +208,16 @@ def any_running() -> bool:
         return any(j.running for j in _jobs.values())
 
 
+def forget(job_id: str) -> bool:
+    """Drop one finished job (its result has been shown and saved). Running jobs are kept."""
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None or job.running:
+            return False
+        _jobs.pop(job_id, None)
+    return True
+
+
 def clear_finished() -> int:
     """Forget finished jobs (their run folders stay on disk). Returns how many were removed."""
     with _lock:

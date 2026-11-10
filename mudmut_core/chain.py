@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from mudmut_core import aio, compilable, design, env, progress as progress_mod, report as report_mod, trace as trace_mod, verify
+from mudmut_core import aio, compilable, design, design_run, env, progress as progress_mod, report as report_mod, trace as trace_mod, verify
 from mudmut_core.llm import observe, ollama_unload
 from mudmut_core.workspace import Run
 
@@ -151,6 +151,10 @@ async def run_full_chain(
                 }, stage_notes={"error": str(exc)})
             except Exception:
                 pass
+            try:
+                run.mark_finished("cancelled" if isinstance(exc, Cancelled) else "failed")
+            except Exception:  # noqa: BLE001 - the status is informational
+                pass
         raise
     finally:
         if observer is not None:
@@ -268,6 +272,7 @@ async def _run_full_chain(
     observe.adopt_orphans(run.folder)
     run.save_json_in("input", "requirements.json", design.requirements_to_dicts(reqs))
     run.save_state(swc=chosen.swc_name, quick=quick, preset=run_label)
+    run.mark_running()
     _emit(progress, "workspace", f"Run workspace: {run.folder}", run_folder=str(run.folder))
 
     # ── 3. generate MUD spec ──────────────────────────────────────────────────
@@ -394,19 +399,8 @@ async def _run_full_chain(
     _check_cancel(cancel, "compilable")
     t0 = time.time()
     rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir, spec_md=spec_md)
-    run.save_json_in("code", "compilability.json", {
-        "swc": chosen.swc_name,
-        "total_statements": rep.total_statements,
-        "kept_statements": rep.kept_statements,
-        "stubbed_statements": rep.stubbed_statements,
-        "rounds": rep.rounds,
-        "compile_ok": rep.compile_ok,
-        "last_error": rep.last_error,
-        "logic_stubbed": rep.logic_stubbed,
-        "stubbed_logic": rep.stubbed_logic,
-        "never_assigned": rep.never_assigned,
-        "dropped_arguments": rep.dropped_arguments,
-    })
+    comp_record = design_run.compilability_json(rep, chosen.swc_name)
+    run.save_json_in("code", "compilability.json", comp_record)
     timings["compilable"] = time.time() - t0
     stage_notes["compilable"] = rep.summary()
     _emit(progress, "compilable", f"Compilability: {rep.summary()}", done=True)
@@ -476,15 +470,7 @@ async def _run_full_chain(
         "generation_failed": len(generation.get("failed_functions") or []),
         "review_approved": review_approved,
         "review_ai_empty": holder.get("review_ai_empty", False),
-        "compilability": {
-            "kept": rep.kept_statements,
-            "stubbed": rep.stubbed_statements,
-            "compile_ok": rep.compile_ok,
-            "logic_stubbed": rep.logic_stubbed,
-            "uninitialized_uses": len(rep.never_assigned),
-            "never_assigned": rep.never_assigned,
-            "dropped_arguments": rep.dropped_arguments,
-        },
+        "compilability": design_run.compilability_summary(comp_record),
         "max_asil": max_asil,
         "requirements_for_module": list(scope) if scope[0] != scope[1] else None,
         "tests": test_result,
@@ -493,6 +479,7 @@ async def _run_full_chain(
 
     # ── 11. run report ────────────────────────────────────────────────────────
     report_mod.write_run_report(run, summary, stage_notes=stage_notes)
+    run.mark_finished("done")
 
     return summary
 

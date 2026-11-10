@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from mudmut_core.workspace import RUN_JSON, RUN_REPORT, Run
 
@@ -113,8 +113,75 @@ def _verdict(ok: bool, warn: bool = False) -> str:
     return "⚠️" if warn else "❌"
 
 
-def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional[dict[str, str]] = None) -> Path:
-    """Write ``run.json`` and ``RUN_REPORT.md`` for ``run`` and return the report path."""
+def generate_tests_verdict(tests_generated: int, generation_failed: int, quarantined: list) -> str:
+    if not tests_generated:
+        return "❌"
+    if quarantined and len(quarantined) >= tests_generated:
+        return "❌"          # every AI-written test failed to compile
+    return "⚠️" if (generation_failed or quarantined) else "✅"
+
+
+def build_run_verdict(tests: dict[str, Any]) -> str:
+    status = tests.get("status")
+    if status == "build_failed":
+        return "❌"
+    if tests.get("smoke_fallback"):
+        return "❌"          # only the smoke test ran: CHECK(true) proves nothing
+    if status == "passed" and not (tests.get("quarantined_tests") or []):
+        return "✅"
+    return "⚠️"  # test failures, quarantined tests, skipped / unknown
+
+
+def _test_fields(tests: dict[str, Any]) -> dict[str, Any]:
+    return {k: tests.get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback", "cpputest")}
+
+
+def update_after_manual_step(run: Run, *, generation: Optional[dict] = None, test_result: Optional[dict] = None,
+                             trace_record: Optional[dict] = None, note: str = "") -> Optional[Path]:
+    """Refresh the test / trace verdicts of an existing ``run.json`` after a step run by hand.
+
+    Used by the Unit tests page (Generate tests, Rebuild & run, Write traceability). Only the
+    stages that step touches change; the models, timings and earlier verdicts stay as the run
+    recorded them. A line is added to ``RUN_REPORT.md``. Returns None when the run has no
+    ``run.json`` yet.
+    """
+    data = run.read_json(RUN_JSON)
+    if not isinstance(data, dict):
+        return None
+    verdicts = dict(data.get("verdicts") or {})
+    if generation is not None:
+        quarantined = (test_result or {}).get("quarantined_tests") or []
+        verdicts["generate_tests"] = generate_tests_verdict(
+            int(generation.get("tests_generated") or 0), len(generation.get("failed_functions") or []), quarantined)
+        if test_result is None:
+            verdicts["build_run"] = "—"     # new tests have not been built yet
+            verdicts["trace"] = "—"
+            data["tests"] = _test_fields({})
+    if test_result is not None:
+        verdicts["build_run"] = build_run_verdict(test_result)
+        data["tests"] = _test_fields(test_result)
+    if trace_record is not None:
+        verdicts["trace"] = "✅"
+        data["trace"] = {"requirements": len(trace_record.get("source_requirements", [])),
+                         "summary": trace_record.get("summary", {})}
+    data["verdicts"] = verdicts
+    data["updated_at"] = datetime.now().isoformat()
+    run.save_json(RUN_JSON, data)
+    if note:
+        report = run.read_text(RUN_REPORT, "")
+        if "## Manual steps" not in report:
+            report = report.rstrip("\n") + "\n\n## Manual steps\n\n"
+        run.save_text(RUN_REPORT, report.rstrip("\n") + f"\n- {datetime.now():%Y-%m-%d %H:%M} — {note}\n")
+    return run.path(RUN_JSON)
+
+
+def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional[dict[str, str]] = None,
+                     reached: Optional[Sequence[str]] = None) -> Path:
+    """Write ``run.json`` and ``RUN_REPORT.md`` for ``run`` and return the report path.
+
+    ``reached`` (optional) lists the stages that have run so far (a design made step by step);
+    every other stage is reported as not run (—) instead of passed.
+    """
     stage_notes = stage_notes or {}
     tests = summary.get("tests", {})
     comp = summary.get("compilability", {})
@@ -129,8 +196,6 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
     generation_failed = summary.get("generation_failed", 0)
     compile_ok = bool(comp.get("compile_ok"))
     stubbed = int(comp.get("stubbed") or 0)
-    status = tests.get("status")
-    smoke = bool(tests.get("smoke_fallback"))
     cpp = tests.get("cpputest") or {}
     quarantined = tests.get("quarantined_tests") or []
 
@@ -146,20 +211,10 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         return "⚠️" if stubbed else "✅"
 
     def gen_v():
-        if tests_generated == 0:
-            return "❌"
-        if quarantined and len(quarantined) >= tests_generated:
-            return "❌"          # every AI-written test failed to compile
-        return "⚠️" if (generation_failed or quarantined) else "✅"
+        return generate_tests_verdict(tests_generated, generation_failed, quarantined)
 
     def run_v():
-        if status == "build_failed":
-            return "❌"
-        if smoke:
-            return "❌"          # only the smoke test ran: CHECK(true) proves nothing
-        if status == "passed" and not quarantined:
-            return "✅"
-        return "⚠️"  # test failures, quarantined tests, skipped / unknown
+        return build_run_verdict(tests)
 
     def review_v():
         if summary.get("quick"):
@@ -187,6 +242,10 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         verdicts[failed_stage] = "❌"
         for later in STAGE_ORDER[idx + 1:]:
             verdicts[later] = "—"
+    if reached is not None:
+        for key in STAGE_ORDER:
+            if key not in reached:
+                verdicts[key] = "—"
 
     cloud_notice = (
         f"Data sent to cloud: {', '.join(clouds)}" if clouds else "Data sent to cloud: none (all local)"
@@ -207,7 +266,7 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "error": summary.get("error"),
         "warnings": summary.get("warnings", []),
         "compilability": comp,
-        "tests": {k: tests.get(k) for k in ("status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback", "cpputest")},
+        "tests": _test_fields(tests),
         "trace": {
             "requirements": len(trace.get("source_requirements", [])),
             "summary": trace.get("summary", {}),
