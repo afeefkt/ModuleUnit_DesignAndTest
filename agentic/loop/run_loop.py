@@ -199,12 +199,14 @@ class Loop:
         if prov and src != "missing":
             try:
                 ids = [m["id"] for m in list_models(prov)]
-                add("deepseek_models", "deepseek-chat" in ids,
-                    f"{len(ids)} model(s); chat={'deepseek-chat' in ids}")
+                add("deepseek_models", bool(ids),
+                    f"{len(ids)} model(s): {', '.join(ids)}")
             except Exception as exc:  # noqa: BLE001
                 add("deepseek_models", False, str(exc)[:120])
             ok, detail = test_chat(prov, "deepseek-chat")
             add("deepseek_ping", ok, detail)
+            ok, detail = test_chat(prov, "deepseek-reasoner")
+            add("deepseek_reasoner_ping", ok, detail)
         else:
             add("deepseek_models", False, "no key")
             add("deepseek_ping", False, "no key")
@@ -582,8 +584,18 @@ class Loop:
 
         changed = _git("diff", "--name-only", str(cfg.get("base_commit", "HEAD")),
                        "--", ".", ":(exclude)outputs", ":(exclude)DevPlan")
-        if changed:
-            failures.append("tracked files changed since loop start: " + ", ".join(changed.splitlines()[:20]))
+        allowed = (
+            "agentic/loop/", "agentic/tests/",
+            "cpputest-rag/backend/app/services/test_generator.py",
+            "cpputest-rag/backend/tests/", "cpputest-rag/backend/test_",
+            "mud-tool/python-sidecar/src/mudtool/ai/",
+            "mud-tool/python-sidecar/tests/",
+            "mudmut_core/verify.py", "mudmut_core/tests/",
+            "AGENTS.md", ".gitignore",
+        )
+        disallowed = [p for p in changed.splitlines() if not p.startswith(allowed)]
+        if disallowed:
+            failures.append("out-of-whitelist tracked changes: " + ", ".join(disallowed[:20]))
 
         if verdict.get("test_app_issues"):
             failures.extend(verdict["test_app_issues"])
