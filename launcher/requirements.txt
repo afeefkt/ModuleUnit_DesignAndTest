@@ -1,3 +1,6 @@
 # MUD_MUT Control Center (Streamlit launcher)
 # The pages run the engine in-process (mudmut_core); this file only adds Streamlit.
-streamlit>=1.40,<2
+# Pinned to the range the page tests (launcher/tests) were run on: st.iframe, st.container(horizontal=True)
+# and download buttons with deferred data need >=1.65; raise the upper bound after re-running the tests.
+streamlit>=1.65,<1.70
+pytest

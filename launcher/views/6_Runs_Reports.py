@@ -30,10 +30,15 @@ _STAGES = [("import", "Import"), ("plan", "Plan"), ("spec", "Spec"), ("review", 
 
 def _row(r: Run) -> dict:
     data = r.read_json("run.json") or {}
+    if not isinstance(data, dict):
+        data = {}
     comp = data.get("compilability") or {}
     tests = data.get("tests") or {}
     junit = tests.get("junit") or {}
-    cov = results.coverage_summary(r.dir("mut") / "coverage.info")
+    try:
+        cov = results.coverage_summary(r.dir("mut") / "coverage.info")
+    except Exception:  # noqa: BLE001 - a damaged coverage file must not hide the run
+        cov = {}
     verdicts = effective_verdicts(data)
     timings = data.get("timings") or {}
     stamp = r.created_key
@@ -43,7 +48,8 @@ def _row(r: Run) -> dict:
         "created": when,
         "SWC": r.swc,
         "preset": r.preset,
-        "data": ", ".join(data.get("cloud_providers") or []) or "local",
+        "state": c.run_status_note(r) or r.status or "",
+        "data": ", ".join(str(x) for x in data.get("cloud_providers") or []) or "local",
         "verdicts": " ".join(verdicts.get(k, "·") for k, _ in _STAGES) if verdicts else "no report",
         "C kept / stubbed": f"{comp.get('kept', '')} / {comp.get('stubbed', '')}" if comp else "",
         "tests passed": junit.get("passed"),
@@ -63,10 +69,15 @@ pick_swc = f1.multiselect("Show components", swcs, default=[], placeholder="All 
 where = f2.selectbox("Data", ["All runs", "Local only", "Used cloud"])
 shown = [r for r in rows if (not pick_swc or r["SWC"] in pick_swc)
          and (where == "All runs" or (where == "Local only") == (r["data"] == "local"))]
+# A new table (and so no stale row selection) whenever the filter changes the rows.
+table_key = "runs_table_" + str(abs(hash((tuple(pick_swc), where, tuple(r["run"] for r in shown)))))
+st.session_state["_runs_table_key"] = table_key
 event = st.dataframe(
-    shown, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="runs_table",
+    shown, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key=table_key,
     column_config={
         "run": st.column_config.TextColumn("Run folder", width="medium"),
+        "state": st.column_config.TextColumn("State", help="running · interrupted (the app stopped during the run) "
+                                             "· failed · cancelled · damaged files"),
         "verdicts": st.column_config.TextColumn("Stages", help="Import · Plan · Spec · Review · Activity · "
                                                 "Compilable · Tests · Build & run · Trace"),
         "line cov %": st.column_config.NumberColumn("Line coverage %", format="%.1f"),
@@ -75,9 +86,12 @@ event = st.dataframe(
     },
 )
 picked_rows = (event.selection.rows if event and getattr(event, "selection", None) else [])
-if picked_rows:
-    picked = shown[picked_rows[0]]["run"]
-    if picked != Path(st.session_state.get("current_run_folder", "")).name:
+picked = shown[picked_rows[0]]["run"] if picked_rows and picked_rows[0] < len(shown) else None
+# Act on a click only (the selection changed). A row that stays selected must not pull the
+# current run back when another run is chosen in the top bar.
+if picked != st.session_state.get("_runs_table_picked"):
+    st.session_state["_runs_table_picked"] = picked
+    if picked and picked != Path(st.session_state.get("current_run_folder", "")).name:
         c.select_run(next(r.folder for r in runs if r.folder.name == picked))
         st.rerun()
 st.caption("Click a row to make it the current run. ✅ pass · ⚠️ partial · ❌ failed · — not run.")
@@ -90,29 +104,33 @@ if mode == "Single run":
     if run is None:
         st.info("No run selected — click a row in the table above or choose one in the top bar.")
     if run:
-        report = run.read_text("RUN_REPORT.md", "")
+        note = c.run_status_note(run)
+        if note:
+            st.warning(f"`{run.folder.name}`: {note}.")
         st.subheader("Test results and coverage")
-        c.results_panel(run, key="runs")
+        c.results_panel(run, key="runs", show_report=False)
         st.subheader("Run report")
-        st.markdown(report or "_No report_")
+        st.markdown(run.read_text("RUN_REPORT.md", "") or "_No run report — this run did not get far enough to write one._")
         with st.expander("MUD spec"):
             st.markdown(run.read_in("mud", "mud_spec.md", "(none)"))
         with st.expander("Flow chart"):
-            c.render_mermaid(run.read_in("mud", "flow.mmd", ""), height=520)
+            c.render_mermaid(run.read_in("mud", "flow.mmd", ""), height=520, alt=f"Activity flow of {run.swc}")
         with st.expander("C skeleton"):
             st.code(run.read_in("code", f"{run.swc}.c", "(none)"), language="c")
-        with st.expander("Trace"):
-            st.json(run.read_json_in("trace", "trace.json", {}))
+        with st.expander("Traceability (requirement → tests)"):
+            c.trace_view(run.read_json_in("trace", "trace.json"), key="runs")
 
 elif mode == "Compare two runs":
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("**Run A**")
-        a = c.run_picker("compare_a")
+        a = c.run_picker("compare_a", index=0)
     with col_b:
         st.markdown("**Run B**")
-        b = c.run_picker("compare_b")
-    if a and b:
+        b = c.run_picker("compare_b", index=1 if len(runs) > 1 else 0)
+    if a and b and a.folder == b.folder:
+        st.info("Run A and run B are the same run — pick two different runs.")
+    elif a and b:
         ja = a.read_json("run.json") or {}
         jb = b.read_json("run.json") or {}
         ra, rb = _row(a), _row(b)
@@ -142,18 +160,31 @@ elif mode == "Compare two runs":
 
 else:
     st.markdown("Archiving moves a run folder to `outputs/_archive/`. Nothing is deleted and you can restore it.")
+    from mudmut_core import jobs
     names = [r.folder.name for r in runs]
     to_archive = st.multiselect("Runs to archive", names)
-    if st.button("Archive selected runs", disabled=not to_archive):
-        from mudmut_core import jobs
-        if jobs.any_running():
-            st.warning("A run is in progress — archive after it finishes.")
-        else:
-            for name in to_archive:
+    current_name = Path(st.session_state.get("current_run_folder", "")).name
+    sure = False
+    if to_archive:
+        if current_name in to_archive:
+            st.caption(f"`{current_name}` is the current run; the newest remaining run becomes current.")
+        sure = st.checkbox(f"Move {len(to_archive)} run(s) to `outputs/_archive/`", key="archive_confirm")
+    busy = jobs.any_running()
+    if st.button("Archive selected runs", disabled=not (to_archive and sure) or busy,
+                 help="A run is in progress — archive after it finishes." if busy else None):
+        failed = []
+        for name in to_archive:
+            try:
                 next(r for r in runs if r.folder.name == name).archive()
+            except (OSError, StopIteration) as exc:
+                failed.append(f"{name}: {exc}")
+        if current_name in to_archive:
             st.session_state.pop("current_run_folder", None)
-            c._bump_bar()
-            st.success(f"Archived {len(to_archive)} run(s).")
+        st.session_state.pop("archive_confirm", None)
+        c.bump_bar()
+        if failed:
+            st.error("Could not archive: " + "; ".join(failed))
+        else:
             st.rerun()
     archived = Run.list_archived()
     st.subheader("Archived runs")
@@ -165,6 +196,8 @@ else:
         if a2.button("Restore", key=f"restore_{r.folder.name}"):
             try:
                 Run.restore_archived(r.folder.name)
-                st.rerun()
-            except (FileExistsError, FileNotFoundError) as exc:
+            except OSError as exc:   # FileExistsError / FileNotFoundError / a locked folder
                 st.error(str(exc))
+            else:
+                c.bump_bar()
+                st.rerun()

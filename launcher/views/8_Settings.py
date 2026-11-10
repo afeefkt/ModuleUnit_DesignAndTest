@@ -30,14 +30,37 @@ st.markdown(
 home = st.text_input("CppUTest folder", current["cpputest_home"], placeholder="/opt/cpputest  or  D:\\libs\\cpputest")
 flags = st.text_input("Extra compiler flags (optional)", current["extra_cflags"], placeholder="-DUNIT_TEST -O0")
 
+_BAD_FLAG_CHARS = set(";|&$`<>\n\r")   # would be run by the shell / break the Makefile line
+
 col1, col2 = st.columns(2)
 if col1.button("💾 Save", type="primary"):
-    settings.save_settings(cpputest_home=home, extra_cflags=flags)
-    st.success("Saved. The next build regenerates the Makefile with these values.")
+    bad = sorted(ch for ch in set(flags) if ch in _BAD_FLAG_CHARS)
+    if bad:
+        st.error("Not saved: compiler flags must not contain " + " ".join(repr(ch) for ch in bad)
+                 + " (they are written into the Makefile).")
+    else:
+        settings.save_settings(cpputest_home=home, extra_cflags=flags)
+        st.success("Saved. The next build regenerates the Makefile with these values.")
+        if home.strip():
+            with st.spinner("Checking the CppUTest folder…"):
+                try:
+                    info = toolchain.find_cpputest(home)
+                except Exception as exc:  # noqa: BLE001 - WSL not reachable
+                    info = None
+                    st.warning(f"Saved, but the folder could not be checked: {exc}")
+            if info is not None and not info.found:
+                st.warning(f"Saved, but CppUTest was not found there: {info.detail} "
+                           "Builds will fail until the folder is right (or leave it empty to auto-detect).")
 if col2.button("🔍 Check"):
     with st.spinner("Probing…"):
-        info = toolchain.find_cpputest(home)
-    if info.found:
+        try:
+            info = toolchain.find_cpputest(home)
+        except Exception as exc:  # noqa: BLE001 - WSL not reachable
+            info = None
+            st.error(f"The check could not run: {exc}")
+    if info is None:
+        pass
+    elif info.found:
         st.success(f"CppUTest found at `{info.home}`")
         st.write(f"- include: `{info.include_dir}`\n- lib: `{info.lib_dir}`\n- CppUTestExt: {'✅' if info.has_ext else '❌ (not linked)'}")
     else:

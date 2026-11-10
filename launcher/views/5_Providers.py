@@ -21,12 +21,24 @@ st.title("Keys & providers")
 st.caption("Keys are read from your environment (Windows user variables / .env / process) — never stored here. There is no save button; manage keys in Windows as today.")
 
 providers = get_providers()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _model_list(provider_id: str) -> tuple[list[dict], str]:
+    """``(models, error)`` for a provider, cached for 5 minutes (one network call, not one per rerun)."""
+    try:
+        return list_models(providers[provider_id]), ""
+    except Exception as exc:  # noqa: BLE001 - shown next to the provider
+        return [], str(exc)
+
+
 for pid, p in providers.items():
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns([1.5, 2, 1.5, 1.5])
         c1.markdown(f"**{p.name}**  \n`{p.base_url}`  \nprivacy: `{p.privacy}`")
         ok = has_key(p)
         c2.markdown(f"{'✅' if ok else '❌'} key: `{key_source(p.key_env)}`")
+        # Results are stored under conn_/modellist_ keys: a button's own key cannot hold a value.
         if c3.button("Test connection", key=f"test_{pid}"):
             with st.spinner("Testing…"):
                 try:
@@ -34,42 +46,36 @@ for pid, p in providers.items():
                     first = models[0]["id"] if models else ""
                     if first:
                         res, detail = test_chat(p, first)
-                        st.session_state[f"test_{pid}"] = (res, detail, len(models))
+                        st.session_state[f"conn_{pid}"] = (res, detail, len(models))
                     else:
-                        st.session_state[f"test_{pid}"] = (False, "no models listed", 0)
+                        st.session_state[f"conn_{pid}"] = (False, "no models listed", 0)
                 except Exception as exc:  # noqa: BLE001
-                    st.session_state[f"test_{pid}"] = (False, str(exc), 0)
+                    st.session_state[f"conn_{pid}"] = (False, str(exc), 0)
         if c4.button("List models", key=f"list_{pid}"):
-            with st.spinner("Fetching models…"):
-                try:
-                    models = list_models(p)
-                    st.session_state[f"models_{pid}"] = models
-                except Exception as exc:  # noqa: BLE001
-                    st.session_state[f"models_{pid}"] = [{"id": f"error: {exc}", "free": False}]
+            _model_list.clear()
+            models, error = _model_list(pid)
+            st.session_state[f"modellist_{pid}"] = models or [{"id": f"error: {error or 'no models listed'}", "free": False}]
 
         if p.is_cloud and has_key(p):
             with st.expander("🆓 Free models — probe which ones really answer"):
                 st.caption("Sends only the test prompt “Say OK” (no project data) to each free model, "
-                           "4 at a time. Results are cached for 24 h and shown in Workflow & Models.")
-                try:
-                    free_models = [m["id"] for m in list_models(p) if m.get("free")]
-                except Exception as exc:  # noqa: BLE001
-                    free_models = []
-                    st.caption(f"Could not list models: {exc}")
-                if pid == "ollama_cloud":
-                    # "free" is only known after a probe, so probe the whole list.
-                    try:
-                        free_models = [m["id"] for m in list_models(p)]
-                    except Exception:  # noqa: BLE001
-                        pass
+                           "4 at a time. Results are cached for 24 h and shown on the Models page.")
+                listed, error = _model_list(pid)
+                if error:
+                    st.caption(f"Could not list models: {error}")
+                # Ollama Cloud: "free" is only known after a probe, so probe the whole list.
+                free_models = [m["id"] for m in listed if m.get("free") or pid == "ollama_cloud"]
                 st.write(f"{len(free_models)} model(s) to probe")
                 cap = st.slider("Max models to probe", 5, 60, min(25, max(5, len(free_models))), key=f"cap_{pid}")
                 if st.button("Probe free models", key=f"probe_{pid}"):
                     bar = st.progress(0.0, text="Probing…")
-                    probe_mod.probe_models(
-                        p, free_models, max_models=cap,
-                        progress=lambda d, n: bar.progress(d / max(n, 1), text=f"Probing {d}/{n}"),
-                    )
+                    try:
+                        probe_mod.probe_models(
+                            p, free_models, max_models=cap,
+                            progress=lambda d, n: bar.progress(d / max(n, 1), text=f"Probing {d}/{n}"),
+                        )
+                    except Exception as exc:  # noqa: BLE001 - network / provider problem
+                        st.error(f"The probe stopped: {exc}")
                     bar.empty()
                     st.cache_data.clear()
                 known = probe_mod.cached_status(pid)
@@ -77,19 +83,22 @@ for pid, p in providers.items():
                     counts = {}
                     for stt in known.values():
                         counts[stt] = counts.get(stt, 0) + 1
-                    st.write(" · ".join(f"{probe_mod.ICONS[k]} {probe_mod.LABELS[k]}: {v}" for k, v in counts.items()))
+                    st.write(" · ".join(f"{probe_mod.ICONS.get(k, '•')} {probe_mod.LABELS.get(k, k)}: {v}"
+                                        for k, v in counts.items()))
                     st.markdown("\n".join(
-                        f"- {probe_mod.ICONS[stt]} `{m}`" for m, stt in sorted(known.items(), key=lambda kv: (kv[1] != "ok", kv[0]))
+                        f"- {probe_mod.ICONS.get(stt, '•')} `{m}`"
+                        for m, stt in sorted(known.items(), key=lambda kv: (kv[1] != "ok", kv[0]))
                     ))
 
-        test = st.session_state.get(f"test_{pid}")
+        test = st.session_state.get(f"conn_{pid}")
         if test:
             res, detail, n = test
             st.write(f"{'✅' if res else '❌'} reply: `{detail}`  ({n} model(s))")
-        models = st.session_state.get(f"models_{pid}")
+        models = st.session_state.get(f"modellist_{pid}")
         if models:
             st.write(" · ".join(f"`{m['id']}`{' (free)' if m.get('free') else ''}" for m in models[:20]))
 
 st.divider()
-st.info("Cloud providers (OpenRouter / NVIDIA / DeepSeek) send your requirements and designs to their servers. "
+_cloud_names = ", ".join(p.name for p in providers.values() if p.is_cloud)
+st.info(f"Cloud providers ({_cloud_names}) send your requirements and designs to their servers. "
         "Every run report records which cloud providers were used.")

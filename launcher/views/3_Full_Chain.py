@@ -14,14 +14,15 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
 
 import _common as c  # noqa: E402
 from mudmut_core import agents, aio, chain, jobs, settings  # noqa: E402
+from mudmut_core import progress as progress_mod  # noqa: E402
 
 LABEL = "Full chain"
 SAMPLE = _REPO_ROOT / "inputs" / "requirements" / "samples" / "bms_requirements.csv"
 OTHER = "Other file (type a path)…"
 
 st.title("Full chain")
-st.markdown("One click from a requirements file to a design, C code, unit tests, coverage and a report. "
-            "On local 7–8 B models a quick run takes about 13 minutes per software component.")
+st.markdown("One click from a requirements file to a design, C code, unit tests, coverage and a report, "
+            "for each software component.")
 
 # ── Requirements file ────────────────────────────────────────────────────────
 files = c.requirement_files()
@@ -40,6 +41,9 @@ with col1:
 with col2:
     quick = st.checkbox("Quick mode", value=True,
                         help="Single-pass spec, no review round, flow built from the spec. Much faster.")
+    estimate = sum(progress_mod.expected_seconds(quick=quick).values())
+    st.caption(f"Expected time per component: about {progress_mod.fmt_duration(estimate)} "
+               "(average of earlier runs on this machine, else a default).")
     if st.button("Check file", help="Import only (no AI): how many requirements are recognised."):
         from mudmut_core import design
         try:
@@ -81,19 +85,40 @@ with st.expander("Which model runs each stage", expanded=bool(cloud)):
          for k, v in plan_stages.items()],
         hide_index=True, width="stretch",
     )
+preset_ok = True
+if preset:
+    st.info(f"Preset **{preset}** replaces the model of every stage and saves it as your selection on **Models**.")
+    preset_ok = st.checkbox("Replace my per-stage selection with this preset", key=f"chain_preset_ok_{preset}")
 confirmed = True
 if cloud:
     st.warning(f"This run sends your requirements and designs to: **{', '.join(cloud)}** (outside this machine). "
                "The run report will list it.")
-    confirmed = st.checkbox("I understand — send data to these providers", key="chain_cloud_ok")
+    # The consent belongs to exactly these providers: another provider set asks again.
+    confirmed = st.checkbox("I understand — send data to these providers",
+                            key="chain_cloud_ok_" + "_".join(cloud))
+
+req_file = Path(req_path.strip()) if req_path and req_path.strip() else None
+if req_file is not None and not req_file.is_absolute():
+    req_file = _REPO_ROOT / req_file
+file_problem = ("Choose a requirements file." if req_file is None else
+                f"File not found: `{req_file}`" if not req_file.is_file() else
+                f"Unsupported file type `{req_file.suffix}` — use CSV, XLSX, ReqIF, Markdown or text."
+                if req_file.suffix.lower() not in c.REQ_EXTENSIONS else "")
+if file_problem and choice == OTHER:
+    st.error(file_problem)
 
 job = jobs.current(LABEL)
-busy = bool(job and job.running)
+busy = jobs.any_running()
 needs_names = swc_mode == SWC_NAMED and not only
-start_help = ("A run is already in progress." if busy else
-              "Tick the confirmation above first." if not confirmed else
-              "Type at least one component name." if needs_names else None)
-if st.button("Start full chain", type="primary", disabled=busy or not confirmed or needs_names, help=start_help):
+start_help = ("A run is already in progress." if job and job.running else
+              "Another job is running (Requirements & design or Unit tests) — wait for it to finish." if busy else
+              file_problem or
+              ("Tick the preset confirmation above first." if not preset_ok else
+               "Tick the confirmation above first." if not confirmed else
+               "Type at least one component name." if needs_names else None))
+if st.button("Start full chain", type="primary",
+             disabled=busy or bool(file_problem) or not preset_ok or not confirmed or needs_names, help=start_help):
+    req_path = str(req_file)
     if settings.auto_reset_enabled():
         c.reset_view()          # start clean: previous job panel, AI list, caches, page state
     else:
@@ -101,16 +126,17 @@ if st.button("Start full chain", type="primary", disabled=busy or not confirmed 
         observe.clear()
     st.session_state["chain_req_path"] = req_path
 
+    # Bind the choices now (default arguments): the job thread must not see later widget changes.
     if swc_mode == SWC_FIRST:
-        def _work(progress):
+        def _work(progress, req_path=req_path, quick=quick, preset=preset):
             return aio.run_sync(chain.run_full_chain(
                 req_path, quick=quick, preset=preset, progress=progress,
                 cancel=getattr(progress, "cancelled", None)))
         jobs.start(LABEL, _work, quick=quick)
     else:
-        def _work(progress):
+        def _work(progress, req_path=req_path, only=tuple(only), quick=quick, preset=preset):
             return aio.run_sync(chain.run_all_swcs(
-                req_path, only=only or None, quick=quick, preset=preset, progress=progress,
+                req_path, only=list(only) or None, quick=quick, preset=preset, progress=progress,
                 cancel=getattr(progress, "cancelled", None)))
         jobs.start(LABEL, _work, quick=quick, track=False)
     st.rerun()

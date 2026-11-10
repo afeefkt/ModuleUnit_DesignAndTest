@@ -50,5 +50,6 @@ pages = {
 }
 
 page = st.navigation(pages)
-c.run_bar()
-page.run()
+# An error in the run bar or a page shows an error box; the menu and the other pages keep working.
+c.guarded(c.run_bar, "the run bar")
+c.guarded(page.run, f"the page “{page.title}”")

@@ -75,26 +75,44 @@ if cloud_used:
     st.warning(f"⚠️ Cloud providers in use: {', '.join(sorted({stages[k]['provider'] for k in cloud_used}))}. "
                "Your requirements/designs will be sent to those providers.")
 
-# Preset buttons
+# Preset buttons — a preset or a reset replaces every stage, so it is confirmed first.
 presets = agents.load_presets()
 st.subheader("Presets")
+PENDING = "_models_pending"   # ("preset", id) or ("reset", "")
 if presets:
-    cols = st.columns(len(presets))
-    for col, (pid, preset) in zip(cols, presets.items()):
-        if col.button(preset.get("label", pid), key=f"preset_{pid}"):
-            with st.spinner(f"Applying {pid}…"):
-                _, skipped = agents.apply_preset_with_report(pid)
-            if skipped:
-                st.session_state["preset_skipped"] = (pid, skipped)
-            st.rerun()
+    row = st.container(horizontal=True)
+    for pid, preset in presets.items():
+        if row.button(preset.get("label", pid), key=f"preset_{pid}"):
+            st.session_state[PENDING] = ("preset", pid)
+    if row.button("Reset to defaults", key="reset_defaults"):
+        st.session_state[PENDING] = ("reset", "")
 else:
     st.info("No presets found (config/presets.json).")
+    if st.button("Reset to defaults", key="reset_defaults"):
+        st.session_state[PENDING] = ("reset", "")
+pending_action = st.session_state.get(PENDING)
+if pending_action:
+    kind, pid = pending_action
+    what = f"preset **{presets.get(pid, {}).get('label', pid)}**" if kind == "preset" else "the **default** models"
+    with st.container(border=True):
+        st.warning(f"Apply {what}? This replaces the provider and model of every stage below.")
+        y, n = st.columns([1, 1])
+        if y.button("Apply", type="primary", key="models_confirm_apply"):
+            st.session_state.pop(PENDING, None)
+            if kind == "preset":
+                with st.spinner(f"Applying {pid}…"):
+                    _, skipped = agents.apply_preset_with_report(pid)
+                if skipped:
+                    st.session_state["preset_skipped"] = (pid, skipped)
+            else:
+                agents.reset_defaults()
+            st.rerun()
+        if n.button("Keep my selection", key="models_confirm_cancel"):
+            st.session_state.pop(PENDING, None)
+            st.rerun()
 if st.session_state.get("preset_skipped"):
     pid, skipped = st.session_state.pop("preset_skipped")
     st.warning(f"Preset '{pid}' has no model for {', '.join(skipped)} — pick one below for those stages.")
-if st.button("Reset to defaults", key="reset_defaults"):
-    agents.reset_defaults()
-    st.rerun()
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -115,6 +133,7 @@ filter_text = fc2.text_input("Filter models", "", placeholder="e.g. gemma, qwen,
                              help="Narrows every cloud model dropdown; the current model always stays.")
 st.caption("🆓 free · ✅ answered a probe · ⚠️ rate-limited / empty reply · ❌ not hosted · 💲 needs credits "
            "— run **Probe free models** on the Providers page to fill in the marks.")
+unsaved: dict[str, tuple[str, str]] = {}
 if not stages:
     st.info("Could not read stage configuration.")
 else:
@@ -158,20 +177,27 @@ else:
                     key=f"model_{key}_{new_provider}",
                     format_func=lambda m, rec=stage.get("recommended"), fr=free, stt=status: (
                         f"{'🆓 ' if m in fr else ''}{m}"
-                        f"{(' ' + probe_mod.ICONS[stt[m]]) if m in stt else ''}{' ★' if m == rec else ''}"),
+                        f"{(' ' + probe_mod.ICONS.get(stt[m], '')) if m in stt else ''}{' ★' if m == rec else ''}"),
                 )
             else:
                 new_model = c3.text_input("Model id", cur_model, key=f"model_{key}_{new_provider}",
                                           help="No model list available — check the provider key / connection.")
             if new_model and (new_provider != current_provider or new_model != cur_model):
-                if st.button("Apply", key=f"apply_{key}"):
+                unsaved[key] = (new_provider, new_model)
+                a1, a2 = st.columns([1, 4], vertical_alignment="center")
+                if a1.button("Apply", key=f"apply_{key}", type="primary"):
                     agents.set_stage(key, new_provider, new_model)
                     st.rerun()
+                a2.caption(f"Not saved yet — the next run still uses `{current_provider} / {cur_model or '(none)'}`.")
 
-# ── Key status ────────────────────────────────────────────────────────────────
-st.divider()
-st.subheader("Provider keys")
-for pid, p in providers.items():
-    from mudmut_core.llm import has_key, key_source
-    ok = has_key(p)
-    st.write(f"{'✅' if ok else '❌'} **{p.name}** — key: {key_source(p.key_env)}")
+if unsaved:
+    # Shown below the list as well, so a change is not lost when you leave the page.
+    with st.container(border=True):
+        st.warning(f"{len(unsaved)} stage(s) changed but not saved: "
+                   + ", ".join(stages[k]["label"] for k in unsaved) + ". Leaving this page discards them.")
+        if st.button("Apply all changes", type="primary", key="apply_all"):
+            for key, (prov, model) in unsaved.items():
+                agents.set_stage(key, prov, model)
+            st.rerun()
+
+st.caption("Provider keys and connection tests are on the **Keys & providers** page.")

@@ -51,7 +51,8 @@ def ollama_models(url: str) -> list[str]:
 
 
 # ── Requirement files (for pickers) ──────────────────────────────────────────
-_REQ_EXT = {".csv", ".xlsx", ".reqif", ".reqifz", ".md", ".txt"}
+REQ_EXTENSIONS = {".csv", ".xlsx", ".reqif", ".reqifz", ".md", ".txt"}
+_REQ_EXT = REQ_EXTENSIONS
 # Side files the hardening tool writes next to a baseline — not requirement inputs.
 _REQ_SKIP = ("readme", "change_log", "test_design", "trace_matrix", "_extended", "polished")
 
@@ -78,13 +79,13 @@ def file_label(p: Path) -> str:
 
 
 # ── Reset view (clear the previous run's screen state and caches) ────────────
-# Session keys owned by pages; register new page state here so Reset view clears it.
+# Session keys owned by pages. Run-scoped page state uses one of the prefixes below, so a new
+# page key is cleared by Reset view without being listed here.
 RESET_KEYS = {
-    "imported", "plan", "spec_md", "module", "review", "approved", "activity", "compilability",
     "trace", "chat_history", "_chat_pending", "preset_skipped", "_chain_job_seen",
     "current_run_folder", "harden_result",
 }
-RESET_PREFIXES = ("test_", "models_", "map_", "trace::")
+RESET_PREFIXES = ("design_", "mut_", "conn_", "modellist_", "map_", "trace::", "step::")
 NO_RUN_KEY = "_no_run_selected"
 _BAR_GEN = "_run_bar_gen"
 
@@ -95,9 +96,11 @@ def _bar_key() -> str:
     return f"run_bar_select_{st.session_state.get(_BAR_GEN, 0)}"
 
 
-def _bump_bar() -> None:
+def bump_bar() -> None:
+    """Rebuild the run selector on the next rerun (after runs were added, archived or restored)."""
     import streamlit as st
     st.session_state[_BAR_GEN] = st.session_state.get(_BAR_GEN, 0) + 1
+
 
 
 def reset_view() -> tuple[bool, str]:
@@ -122,7 +125,7 @@ def reset_view() -> tuple[bool, str]:
     observe.clear()
     st.cache_data.clear()
     st.session_state[NO_RUN_KEY] = True   # show no run (grey rail) until one is chosen
-    _bump_bar()
+    bump_bar()
     return True, (f"View reset: {removed} page value(s), {n_jobs} finished job(s) and the AI call list cleared. "
                   "No run is selected now — choose one above, or start a new run. Saved runs are unchanged.")
 
@@ -159,25 +162,48 @@ def run_toolchain_install_hint() -> str:
     return toolchain.APT_INSTALL_CPPUTEST_LCOV
 
 
-def render_mermaid(mmd: str, height: int = 500) -> None:
-    """Render a Mermaid diagram with zoom / pan controls (CDN mermaid.js + svg-pan-zoom).
+# Vendored copies in launcher/static/vendor/ (served at /app/static/ by enableStaticServing), so
+# flow charts render offline; the CDN is only tried when the local copy cannot be loaded.
+_VENDOR_URL = "/app/static/vendor"
+_MERMAID_JS = ("mermaid-10.9.8.min.js", "https://cdn.jsdelivr.net/npm/mermaid@10.9.8/dist/mermaid.min.js")
+_PANZOOM_JS = ("svg-pan-zoom-3.6.1.min.js", "https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js")
+
+
+def _html_frame(page: str, height: int, alt: str) -> None:
+    """Show a self-contained HTML page in an iframe (``st.iframe``; replaces the removed components.v1.html)."""
+    import streamlit as st
+    st.iframe(page, height=height, alt=alt)
+
+
+def render_mermaid(mmd: str, height: int = 500, *, alt: str = "Flow chart",
+                   empty: str = "No flow chart for this run yet.") -> None:
+    """Render a Mermaid diagram with zoom / pan controls (local mermaid.js + svg-pan-zoom).
 
     Mouse wheel zooms, dragging pans, double-click resets; the toolbar has + / − / Fit /
     100% / Fullscreen / Download SVG. The diagram text is HTML-escaped and rendered with
     ``securityLevel:'strict'`` so LLM text (which may contain ``<``/``>`` or markup) can't
-    inject HTML.
+    inject HTML. If the library cannot load or the diagram has a syntax error, the frame says
+    so and shows the diagram source instead of staying blank.
 
     Streamlit loads inactive tabs/expanders at width 0, which collapses Mermaid's layout
     (a 16x16 SVG), so rendering waits until the frame has a real width.
     """
     import html
+    import json as _json
     import streamlit as st
+    if not (mmd or "").strip():
+        st.info(empty)
+        return
     safe = html.escape(mmd)
     box = max(height - 36, 120)
-    st.components.v1.html(
+    libs = _json.dumps([[f"{_VENDOR_URL}/{_MERMAID_JS[0]}", _MERMAID_JS[1]],
+                        [f"{_VENDOR_URL}/{_PANZOOM_JS[0]}", _PANZOOM_JS[1]]])
+    _html_frame(
         f"""
         <style>
           body {{ margin:0; font-family:sans-serif; }}
+          #msg {{ font-size:12px; color:#7A4A00; background:#FFF4E0; border:1px solid #E8C48A;
+                  border-radius:4px; padding:4px 8px; margin:0 0 4px 0; }}
           #bar {{ display:flex; gap:4px; padding:2px 0 4px 0; }}
           #bar button {{ border:1px solid #c8c8d0; background:#f6f6fa; border-radius:4px;
                          padding:1px 8px; cursor:pointer; font-size:12px; }}
@@ -192,17 +218,46 @@ def render_mermaid(mmd: str, height: int = 500) -> None:
           <button id="fit" title="Fit to window">Fit</button><button id="one" title="Actual size">100%</button>
           <button id="full" title="Fullscreen">&#x26F6;</button><button id="dl" title="Download SVG">SVG</button>
         </div>
+        <div id="msg" hidden></div>
         <div id="wrap"><pre class="mermaid">{safe}</pre></div>
-        <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
-        <script type="module">
-          import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-          mermaid.initialize({{ startOnLoad: false, securityLevel: 'strict',
-                               flowchart: {{ useMaxWidth: false }} }});
+        <script>
+          const LIBS = {libs};
+          const pre = document.querySelector('pre.mermaid');
+          const source = pre.textContent;
+          const say = (text) => {{
+            const m = document.getElementById('msg'); m.textContent = text; m.hidden = false;
+            document.getElementById('bar').style.display = 'none';   // no zoom controls without a diagram
+          }};
+          // Load a script from the first URL that works (local copy first, then the CDN).
+          const load = (urls) => new Promise((ok, fail) => {{
+            if (!urls.length) return fail();
+            const s = document.createElement('script');
+            s.src = urls[0];
+            s.onload = ok;
+            s.onerror = () => {{ s.remove(); load(urls.slice(1)).then(ok, fail); }};
+            document.head.appendChild(s);
+          }});
           let pz = null;
           const render = async () => {{
-            await mermaid.run({{ querySelector: '.mermaid' }});
+            if (!window.mermaid) {{
+              say('The flow-chart library could not be loaded (no local copy and no internet). '
+                  + 'The diagram source is shown instead.');
+              return;
+            }}
+            mermaid.initialize({{ startOnLoad: false, securityLevel: 'strict',
+                                 flowchart: {{ useMaxWidth: false }} }});
+            try {{
+              await mermaid.run({{ querySelector: '.mermaid' }});
+            }} catch (err) {{
+              document.querySelectorAll('[id^="dmermaid"]').forEach((el) => el.remove());
+              pre.removeAttribute('data-processed');
+              pre.textContent = source;
+              say('This diagram has a syntax error, so its source is shown instead: '
+                  + String((err && err.message) || err).slice(0, 300));
+              return;
+            }}
             const svg = document.querySelector('#wrap svg');
-            if (!svg || !window.svgPanZoom) return;
+            if (!svg || !window.svgPanZoom) {{ document.getElementById('bar').style.display = 'none'; return; }}
             svg.removeAttribute('height'); svg.removeAttribute('width');
             pz = window.svgPanZoom(svg, {{ zoomEnabled: true, panEnabled: true, fit: true, center: true,
                                           minZoom: 0.1, maxZoom: 30, dblClickZoomEnabled: false,
@@ -223,20 +278,24 @@ def render_mermaid(mmd: str, height: int = 500) -> None:
                 document.fullscreenElement ? (window.innerHeight - 40) + 'px' : '{box}px';
               pz.resize(); pz.fit(); pz.center(); }});
           }};
+          // Switch off mermaid's own render-on-load at once: it would draw at width 0 in a hidden tab.
+          const quiet = () => {{ if (window.mermaid) {{ mermaid.startOnLoad = false;
+            mermaid.initialize({{ startOnLoad: false, securityLevel: 'strict' }}); }} }};
+          const ready = load(LIBS[0]).then(quiet).then(() => load(LIBS[1]).catch(() => null)).catch(() => null);
           let started = false;
           const timer = setInterval(() => {{
             if (!started && document.documentElement.clientWidth > 50) {{
-              started = true; clearInterval(timer); render();
+              started = true; clearInterval(timer); ready.then(render);
             }}
           }}, 250);
         </script>
         """,
-        height=height,
+        height, alt,
     )
 
 
-def run_picker(key: str = "run_selector"):
-    """A selectbox over existing runs, keyed by run-folder name (stable)."""
+def run_picker(key: str = "run_selector", *, index: int = 0):
+    """A selectbox over existing runs (newest first), keyed by run-folder name (stable)."""
     import streamlit as st
     runs = list_runs()
     if not runs:
@@ -245,7 +304,7 @@ def run_picker(key: str = "run_selector"):
     by_name = {r.folder.name: r for r in runs}
     names = list(by_name.keys())
     chosen = st.selectbox(
-        "Run", names,
+        "Run", names, index=min(max(index, 0), len(names) - 1),
         format_func=lambda n: f"{n}  ({by_name[n].swc})",
         key=key,
     )
@@ -258,22 +317,33 @@ def run_latest():
 
 # ── Results: test report, coverage, JUnit, ZIP ───────────────────────────────
 def _iframe(url: str, height: int) -> None:
-    """Show a served report inline (``st.iframe`` on new Streamlit, components on old)."""
+    """Show a served report inline."""
     import streamlit as st
+    st.iframe(url, height=height, alt="Test or coverage report")
+
+
+def _report_url(path: Path) -> tuple[str | None, str]:
+    """URL of a report file from the local report server: ``(url, "")`` or ``(None, why)``."""
+    from mudmut_core import reportserver
+    if not path.is_file():
+        return None, ""
     try:
-        st.iframe(url, height=height)
-    except Exception:  # noqa: BLE001 - older Streamlit
-        st.components.v1.iframe(url, height=height, scrolling=True)
+        return reportserver.url_for(path), ""
+    except OSError as exc:
+        return None, (f"The local report server could not start ({exc}). Open the file directly: "
+                      f"`{path}`")
 
 
-def results_panel(run, key: str = "results", height: int = 700) -> None:
+def results_panel(run, key: str = "results", height: int = 700, *, show_report: bool = True) -> None:
     """Evidence of a run: headline numbers + tabs (test report, coverage, run report, JUnit).
+
+    ``show_report=False`` leaves out the run-report tab (for pages that show the report themselves).
 
     Reports are served by ``mudmut_core.reportserver`` (a ``file://`` link cannot be opened
     from a web page), so the inline viewer and the "open in new tab" links both work.
     """
     import streamlit as st
-    from mudmut_core import reportserver, results
+    from mudmut_core import results
 
     mut = run.dir("mut")
     test_report = mut / "test-report.html"
@@ -291,7 +361,8 @@ def results_panel(run, key: str = "results", height: int = 700) -> None:
     passed = sum(1 for c in cases if c["status"] == "passed")
     failed = sum(1 for c in cases if c["status"] in ("failed", "error"))
     m1, m2, m3, m4 = st.columns(4)
-    run_tests = (run.read_json("run.json") or {}).get("tests") or {}
+    data = run.read_json("run.json") or {}
+    run_tests = data.get("tests") or {}
     smoke_only = bool(run_tests.get("smoke_fallback")) or (
         bool(cases) and all(c_["group"].split(".")[-1] == "Smoke" for c_ in cases))   # classname "cpputest.Smoke"
     m1.metric("Tests passed", (f"{passed} / {len(cases)}" + (" (smoke)" if smoke_only else "")) if cases else "—",
@@ -309,32 +380,34 @@ def results_panel(run, key: str = "results", height: int = 700) -> None:
         st.error("No AI-written test compiled. These results come from the built-in smoke test, which calls "
                  "each runnable once and checks nothing (`CHECK(true)`). They do not verify any requirement — "
                  "coverage only shows which lines ran.")
-    data = run.read_json("run.json") or {}
     for note in data.get("quality_notes") or []:
         if not note.startswith("❌ **No AI-written test"):
             st.markdown(note)
 
-    t_report, t_cov, t_run, t_cases = st.tabs(["Test report", "Coverage", "Run report", "Test cases"])
-    with t_report:
-        url = reportserver.url_for(test_report) if test_report.is_file() else None
+    tab_names = ["Test report", "Coverage"] + (["Run report"] if show_report else []) + ["Test cases"]
+    tabs = dict(zip(tab_names, st.tabs(tab_names)))
+    with tabs["Test report"]:
+        url, why = _report_url(test_report)
         if url:
             st.link_button("Open test report in a new tab", url)
             _iframe(url, height)
         else:
-            st.caption("No test report file yet (build and run the tests first).")
-    with t_cov:
-        url = reportserver.url_for(coverage_index) if coverage_index.is_file() else None
+            st.caption(why or "No test report file yet (build and run the tests first).")
+    with tabs["Coverage"]:
+        url, why = _report_url(coverage_index)
         if url:
             st.link_button("Open coverage report in a new tab", url)
             _iframe(url, height)
         else:
-            st.caption("No coverage report yet — it is produced by **Rebuild & run** (needs lcov in WSL).")
-    with t_run:
-        st.markdown(run.read_text("RUN_REPORT.md", "_No run report_"))
-    with t_cases:
+            st.caption(why or "No coverage report yet — it is produced by **Rebuild & run** (needs lcov in WSL).")
+    if show_report:
+        with tabs["Run report"]:
+            st.markdown(run.read_text("RUN_REPORT.md", "_No run report_"))
+    with tabs["Test cases"]:
         if cases:
+            labels = {"passed": "passed", "failed": "FAILED", "error": "ERROR", "skipped": "skipped"}
             st.dataframe(
-                [{"status": {"passed": "passed", "failed": "FAILED", "error": "ERROR", "skipped": "skipped"}[c["status"]],
+                [{"status": labels.get(c["status"], c["status"]),
                   "group": c["group"], "test": c["test"], "time (s)": c["time_s"], "message": c["message"]}
                  for c in cases],
                 width="stretch", hide_index=True,
@@ -344,9 +417,46 @@ def results_panel(run, key: str = "results", height: int = 700) -> None:
 
     folder = results.to_windows_path(mut)
     st.caption(f"Folder: `{folder}` — re-run by hand with `build_and_run.bat` in that folder.")
+    zip_button(run, key=key)
+
+
+_TRACE_HELP = {
+    "verified_by_test": "Its test file ran and every case in it passed",
+    "failing_test": "Its test file ran and at least one case failed",
+    "test_not_run": "A test file exists but produced no results",
+    "not_verified": "No test exercises a function that carries this ID",
+}
+
+
+def trace_view(record, *, key: str) -> None:
+    """Requirement → test trace of a run: four counts and a filterable table."""
+    import streamlit as st
+    if not isinstance(record, dict) or not record.get("trace"):
+        st.caption("No traceability for this run yet.")
+        return
+    summary = record.get("summary") or {}
+    total = summary.get("requirements", len(record["trace"]))
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Verified by test", f"{summary.get('verified_by_test', 0)} / {total}", help=_TRACE_HELP["verified_by_test"])
+    m2.metric("Failing test", summary.get("failing_test", 0), help=_TRACE_HELP["failing_test"])
+    m3.metric("Test not run", summary.get("test_not_run", 0), help=_TRACE_HELP["test_not_run"])
+    m4.metric("Not verified", summary.get("not_verified", 0), help=_TRACE_HELP["not_verified"])
+    rows = [{"requirement": t.get("requirement", ""), "status": t.get("status", ""),
+             "verified by": ", ".join(t.get("verified_by") or []) or "—"} for t in record["trace"]]
+    statuses = sorted({r["status"] for r in rows})
+    pick = st.multiselect("Show status", statuses, default=[], placeholder="All statuses", key=f"trace::{key}::filter")
+    shown = [r for r in rows if not pick or r["status"] in pick]
+    st.dataframe(shown, hide_index=True, width="stretch", height=min(38 + 35 * len(shown), 420))
+
+
+def zip_button(run, *, key: str) -> None:
+    """Download the whole run folder as a ZIP. The archive is built only when the button is pressed."""
+    import streamlit as st
+    from mudmut_core import results
+    folder = run.folder
     st.download_button(
-        "Download this run as ZIP", data=results.zip_run(run.folder),
-        file_name=f"{run.folder.name}.zip", mime="application/zip", key=f"zip_{key}",
+        "Download this run as ZIP", data=lambda: results.zip_run(folder),
+        file_name=f"{folder.name}.zip", mime="application/zip", key=f"zip_{key}", on_click="ignore",
     )
 
 
@@ -462,7 +572,7 @@ def select_run(folder: str | Path) -> None:
     """Make ``folder`` the current run on every page (safe to call before the run bar renders)."""
     import streamlit as st
     st.session_state["current_run_folder"] = str(folder)
-    _bump_bar()
+    bump_bar()
     st.session_state.pop(NO_RUN_KEY, None)
 
 
@@ -472,17 +582,37 @@ def _job_chip(job) -> None:
     if job is None:
         return
     if job.running:
-        live_rail(job)
-        st.progress(job.percent / 100, text=f"{job.label} running — {job.percent} % · {job.stage} · "
-                                              f"{progress_mod.fmt_duration(job.elapsed)} elapsed")
+        if job.tracker is not None or job.run_folder or job.stages_done:
+            live_rail(job)   # a pipeline run; single steps (one model call) have no stage rail
+        stage = f" · {job.stage}" if job.stage else ""
+        st.progress(min(job.percent, 100) / 100, text=f"{job.label} running — {job.percent} %{stage} · "
+                                                      f"{progress_mod.fmt_duration(job.elapsed)} elapsed")
     elif job.status == "error":
         st.error(f"{job.label} stopped: {job.error}  — press **Reset view** to clear this message.")
     elif job.status == "cancelled":
         st.info(f"{job.label} was cancelled ({job.error}). The partial report is in Runs & reports.")
 
 
+_RUN_STATUS_NOTE = {
+    "running": "run in progress",
+    "interrupted": "interrupted — the app or process stopped during this run; results are partial",
+    "failed": "stopped with an error",
+    "cancelled": "cancelled",
+}
+
+
+def run_status_note(run) -> str:
+    """Short warning for a run that is damaged, interrupted, failed or cancelled ("" = nothing to say)."""
+    if run is None:
+        return ""
+    if run.damaged:
+        return f"damaged: {run.damaged}"
+    return _RUN_STATUS_NOTE.get(run.status, "")
+
+
 def run_bar() -> None:
     """Shared header: run selector, local/cloud badge, stage rail and the running-job chip."""
+    import html as _html
     import streamlit as st
     from mudmut_core import jobs
     runs = list_runs()
@@ -492,7 +622,7 @@ def run_bar() -> None:
         current = None if cleared else current_run()
         idx = None if cleared else (names.index(current.folder.name) if current else 0)
         if st.session_state.get(_bar_key()) not in names and _bar_key() in st.session_state:
-            _bump_bar()   # the selected run was archived or removed
+            bump_bar()   # the selected run was archived or removed
         c1, c2, c3 = st.columns([3, 2, 1.3], vertical_alignment="bottom")
         picked = c1.selectbox("Current run", names, index=idx, key=_bar_key(),
                               format_func=lambda n: n.replace("_", " ", 1),
@@ -510,24 +640,31 @@ def run_bar() -> None:
             run = runs[names.index(picked)]
             st.session_state["current_run_folder"] = str(run.folder)
             data = run.read_json("run.json") or {}
-            clouds = data.get("cloud_providers") or []
-            badge = (f'<span class="badge cloud">cloud: {", ".join(clouds)}</span>' if clouds
+            clouds = [str(x) for x in (data.get("cloud_providers") or [])]
+            badge = (f'<span class="badge cloud">cloud: {_html.escape(", ".join(clouds))}</span>' if clouds
                      else '<span class="badge local">local only</span>')
-            c2.markdown(f'<div class="runmeta">{run.swc} · preset {run.preset}<br>{badge}</div>',
-                        unsafe_allow_html=True)
+            note = run_status_note(run)
+            note_html = f'<br><span class="badge cloud">{_html.escape(note)}</span>' if note else ""
+            c2.markdown(f'<div class="runmeta">{_html.escape(str(run.swc))} · preset {_html.escape(str(run.preset))}'
+                        f'<br>{badge}{note_html}</div>', unsafe_allow_html=True)
             show_reset_message()
             status_rail(run)
     else:
         st.caption("No run yet — start on **Full chain** or **Requirements & design**.")
         show_reset_message()
 
-    running = jobs.current()
-    if running is not None:
-        every = 2 if running.running else None
+    latest = jobs.current()
+    if latest is not None:
+        was_running = latest.running
 
-        @st.fragment(run_every=every)
+        @st.fragment(run_every=2 if was_running else None)
         def _chip():
-            _job_chip(jobs.current())
+            job = jobs.current()
+            _job_chip(job)
+            if was_running and (job is None or not job.running):
+                # The job ended while another page was open: redraw once so the run list, the
+                # stage rail and the page itself show the result, and stop the timed refresh.
+                st.rerun(scope="app")
         _chip()
 
 
@@ -660,3 +797,130 @@ def run_with_progress(label: str, fn, expected_seconds: float | None = None, pol
     if job.status == "error":
         raise RuntimeError(job.error)
     return job.result
+
+
+# ── Background steps (one model call or build on a page, with a live bar and Cancel) ──────
+# A step runs as a job in a worker thread, so the page stays usable, the step can be cancelled,
+# and its result is not lost when you open another page meanwhile: the page that started it
+# picks the result up the next time it is drawn (``step_outcome``).
+STEP_PREFIX = "step::"
+
+
+class StepOutcome:
+    """What a background step ended with: ``status`` is done / error / cancelled / running / lost.
+
+    ``context`` is what the page passed to ``start_step`` (e.g. the component the step was for).
+    """
+
+    def __init__(self, status: str, result=None, error: str = "", context: dict | None = None) -> None:
+        self.status, self.result, self.error = status, result, error
+        self.context = dict(context or {})
+
+    @property
+    def running(self) -> bool:
+        return self.status == "running"
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "done"
+
+
+def start_step(key: str, label: str, fn, *, expected_seconds: float | None = None,
+               cancellable: bool = True, context: dict | None = None):
+    """Start ``fn(report)`` as a background job owned by this session under ``key``.
+
+    ``context`` is kept with the step and handed back in ``StepOutcome.context`` (e.g. which
+    component a spec was made for), so the result is stored against what was chosen when it
+    started, not against what the widgets show when it finishes.
+    """
+    import streamlit as st
+    from mudmut_core import jobs
+    job = jobs.start(label, fn, track=False, expected_seconds=expected_seconds)
+    st.session_state[STEP_PREFIX + key] = {"id": job.id, "cancellable": cancellable,
+                                          "context": dict(context or {})}
+    return job
+
+
+def any_step_running() -> bool:
+    """True while any background job runs (one at a time: model calls share one event loop)."""
+    from mudmut_core import jobs
+    return jobs.any_running()
+
+
+def step_outcome(key: str) -> StepOutcome | None:
+    """The state of the step started under ``key``; draws a live bar + Cancel while it runs.
+
+    Returns None when no step was started. A finished outcome is returned once: the caller saves
+    and shows it, and the next rerun returns None again.
+    """
+    import streamlit as st
+    from mudmut_core import jobs
+    entry = st.session_state.get(STEP_PREFIX + key)
+    if not entry:
+        return None
+    job = jobs.get(entry["id"])
+    context = entry.get("context")
+    if job is None:
+        st.session_state.pop(STEP_PREFIX + key, None)
+        return StepOutcome("lost", error="The result was cleared (Reset view or an app restart) before it was shown.",
+                           context=context)
+    if job.running:
+        _step_live(job.id, bool(entry.get("cancellable", True)))
+        return StepOutcome("running", context=context)
+    st.session_state.pop(STEP_PREFIX + key, None)
+    outcome = StepOutcome(job.status, job.result, job.error, context=context)
+    jobs.forget(job.id)
+    return outcome
+
+
+def _step_live_body(job_id: str, cancellable: bool) -> None:
+    import streamlit as st
+    from mudmut_core import jobs
+    from mudmut_core import progress as progress_mod
+    job = jobs.get(job_id)
+    if job is None or not job.running:
+        st.rerun(scope="app")   # finished: the page picks up the result
+        return
+    eta = f" · about {progress_mod.fmt_duration(job.eta)} left" if job.eta else ""
+    detail = f" · {job.message}" if job.message else ""
+    bar, stop = st.columns([5, 1], vertical_alignment="center")
+    bar.progress(min(job.percent, 100) / 100,
+                 text=f"{job.label} — {job.percent} % · {progress_mod.fmt_duration(job.elapsed)} elapsed{eta}{detail}")
+    if cancellable:
+        stop.button("Cancel", key=f"cancel_step_{job_id}", on_click=jobs.request_cancel, args=(job_id,),
+                    disabled=job.cancel_requested,
+                    help="Stops the running AI request. Nothing from this step is saved.")
+
+
+def _step_live(job_id: str, cancellable: bool) -> None:
+    import streamlit as st
+    st.fragment(_step_live_body, run_every=1)(job_id, cancellable)
+
+
+def show_step_failure(outcome: StepOutcome, what: str) -> None:
+    """Explain a step that did not finish (error / cancelled / lost) in words the user can act on."""
+    import streamlit as st
+    if outcome.status == "cancelled":
+        st.info(f"{what} was cancelled. Nothing from this step was saved.")
+    elif outcome.status == "lost":
+        st.warning(outcome.error)
+    elif outcome.status == "error":
+        st.error(f"{what} failed: {outcome.error}")
+        st.caption("Check the model on **AI monitor** (Quick test) or pick another one on **Models**, then try again.")
+
+
+def guarded(fn, where: str) -> None:
+    """Run ``fn`` and show an error box instead of a raw traceback if it raises.
+
+    Streamlit's own control flow (``st.rerun``, ``st.stop``, ``st.switch_page``) raises
+    BaseException subclasses and is not caught here.
+    """
+    import streamlit as st
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 - shown to the user
+        st.error(f"Something went wrong in {where}: {type(exc).__name__}: {exc}")
+        st.caption("The other pages still work. Press **Reset view** in the top bar or reload the page; "
+                   "saved runs are not affected.")
+        with st.expander("Technical details"):
+            st.exception(exc)

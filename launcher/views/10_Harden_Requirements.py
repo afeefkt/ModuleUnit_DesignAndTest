@@ -45,8 +45,12 @@ default_idx = next((i for i, p in enumerate(files) if default_rel and p.as_posix
 choice = c2.selectbox("Original requirement file", labels, index=default_idx if files else 0,
                       help="The raw export to harden (CSV). It is copied into the run folder, never modified.")
 input_path = files[labels.index(choice)] if files else None
+if input_path is not None and default_rel and not input_path.as_posix().endswith(default_rel):
+    st.warning(f"The set **{set_name}** has curated rules for `{default_rel}`, but you picked `{c.file_label(input_path)}`. "
+               "Its overrides refer to that file's requirement IDs, so the result may be wrong — pick the matching "
+               "set or file.")
 
-if st.button("Harden requirements", type="primary", disabled=input_path is None):
+if st.button("Harden requirements", type="primary", disabled=input_path is None or c.any_step_running()):
     try:
         manifest = c.run_with_progress(
             f"Hardening {set_name}", lambda report: hardening.run(input_path, set_name), expected_seconds=20)
@@ -70,14 +74,22 @@ picked = st.selectbox("Run", names, index=idx)
 run = runs[names.index(picked)]
 
 before, after = run.get("baseline_metrics") or {}, run.get("hardened_metrics") or {}
+
+
+def _delta(key: str, digits: int = 0):
+    """after − before for a metric, or None when either side is missing or not a number."""
+    a, b = after.get(key), before.get(key)
+    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+        return None
+    d = round(a - b, digits) if digits else a - b
+    return d or None
+
+
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Requirements", after.get("requirements", run.get("hardened_requirements")),
-          delta=(after.get("requirements", 0) - before.get("requirements", 0)) or None,
+m1.metric("Requirements", after.get("requirements", run.get("hardened_requirements")), delta=_delta("requirements"),
           help="After hardening (compound requirements split into atomic ones, gap requirements added).")
-m2.metric("Quality score", after.get("average_score"),
-          delta=round((after.get("average_score") or 0) - (before.get("average_score") or 0), 1) or None)
-m3.metric("Critical findings", after.get("critical"), delta=(after.get("critical", 0) - before.get("critical", 0)) or None,
-          delta_color="inverse")
+m2.metric("Quality score", after.get("average_score"), delta=_delta("average_score", 1))
+m3.metric("Critical findings", after.get("critical"), delta=_delta("critical"), delta_color="inverse")
 review = run.get("review") or {}
 m4.metric("Blocking reviews", review.get("blocking", 0), help=f"Reviewer: {review.get('reviewer', '')}")
 st.caption(f"Status: {run.get('status', '')}")
@@ -85,21 +97,37 @@ st.caption(f"Status: {run.get('status', '')}")
 csv = hardening.hardened_csv(run)
 if csv:
     st.markdown(f"Hardened baseline: `{c.file_label(csv)}`")
-    if st.button("Use this baseline in Full chain"):
+    b1, b2 = st.columns(2)
+    if b1.button("Use this baseline in Full chain"):
         st.session_state["chain_req_path"] = str(csv)
         st.switch_page("views/3_Full_Chain.py")
+    if b2.button("Use this baseline in Requirements & design"):
+        # Preselect the file on the design page (its widgets read these keys when they are drawn).
+        st.session_state["dsg_source"] = "File from inputs/"
+        st.session_state["dsg_extra_file"] = str(csv)   # listed there even if it is outside inputs/
+        st.session_state["dsg_file"] = c.file_label(csv)
+        st.switch_page("views/1_Design_MUD.py")
+
+
+def _show_md(path_value, missing: str) -> None:
+    p = hardening.resolve(path_value)
+    if not p:
+        st.markdown(missing)
+        return
+    try:
+        st.markdown(p.read_text(encoding="utf-8", errors="replace"))
+    except OSError as exc:
+        st.caption(f"Could not read `{p}`: {exc}")
+
 
 paths = run.get("paths") or {}
 t1, t2, t3, t4 = st.tabs(["Review packet", "Run report", "Change log", "Findings"])
 with t1:
-    p = hardening.resolve(paths.get("review_packet"))
-    st.markdown(p.read_text(encoding="utf-8") if p else "_No review packet_")
+    _show_md(paths.get("review_packet"), "_No review packet_")
 with t2:
-    p = hardening.resolve(paths.get("run_report"))
-    st.markdown(p.read_text(encoding="utf-8") if p else "_No run report_")
+    _show_md(paths.get("run_report"), "_No run report_")
 with t3:
-    p = hardening.resolve(paths.get("change_log"))
-    st.markdown(p.read_text(encoding="utf-8") if p else "_No change log_")
+    _show_md(paths.get("change_log"), "_No change log_")
 with t4:
     p = hardening.resolve(paths.get("findings"))
     if p:
