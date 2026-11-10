@@ -124,6 +124,18 @@ async def test_two_stage_pipeline_reaches_section7_and_assembles_a_spec():
     assert runnable_flow_quality(ctx.runnables[0]) == "logic"
 
 
+def test_cross_ref_check_reads_mixed_case_dem_event_ids():
+    """Run 20261111_003755 reported 18 x "DEM event 'SWC_DEM_E_B' not defined": the pattern
+    stopped at the first lowercase letter of SWC_DEM_E_BrakeFault, which is defined."""
+    from mudtool.ai.mud_pipeline_stages import _validate_cross_refs
+    skeleton = dict(GOOD_SKELETON, dem_events=[{"event_id": "SWC_DEM_E_BrakeFault"}])
+    s7 = {"RE_Main": {"steps": [{"step_num": 1, "code":
+          "Dem_ReportErrorStatus(SWC_DEM_E_BrakeFault, DEM_EVENT_STATUS_FAILED);\n"
+          "Dem_ReportErrorStatus(SWC_DEM_E_Missing2, DEM_EVENT_STATUS_FAILED);"}]}}
+    issues = _validate_cross_refs(skeleton, s7)
+    assert len(issues) == 1 and "'SWC_DEM_E_Missing2'" in issues[0]
+
+
 def test_skeleton_without_runnables_is_a_problem():
     empty = dict(GOOD_SKELETON, runnables=[])
     assert any("runnables" in p for p in _skeleton_problems(empty, "QM"))

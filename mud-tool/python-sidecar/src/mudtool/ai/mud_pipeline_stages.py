@@ -306,7 +306,7 @@ def _validate_cross_refs(skeleton: dict, section7_map: dict[str, dict]) -> list[
         # Check DEM event IDs in code blocks
         for step in s7.get("steps", []):
             code = step.get("code", "")
-            for dem_ref in re.findall(r'SWC_DEM_E_[A-Z_]+', code):
+            for dem_ref in dict.fromkeys(re.findall(r'\bSWC_DEM_E_\w+', code)):
                 if dem_ref not in dem_ids:
                     issues.append(
                         f"[{runnable_name} step {step.get('step_num')}] "

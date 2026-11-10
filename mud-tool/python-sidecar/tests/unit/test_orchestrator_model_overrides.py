@@ -164,6 +164,34 @@ def test_single_call_activity_uses_the_activity_generator_stage(monkeypatch):
     assert all(model == "deepseek-chat" and "deepseek.com" in base for model, base in used)
 
 
+def test_activity_answer_cut_off_at_the_cap_is_retried_with_a_shorter_request(monkeypatch):
+    """Every DeepSeek run: the activity JSON stopped at 8192 tokens (finish_reason=length) and the
+    retry only said "output valid JSON", so the same request was cut off again."""
+    import asyncio
+    from mudtool.ai.base_backend import AIResponse
+    from mudtool.models.json_uml import DiagramType
+
+    prompts = []
+    replies = [('{"diagrams": [{"diagram_type": "activity", "name": "RE_Init Code Flow", "nodes": [', "length"),
+               ("{}", "stop")]
+
+    async def fake_generate(self, system_prompt, user_prompt, max_tokens=8192, temperature=0.2, **kw):
+        prompts.append(user_prompt)
+        content, finish = replies.pop(0) if replies else ("{}", "stop")
+        return AIResponse(content=content, model="deepseek-chat", input_tokens=0, output_tokens=8192,
+                          finish_reason=finish, latency_ms=1)
+
+    monkeypatch.setattr(CloudBackend, "generate", fake_generate)
+    orchestrator = AIOrchestrator(_local_global_deepseek_generator())
+    try:
+        asyncio.run(orchestrator.generate_diagram(DiagramType.ACTIVITY, []))
+    except Exception:
+        pass
+    assert len(prompts) >= 2
+    assert "output limit" in prompts[1] and "shorter" in prompts[1]
+    assert "output limit" not in prompts[0]
+
+
 def test_cloud_reasoning_model_gets_a_token_floor_local_does_not():
     from mudtool.ai.cloud_backend import REASONING_MIN_TOKENS
     s = _local_global_deepseek_generator()

@@ -561,11 +561,24 @@ class AIOrchestrator:
                         f"Attempt {attempt} produced errors: {summarized}. Retrying..."
                     )
                     # Replace (not append) error context for next attempt
-                    user_prompt = (
-                        base_user_prompt
-                        + f"\n\nPREVIOUS ATTEMPT FAILED:\n{summarized}\n"
-                        "Fix these issues. Output ONLY valid JSON matching the schema."
-                    )
+                    if getattr(response, "finish_reason", None) == "length":
+                        # The JSON is broken because the answer hit the provider's output cap
+                        # (8192 for deepseek-chat): the same request is cut off again, so ask for
+                        # a shorter answer instead of "valid JSON".
+                        user_prompt = (
+                            base_user_prompt
+                            + "\n\nPREVIOUS ATTEMPT WAS CUT OFF at the model's output limit, so the JSON "
+                            "was incomplete. Write a shorter answer that fits: keep every runnable, "
+                            "node and edge the MUD requires, but use short node names, leave out "
+                            "\"description\" texts and optional fields, and do not indent the JSON. "
+                            "Output ONLY valid JSON matching the schema."
+                        )
+                    else:
+                        user_prompt = (
+                            base_user_prompt
+                            + f"\n\nPREVIOUS ATTEMPT FAILED:\n{summarized}\n"
+                            "Fix these issues. Output ONLY valid JSON matching the schema."
+                        )
                     continue
 
                 # Track best result across attempts (score by nodes + diagrams)
