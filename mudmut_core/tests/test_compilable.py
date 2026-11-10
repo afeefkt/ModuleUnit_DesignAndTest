@@ -89,6 +89,37 @@ def test_junk_statements_detected():
     assert not compilable._is_junk_statement("    Rte_Read_X(&l_u8X);")
 
 
+def test_variable_defined_after_its_first_use_compiles(tmp_path):
+    """Run 20261110_235705: ``l_f32Pressure`` was used by one runnable and defined (float32) above a
+    later one. The float64 placeholder clashed with it and neither the C nor any test compiled."""
+    from mudmut_core import toolchain
+    code = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+        "void RE_First(void)\n{\n    l_f32Pressure = 1.5F;  /* set */\n}\n\n"
+        "static float32 l_f32Pressure;\n\n"
+        "void RE_Second(void)\n{\n    l_f32Pressure = l_f32Pressure + 1.0F;  /* ramp */\n}\n"
+    )
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert rep.stubbed_statements == 0 and rep.placeholder_variables == []
+    assert "extern float32 l_f32Pressure;" in (tmp_path / "Rte_SWC_T.h").read_text()
+    assert "l_f32Pressure" not in (tmp_path / "Rte_Stubs.c").read_text()      # one definition only
+    if toolchain.check_toolchain().ok:      # links together with the stubs
+        r = toolchain.run_c(["gcc", "-std=c99", "-w", "-c", f"-I{tmp_path}", str(tmp_path / "SWC_T.c"),
+                             str(tmp_path / "Rte_Stubs.c")], cwd=str(tmp_path))
+        assert r.returncode == 0, r.stderr
+
+
+def test_declarations_are_not_prose():
+    """``uint8 count;`` is two words like ``Restore defaults;`` but it is C and must be kept."""
+    for decl in ("    uint8 count;", "    float32 l_f32Tmp;", "    static const uint16 limit;",
+                 "    Object_t obj;", "    Dem_EventStatusType status;", "    unsigned int n;"):
+        assert not compilable._is_junk_statement(decl), decl
+    assert not compilable._is_junk_statement("    Track track;", {"Track"})     # typedef'd in the file
+    for prose in ("    Guard;", "    Restore defaults;", "    Compute average of speeds;", "    Track track;"):
+        assert compilable._is_junk_statement(prose), prose
+
+
 def test_make_compilable_declares_instead_of_deleting(tmp_path):
     code = (
         '#include "Rte_Type.h"\n'
@@ -122,6 +153,46 @@ def test_make_compilable_declares_instead_of_deleting(tmp_path):
     swc_h = (tmp_path / "SWC_Bms.h").read_text()
     assert "void RE_Init(void);" in swc_h and "extern uint8 l_u8Mode;" in swc_h
     assert (tmp_path / "Rte_SWC_Other.h").is_file()
+
+
+def test_test_header_exports_the_constants_and_types_the_c_file_defines(tmp_path):
+    """A test must see the same constant values and struct types as the C file.
+
+    Seen on the AEB run: the C file defined ``TTC_CRITICAL (0.6F)`` itself, the tests got the
+    placeholder ``TTC_CRITICAL (9000)`` from the Rte header, and failed on a wrong expected value;
+    a struct typedef'd in the C file was unknown to the tests.
+    """
+    from mudmut_core import toolchain
+    code = (
+        '#include "Rte_Type.h"\n'
+        "#ifndef TTC_CRITICAL\n#define TTC_CRITICAL (0.6F)  /* s */\n#endif\n"
+        "#define MAX_OBJ 4U\n"
+        "#define SQUARE(x) ((x) * (x))\n"                       # function-like: stays private
+        "typedef struct { float32 distance; uint8 id; } Object_t;\n"
+        "typedef struct {\n    uint8 count;\n    Object_t objects[MAX_OBJ];\n} ObjectList_t;\n"
+        '#include "Rte_SWC_T.h"\n\n'
+        "static float32 l_f32Prob;\n\n"
+        "void RE_Risk(void)\n{\n"
+        "    l_f32Prob = (irvTtc < TTC_CRITICAL) ? 1.0F : 0.0F;  /* risk */\n"
+        "}\n"
+    )
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path)
+    swc_h = (tmp_path / "SWC_T.h").read_text()
+    assert "#define TTC_CRITICAL (0.6F)" in swc_h and "#define MAX_OBJ 4U" in swc_h
+    assert "SQUARE" not in swc_h
+    assert "} ObjectList_t;" in swc_h and "Object_t;" in swc_h
+    # the C file's value wins over any placeholder in the Rte header
+    assert swc_h.index("#define TTC_CRITICAL") < swc_h.index('#include "Rte_SWC_T.h"')
+    if not toolchain.check_toolchain().ok:
+        return
+    assert rep.compile_ok, rep.last_error
+    (tmp_path / "t.cpp").write_text(
+        '#include "SWC_T.h"\n'
+        "int main(){ ObjectList_t l; l.count = 1; l.objects[0].id = 2;\n"
+        "  return (TTC_CRITICAL > 0.5F && TTC_CRITICAL < 0.7F && l.count == 1) ? 0 : 1; }\n", encoding="utf-8")
+    r = toolchain.run_c(["g++", "-I" + str(tmp_path), str(tmp_path / "t.cpp"), "-o", str(tmp_path / "t")])
+    assert r.returncode == 0, r.stderr
+    assert toolchain.run_c([str(tmp_path / "t")]).returncode == 0
 
 
 def test_rte_stubs_callable_with_arguments_from_cpp(tmp_path):

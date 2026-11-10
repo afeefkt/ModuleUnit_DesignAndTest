@@ -113,6 +113,33 @@ def test_requirements_for_module_and_asil():
     assert chain.highest_asil(reqs) == "ASIL-D" and chain.highest_asil(only) == "ASIL-B"
 
 
+def test_requirements_scope_uses_the_allocation_column():
+    """The file says which SWC owns a requirement ("Allocated To" → module_hint).
+
+    Seen on the AEB set: the planner returned no IDs for SWC_AEB_BrakeActuator, so all 120
+    requirements went into its spec and review although the file allocates 10 to it.
+    """
+    def req(rid, hint):
+        return SimpleNamespace(req_id=rid, safety_level="QM", module_hint=hint)
+
+    reqs = _Set([req("R-1", "SWC_A"), req("R-2", "SWC_B"), req("R-3", "System"), req("R-4", "SWC_A"),
+                 req("R-5", None)])
+    mod = SimpleNamespace(swc_name="SWC_A", req_ids=[])
+    only = chain.requirements_for_module(reqs, mod)
+    assert [r.req_id for r in only.requirements] == ["R-1", "R-4"]
+    assert mod.req_ids == ["R-1", "R-4"]              # the spec and the review use the same scope
+
+    # planner IDs are added unless the file allocates them to another component
+    mod = SimpleNamespace(swc_name="SWC_A", req_ids=["R-2", "R-3", "R-5"])
+    only = chain.requirements_for_module(reqs, mod)
+    assert [r.req_id for r in only.requirements] == ["R-1", "R-3", "R-4", "R-5"]
+    assert mod.req_ids == ["R-1", "R-3", "R-4", "R-5"]
+
+    # a component the file never names keeps the planner's scope
+    mod = SimpleNamespace(swc_name="SWC_Z", req_ids=["R-3"])
+    assert [r.req_id for r in chain.requirements_for_module(reqs, mod).requirements] == ["R-3"]
+
+
 def test_check_cancel():
     chain._check_cancel(None, "spec")
     chain._check_cancel(lambda: False, "spec")

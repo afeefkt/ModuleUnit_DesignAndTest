@@ -406,6 +406,13 @@ async def _run_full_chain(
     run.save_json_in("code", "compilability.json", comp_record)
     timings["compilable"] = time.time() - t0
     stage_notes["compilable"] = rep.summary()
+    if not rep.compile_ok and code_baseline is None:
+        # Tests cannot build against code that does not compile: generating them only costs
+        # model calls and ends with every file quarantined and a smoke test that cannot link.
+        first = next((ln.strip() for ln in (rep.last_error or "").splitlines() if "error" in ln), "")
+        raise ChainError("The generated C does not compile, so no tests were generated"
+                         + (f": {first[-240:]}" if first else "")
+                         + " (see 02_code/compilability.json).")
     _emit(progress, "compilable", f"Compilability: {rep.summary()}", done=True)
 
     # ── 7b. pin an already completed code baseline (loop experiment) ──────────
@@ -582,13 +589,32 @@ def highest_asil(reqs) -> Optional[str]:
 
 
 def requirements_for_module(reqs, module):
-    """Only the requirements the plan assigned to ``module`` (all of them if it lists none)."""
-    ids = set(getattr(module, "req_ids", None) or [])
+    """Only the requirements that belong to ``module`` (all of them if nothing says which do).
+
+    The requirement file's own allocation ("Allocated To" / module hint) decides first: every
+    requirement allocated to this SWC is in, and one allocated to another SWC of the plan is
+    out, whatever the planner model answered. Planner IDs add requirements the file does not
+    allocate to a component (system-level ones). ``module.req_ids`` is updated to the result,
+    so the spec and the review work on the same scope.
+    """
+    name = getattr(module, "swc_name", None)
+    planned = set(getattr(module, "req_ids", None) or [])
+    hints = {r.req_id: (getattr(r, "module_hint", None) or "").strip() for r in reqs.requirements}
+    allocated = {rid for rid, hint in hints.items() if name and hint == name}
+    if allocated:
+        swc_hints = {h for h in hints.values() if h.startswith("SWC_")}
+        ids = allocated | {rid for rid in planned if hints.get(rid, "") not in swc_hints}
+    else:
+        ids = planned
     if not ids:
         return reqs
     items = [r for r in reqs.requirements if r.req_id in ids]
     if not items or len(items) == len(reqs.requirements):
         return reqs
+    try:
+        module.req_ids = [r.req_id for r in items]
+    except (AttributeError, TypeError):
+        pass
     try:
         return reqs.model_copy(update={"requirements": items})
     except AttributeError:

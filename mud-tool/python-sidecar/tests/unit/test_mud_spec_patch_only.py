@@ -72,10 +72,15 @@ def test_patch_only_review_fixes_target_section7_without_rewriting_other_section
         review,
     )
 
-    assert meta["changed"] is True
-    assert meta["mode"] == "patch_only"
-    assert "Trace: REQ-CTRL-001" in patched
-    assert patched.split("## 7. Functional Description", 1)[0] == SPEC.split("## 7. Functional Description", 1)[0]
+    # A coverage gap is missing design logic. Writing "// Trace: REQ-…" plus a prose step into
+    # Section 7 made the ID check report 100 % coverage (and an approved review) although nothing
+    # was designed — seen on the AEB run: 99 such steps, review "approved, coverage 100 %".
+    assert meta["changed"] is False
+    assert meta["reason"] == "coverage_gap_needs_design_logic"
+    assert patched == SPEC
+    coverage = deterministic_requirement_coverage(
+        patched, "REQ-CTRL-001,Control saturation,SWC_Test shall clamp output safely", ["REQ-CTRL-001"])
+    assert coverage["uncovered_req_ids"] == ["REQ-CTRL-001"]
 
 
 def test_deterministic_coverage_detects_explicit_section7_trace():

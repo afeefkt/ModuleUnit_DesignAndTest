@@ -579,6 +579,13 @@ def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
     problems: list[str] = []
     asil_safety = asil.upper() in ("ASIL-B", "ASIL-C", "ASIL-D")
 
+    # Rule 0: a skeleton without runnables gives a spec with no Section 7 at all
+    if not skeleton.get("runnables"):
+        problems.append(
+            "runnables[] is empty. List every RE_* runnable of this SWC "
+            "(name, trigger, period, description, reads, writes)."
+        )
+
     # Rule 1: ASIL-B/C/D must have at least one DEM event
     if asil_safety and not skeleton.get("dem_events"):
         problems.append(
@@ -623,6 +630,10 @@ def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
         )
 
     return problems
+
+
+# Top-level keys of a skeleton document (at least one must be present).
+_SKELETON_KEYS = ("runnables", "ports", "irvs", "calparms", "dem_events", "sub_functions", "data_types")
 
 
 # ── JSON extraction helper ────────────────────────────────────────────────────
@@ -856,6 +867,12 @@ class MudSpecPipeline:
                         len(still_bad),
                     )
 
+        if not skeleton.get("runnables"):
+            # Nothing to write Section 7 for: let the caller fall back to the single-pass spec
+            # instead of assembling a document with no runnables.
+            logger.warning("[Pipeline/Stage1] Skeleton has no runnables after retry — rejected")
+            return None
+
         # Final defaulting — ensure swc_name + asil are always set
         if not skeleton.get("swc_name"):
             skeleton["swc_name"] = swc_name
@@ -871,20 +888,42 @@ class MudSpecPipeline:
         user_prompt: str,
         temperature: float,
     ) -> dict | None:
-        """Single skeleton AI call + JSON extraction + key normalisation."""
+        """Single skeleton AI call + JSON extraction + key normalisation.
+
+        An answer cut off at the output cap (``finish_reason == "length"``) is asked for once
+        more with twice the room and is never salvaged: the pieces of a truncated JSON document
+        are not a skeleton.
+        """
         try:
-            response = await backend.generate(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=temperature,
-                max_tokens=4096,
-                response_format="json",
-            )
+            response = None
+            for max_tokens in (4096, 8192):
+                response = await backend.generate(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format="json",
+                )
+                if getattr(response, "finish_reason", None) != "length":
+                    break
+                logger.warning(
+                    "[Pipeline/Stage1] Skeleton answer was cut off at the output cap (max_tokens=%d)",
+                    max_tokens,
+                )
+                if not (response.content or "").strip():
+                    # A reasoning model spent the whole budget thinking; asking again costs
+                    # minutes and ends the same way.
+                    return None
+            else:
+                return None
             skeleton = _extract_json(response.content)
+            if skeleton and not any(k in skeleton for k in _SKELETON_KEYS):
+                # A stray inner object (one port, one runnable) of a broken document.
+                skeleton = None
             if not skeleton:
                 logger.warning(
                     "[Pipeline/Stage1] Failed to extract JSON from response: %s…",
-                    response.content[:300],
+                    (response.content or "")[:300],
                 )
                 return None
 

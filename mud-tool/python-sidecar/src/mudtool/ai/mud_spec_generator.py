@@ -704,83 +704,23 @@ def apply_patch_only_review_fixes(
     requirements_text: str,
     review: SpecReviewResult,
 ) -> tuple[str, dict[str, Any]]:
-    """Patch only targeted Section 7 runnable blocks for coverage gaps.
+    """Deterministic repair of review findings — never used for coverage gaps.
 
-    Returns the original markdown unchanged when no safe deterministic patch can
-    be applied. The caller may then fall back to the model-based editor.
+    A coverage gap means the design logic for a requirement is missing. This function used to
+    append ``// Trace: <ID>`` and a prose step ("99. Cover <ID> / Requirement intent: …") to a
+    runnable. The ID then appeared in Section 7, the coverage check reported 100 %, the review
+    was approved and the ID was traced to that runnable's code and tests, although nothing had
+    been designed. Coverage gaps now always go to the model-based editor, and what it does not
+    cover stays reported as uncovered.
+
+    Returns the original markdown unchanged; the caller falls back to the model-based editor.
     """
     blocks = _section7_runnable_blocks(current_spec_markdown)
     if not blocks:
         return current_spec_markdown, {"changed": False, "reason": "section7_not_found"}
-
-    patch_items = [p for p in (review.patch_plan or []) if p.get("kind") == "coverage_gap"]
-    if not patch_items:
-        req_lines = _requirement_lines(requirements_text, review.uncovered_req_ids)
-        patch_items = [
-            {
-                "kind": "coverage_gap",
-                "req_id": req_id,
-                "target_runnable": _guess_patch_runnable(req_id, req_lines.get(req_id, ""), blocks),
-            }
-            for req_id in review.uncovered_req_ids
-        ]
-    if not patch_items:
-        return current_spec_markdown, {"changed": False, "reason": "no_patch_items"}
-
-    req_lines = _requirement_lines(requirements_text, [str(p.get("req_id", "")) for p in patch_items])
-    block_by_name = {b["name"]: b for b in blocks}
-    insertions: dict[str, list[str]] = {}
-    applied: list[str] = []
-    for item in patch_items:
-        req_id = str(item.get("req_id", "")).strip()
-        if not req_id or req_id in _extract_section7(current_spec_markdown):
-            continue
-        target = str(item.get("target_runnable", "")).strip()
-        if target not in block_by_name:
-            target = blocks[0]["name"]
-        req_summary = req_lines.get(req_id, req_id).replace("|", " ").strip()
-        insertions.setdefault(target, []).extend([
-            f"// Trace: {req_id}",
-            f"99. Cover {req_id}",
-            f"   Requirement intent: {req_summary[:180]}",
-        ])
-        applied.append(req_id)
-
-    if not insertions:
-        return current_spec_markdown, {"changed": False, "reason": "nothing_to_insert"}
-
-    patched = current_spec_markdown
-    for block in sorted(blocks, key=lambda b: b["abs_body_end"], reverse=True):
-        lines = insertions.get(block["name"])
-        if not lines:
-            continue
-        insertion = "\n" + "\n".join(lines) + "\n"
-        insert_at = block["abs_body_end"]
-        patched = patched[:insert_at].rstrip() + insertion + patched[insert_at:]
-
-    unchanged_lines = {
-        line.strip()
-        for line in current_spec_markdown.splitlines()
-        if line.strip()
-    }
-    patched_lines = {line.strip() for line in patched.splitlines() if line.strip()}
-    overlap = len(unchanged_lines & patched_lines) / max(len(unchanged_lines), 1) * 100
-    required_headings_present = all(
-        f"## {idx}." in patched for idx in range(1, 8)
-    )
-    if overlap < 95.0 or not required_headings_present:
-        return current_spec_markdown, {
-            "changed": False,
-            "reason": "patch_rejected",
-            "overlap_pct": round(overlap, 1),
-        }
-    return patched, {
-        "changed": True,
-        "mode": "patch_only",
-        "applied_req_ids": applied,
-        "overlap_pct": round(overlap, 1),
-        "targeted_sections": sorted(insertions),
-    }
+    if review.uncovered_req_ids or any(p.get("kind") == "coverage_gap" for p in (review.patch_plan or [])):
+        return current_spec_markdown, {"changed": False, "reason": "coverage_gap_needs_design_logic"}
+    return current_spec_markdown, {"changed": False, "reason": "no_patch_items"}
 
 
 def review_fix_fingerprints(review: SpecReviewResult) -> set[str]:
