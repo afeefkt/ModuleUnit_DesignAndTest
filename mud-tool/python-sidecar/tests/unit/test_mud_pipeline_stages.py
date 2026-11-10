@@ -115,6 +115,14 @@ async def test_two_stage_pipeline_reaches_section7_and_assembles_a_spec():
     assert "REFERENCE EXAMPLE" in backend.calls[1]["system_prompt"]
     assert "{few_shot_example}" not in backend.calls[1]["system_prompt"]
 
+    # The assembled spec ("**1. Compute**" + a fenced code block) must be readable by the step
+    # parser the spec check and the flow builder use. Run 20261111_003217: the first two-stage
+    # spec that was ever assembled was rejected with "13 runnables have no steps".
+    from mudtool.ai.mud_activity_context import build_mud_activity_context, runnable_flow_quality
+    ctx = build_mud_activity_context(spec, "SWC_T")
+    assert [r.name for r in ctx.runnables] == ["RE_Main"]
+    assert runnable_flow_quality(ctx.runnables[0]) == "logic"
+
 
 def test_skeleton_without_runnables_is_a_problem():
     empty = dict(GOOD_SKELETON, runnables=[])

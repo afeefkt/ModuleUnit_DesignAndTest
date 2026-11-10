@@ -107,7 +107,9 @@ async def run_full_chain(
     def tracking_progress(event: dict) -> None:
         # Remember the last completed pipeline stage, so a failure can be
         # attributed to the stage that was running.
-        if event.get("stage") in report_mod.STAGE_ORDER:
+        # Only a finished stage counts: a warning emitted while the spec stage is still being
+        # checked made a spec failure show up as "failed in stage review" (run 20261111_003217).
+        if event.get("done") and event.get("stage") in report_mod.STAGE_ORDER:
             run_holder["done"] = event["stage"]
         if progress:
             progress(event)

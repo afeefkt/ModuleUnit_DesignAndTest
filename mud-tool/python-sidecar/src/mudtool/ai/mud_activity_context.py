@@ -874,7 +874,8 @@ def _parse_numbered_step_entries(text: str) -> list[NumberedStep]:
         # they are formatting, not steps, and would otherwise become nodes.
         if raw_line.strip().startswith("```"):
             continue
-        numbered = re.match(r"^(\s*)(\d+(?:\.\d+)*)(?:[.)])\s*(.+)$", raw_line)
+        # "1. Guard" and the two-stage assembler's bold form "**1. Guard**"
+        numbered = re.match(r"^(\s*)(?:\*\*)?(\d+(?:\.\d+)*)(?:[.)])\s*(.+?)(?:\*\*)?\s*$", raw_line)
         if numbered:
             if current_header is not None:
                 steps.extend(_expand_numbered_step_block(current_header, current_body_lines, current_depth))
