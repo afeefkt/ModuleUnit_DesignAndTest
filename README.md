@@ -13,11 +13,12 @@
   build, run and coverage in WSL → requirement ↔ test trace, with a per-stage ✅/⚠️/❌ report for every run.
 - **What it does not do:** it does not prove that a requirement is met, it does not replace engineering review, and
   it is not qualified or certified tooling.
-- **Current result:** no requirement has reached `verified_by_test` yet. BMS sample, local 8B models, three runs
-  on 2026-10-10: **0 of 30**. AEB set, one cloud run on 2026-11-09: **0 of 118** (10 of 15 generated tests passed).
-- **Why not yet:** in the local runs the AI-written test files mostly did not compile; in the cloud run they
-  compiled, but a requirement counts as verified only when every test of its function passes. A design-derived
-  test oracle that links each test to its requirement ID is the open work.
+- **Current result:** no requirement is verified yet by a test whose expected value comes from the requirement or
+  the design. Local 8B models: **0 of 30** `verified_by_test` on the BMS sample (the AI tests mostly did not
+  compile). Cloud model, AEB set: one run marks 18 of 21, but 11 of them rest only on `CHECK_TRUE(true)` tests
+  and the rest on values read from the generated code. All numbers per run: [BENCHMARK.md](BENCHMARK.md).
+- **Why not yet:** the generated tests take their expected values from the C code, not the design, and the trace
+  also counts no-op tests. A design-derived test oracle linked to each requirement ID is the open work.
 - **AI-assisted draft, not qualified tooling.** Every output needs engineer review (see `AGENTS.md`).
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
@@ -165,6 +166,7 @@ requirements.csv
 | [docs/providers.md](docs/providers.md) | Providers, free models, the probe, capping the local context window |
 | [agentic/README.md](agentic/README.md) | The OpenCode agent layer |
 | [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | Project background, learnings and honest limits |
+| [BENCHMARK.md](BENCHMARK.md) | Every run so far: input, models, kept/stubbed C, tests compiled, verified requirements — generated from `outputs/` |
 
 ## Quick start (local, no Docker)
 
@@ -280,6 +282,7 @@ Every stage is guarded, so the chain always finishes with a truthful report rath
 - **Traceability:** a requirement is marked `verified_by_test` only when the test file of a function
   whose design carries its ID ran and every case in it passed. Otherwise it is `failing_test` (a case
   failed), `test_not_run` (the file produced no results) or `not_verified` (no test for that function).
+  Known gap: a passing file of no-op cases (`CHECK_TRUE(true)`) also counts today; `BENCHMARK.md` separates them.
 
 All output is an AI-assisted draft, not certified tooling (see `AGENTS.md`).
 
@@ -307,6 +310,7 @@ output trustworthy enough to work with:
 ```
 MUD_MUT/
 ├── README.md                 ← you are here
+├── BENCHMARK.md              ← every run's numbers (python -m mudmut_core.benchmark --write BENCHMARK.md)
 ├── LICENSE                   ← Apache-2.0
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
