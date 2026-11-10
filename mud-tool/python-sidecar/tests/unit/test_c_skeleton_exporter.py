@@ -128,6 +128,35 @@ def test_sub_diagram_emitted_as_linkable_helper_without_repeated_includes():
     assert code.count('#include "Rte_Type.h"') == 1
 
 
+def test_helper_shared_by_two_runnables_is_defined_once():
+    """Run 20261111_002323: RE_CommandBrake and RE_MonitorSafety both had the sub-diagram
+    CheckFeedback; it was emitted twice and the C file failed with "redefinition of 'CheckFeedback'"."""
+    def helper():
+        return ActivityDiagram(
+            name="Helper Code Flow", function_name="Helper",
+            nodes=[_node("s0", "Start", ActivityNodeType.INITIAL),
+                   _node("s1", "l_u8Z = 9", ActivityNodeType.ACTION),
+                   _node("s2", "End", ActivityNodeType.FINAL)],
+            edges=[_edge("s0", "s1"), _edge("s1", "s2")],
+        )
+
+    def runnable(name):
+        return ActivityDiagram(
+            name=f"{name} Code Flow", owner_swc="SWC_Bms", owner_runnable=name,
+            nodes=[_node("n0", "Start", ActivityNodeType.INITIAL),
+                   _node("n1", "Helper", ActivityNodeType.FUNCTION_CALL),
+                   _node("n2", "End", ActivityNodeType.FINAL)],
+            edges=[_edge("n0", "n1"), _edge("n1", "n2")],
+            sub_diagrams=[helper()],
+        )
+
+    out = CSkeletonExporter().export_result(GenerationResult(diagrams=[runnable("RE_A"), runnable("RE_B")]))
+    code = "\n\n".join(out.values())
+    assert code.count("\nvoid Helper(void)\n{") == 1       # one definition
+    assert code.count("Helper();") == 2                    # both runnables still call it
+    assert code.count("void Helper(void);") == 2           # and both see a prototype
+
+
 def test_helper_without_body_keeps_design_statement_and_titles_become_comments():
     d = ActivityDiagram(
         name="RE_Foo Code Flow", owner_runnable="RE_Foo",

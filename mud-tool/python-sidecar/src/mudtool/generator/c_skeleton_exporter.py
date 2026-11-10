@@ -221,8 +221,15 @@ class CSkeletonExporter:
         lines.append("}")
         lines.append("")
 
-        # Emit sub-diagrams as helper functions
+        # Emit sub-diagrams as helper functions — each helper once per export: a helper used by
+        # two runnables is defined with the first and only declared with the second.
+        emitted = getattr(self, "_emitted_helpers", None)
         for sub in real_subs:
+            name = _helper_name(sub)
+            if emitted is not None:
+                if name in emitted:
+                    continue
+                emitted.add(name)
             lines.append("")
             lines.append(self.export_diagram(sub, as_helper=True))
 
@@ -234,11 +241,19 @@ class CSkeletonExporter:
         Returns: {diagram_name: c_code_string}
         """
         output: dict[str, str] = {}
+        # The same runnable can be in the result more than once (a retried generation appends
+        # its diagrams): the last one wins, as before, and only that one is exported.
+        top: dict[str, ActivityDiagram] = {}
         for diagram in result.diagrams:
             if isinstance(diagram, ActivityDiagram) and not diagram.parent_diagram:
                 name = diagram.name or "diagram"
-                safe_name = name.replace(" ", "_").replace("/", "_")
+                top[name.replace(" ", "_").replace("/", "_")] = diagram
+        self._emitted_helpers = set()
+        try:
+            for safe_name, diagram in top.items():
                 output[safe_name] = self.export_diagram(diagram)
+        finally:
+            self._emitted_helpers = None
         return output
 
     def _emit_body(self, diagram: ActivityDiagram, lines: list[str]) -> None:

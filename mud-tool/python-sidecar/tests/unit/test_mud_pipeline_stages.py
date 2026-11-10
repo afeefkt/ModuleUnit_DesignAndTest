@@ -101,6 +101,21 @@ async def test_fragment_without_skeleton_keys_is_not_a_skeleton():
     assert await _skeleton(backend) is None
 
 
+async def test_two_stage_pipeline_reaches_section7_and_assembles_a_spec():
+    """The Section 7 system prompt was built with str.format() over text that contains C braces
+    ("unmatched '{' in format spec"), so the two-stage pipeline crashed for every runnable and
+    every "two-stage" spec was in fact the single-pass fallback (seen in run 20261111_002323,
+    the first run whose skeleton call succeeded)."""
+    section7 = {"runnable_name": "RE_Main", "steps": [
+        {"step_num": 1, "label": "Compute", "code": "l_f32Out = Rte_IRead(RP_Speed) * 2.0F;"}]}
+    backend = _Backend([(json.dumps(GOOD_SKELETON), "stop"), (json.dumps(section7), "stop")])
+    pipe = MudSpecPipeline(backend=backend, skeleton_backend=backend)
+    spec = await pipe.generate("SWC_T", "d", "QM", ["RE_Main"], ["R-1"], "[R-1] text")
+    assert "RE_Main" in spec and "l_f32Out = Rte_IRead(RP_Speed) * 2.0F;" in spec
+    assert "REFERENCE EXAMPLE" in backend.calls[1]["system_prompt"]
+    assert "{few_shot_example}" not in backend.calls[1]["system_prompt"]
+
+
 def test_skeleton_without_runnables_is_a_problem():
     empty = dict(GOOD_SKELETON, runnables=[])
     assert any("runnables" in p for p in _skeleton_problems(empty, "QM"))

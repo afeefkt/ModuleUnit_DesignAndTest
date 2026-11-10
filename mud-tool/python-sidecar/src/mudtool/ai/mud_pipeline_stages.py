@@ -166,7 +166,9 @@ Output ONLY the JSON object. No prose. No fences."""
 
 # ── Stage 3 prompt (per runnable) ─────────────────────────────────────────────
 
-_SECTION7_SYSTEM = _PSEUDO_GOLDEN_RULE + """
+# Only this body is a str.format() template ({{ }} escaped, one {few_shot_example} field). The
+# golden rule and the final reminder contain C code with braces and are added unformatted.
+_SECTION7_SYSTEM_BODY = """
 You are an AUTOSAR firmware engineer writing pseudo-code for a runnable.
 Output ONLY a single valid JSON object.
 Start with {{ and end with }}.
@@ -231,7 +233,17 @@ MANDATORY — every step.code MUST contain at least ONE of the following, or it 
 
 REFERENCE EXAMPLE (EPS RE_ControlTorque):
 {few_shot_example}
-""" + _PSEUDO_FINAL_REMINDER
+"""
+
+
+def _section7_system(few_shot_example: str) -> str:
+    return (_PSEUDO_GOLDEN_RULE
+            + _SECTION7_SYSTEM_BODY.replace("{few_shot_example}", few_shot_example).replace("{{", "{").replace("}}", "}")
+            + _PSEUDO_FINAL_REMINDER)
+
+
+# The prompt text with the example slot left open (read by the prompt-contract tests).
+_SECTION7_SYSTEM = _section7_system("{few_shot_example}")
 
 _SECTION7_USER_TMPL = """Generate Section 7 pseudo-code for runnable: {runnable_name}
 
@@ -970,7 +982,7 @@ class MudSpecPipeline:
             or "(not available)"
         )
 
-        system_prompt = _SECTION7_SYSTEM.format(few_shot_example=few_shot)
+        system_prompt = _section7_system(few_shot)
         user_prompt = _SECTION7_USER_TMPL.format(
             runnable_name=rname,
             trigger=runnable.get("trigger", "Cyclic"),
