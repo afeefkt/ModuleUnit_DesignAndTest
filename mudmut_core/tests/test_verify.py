@@ -119,3 +119,60 @@ def test_define_invented_constants_adds_placeholders(tmp_path):
     assert "lowercase_thing" not in code.split("TEST_GROUP")[0]
     # idempotent
     assert verify.define_invented_constants(log, tmp_path) is False
+
+
+# ── Dem expectation correction ───────────────────────────────────────────────
+
+def _junit(tmp_path, failures):
+    cases = "".join(
+        f'<testcase classname="cpputest.RE_X_Group" name="{n}"><failure message="{m}"/></testcase>' for n, m in failures)
+    (tmp_path / "test-results.xml").write_text(f"<testsuites><testsuite>{cases}"
+                                               '<testcase classname="cpputest.RE_X_Group" name="Fine"/></testsuite></testsuites>')
+
+
+def _suite(tmp_path):
+    (tmp_path / "Test_RE_X.cpp").write_text("TEST_GROUP(RE_X_Group) {};\nTEST(RE_X_Group, A) {}\n")
+    (tmp_path / "SWC_T.c").write_text(
+        "void RE_Other(void)\n{\n}\n\n"
+        "void RE_X(void)\n{\n    if (l_a < 0)\n    {\n        Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_FAILED);\n"
+        "        return;\n    }\n    Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED);\n}\n")
+
+
+def test_failing_dem_tests_and_function_source(tmp_path):
+    from mudmut_core import verify
+    _suite(tmp_path)
+    _junit(tmp_path, [("Healthy", "LONGS_EQUAL(0, Dem_ReportErrorStatus_callCount) failed"),
+                      ("Other", "DOUBLES_EQUAL(1.0, IRV_X, 1e-6) failed")])
+    got = verify.failing_dem_tests(tmp_path)
+    assert list(got) == ["Test_RE_X.cpp"] and [n for n, _m in got["Test_RE_X.cpp"]] == ["Healthy"]   # non-Dem failure ignored
+    src = verify.function_source(tmp_path, "RE_X")
+    assert src.startswith("void RE_X(void)") and "DEM_EVENT_STATUS_PASSED" in src and "RE_Other" not in src
+
+
+def test_dem_expectations_are_corrected_only_when_failures_drop(tmp_path, monkeypatch):
+    from mudmut_core import verify
+    _suite(tmp_path)
+    _junit(tmp_path, [("Healthy", "LONGS_EQUAL(0, Dem_ReportErrorStatus_callCount) failed")])
+    fixed = "TEST_GROUP(RE_X_Group) {};\nTEST(RE_X_Group, A) { /* fixed */ }\n"
+    monkeypatch.setattr(verify, "_fixer_generate", lambda prompt, **k: fixed)
+
+    def rebuilt(_dir):
+        _junit(tmp_path, [])                                   # the corrected suite has no failure left
+        return {"status": "passed"}
+
+    monkeypatch.setattr(verify, "build_and_run", rebuilt)
+    result, corrected = verify.fix_dem_expectations(tmp_path, {"status": "test_failed"})
+    assert corrected == ["Test_RE_X.cpp"] and result["status"] == "passed"
+    assert "fixed" in (tmp_path / "Test_RE_X.cpp").read_text()
+
+
+def test_dem_correction_that_does_not_help_is_reverted(tmp_path, monkeypatch):
+    from mudmut_core import verify
+    _suite(tmp_path)
+    original = (tmp_path / "Test_RE_X.cpp").read_text()
+    _junit(tmp_path, [("Healthy", "LONGS_EQUAL(0, Dem_ReportErrorStatus_callCount) failed")])
+    monkeypatch.setattr(verify, "_fixer_generate",
+                        lambda prompt, **k: "TEST_GROUP(RE_X_Group) {};\nTEST(RE_X_Group, A) { /* worse */ }\n")
+    monkeypatch.setattr(verify, "build_and_run", lambda _d: {"status": "test_failed"})   # still failing
+    result, corrected = verify.fix_dem_expectations(tmp_path, {"status": "test_failed"})
+    assert corrected == [] and (tmp_path / "Test_RE_X.cpp").read_text() == original

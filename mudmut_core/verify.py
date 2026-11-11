@@ -352,6 +352,10 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict
             smoke = True
             result = build_and_run(test_dir)
 
+    dem_corrected: list[str] = []
+    if result.get("status") == "test_failed" and not smoke:
+        result, dem_corrected = fix_dem_expectations(test_dir, result)
+
     link_errors = list(dict.fromkeys(
         re.findall(r"undefined reference to [`']([^`']+)['`]",
                    (result.get("build_error") or "") + (result.get("build_output") or ""))
@@ -360,7 +364,122 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict
     result["fix_attempts"] = attempts
     result["quarantined_tests"] = quarantined
     result["smoke_fallback"] = smoke
+    result["dem_expectations_corrected"] = dem_corrected
     return result
+
+
+# ── tests that misjudge the Dem reports of the code ──────────────────────────────────────────────────────
+# A monitor reports FAILED on the bad path and PASSED on the healthy one, so "Dem_ReportErrorStatus_callCount
+# is 0 for valid input" is a wrong expectation, not a code defect (it made 5-26 tests per run fail). The
+# failing tests are sent back once with the function's own Dem reports; the answer is kept only when it
+# lowers the number of failures.
+_DEM_FAILURE_RE = re.compile(r"Dem_ReportErrorStatus_(?:callCount|arg\d|hist_arg\d)")
+_DEM_CALL_RE = re.compile(r"\bDem_ReportErrorStatus\s*\(\s*([^,()]+?)\s*,\s*([^()]+?)\s*\)")
+
+
+def failing_dem_tests(test_dir: Path | str) -> dict[str, list[tuple[str, str]]]:
+    """``{Test_X.cpp: [(test name, failure message), ...]}`` for failures about Dem_ReportErrorStatus."""
+    import xml.etree.ElementTree as ET
+    test_dir = Path(test_dir)
+    out: dict[str, list[tuple[str, str]]] = {}
+    xml = test_dir / "test-results.xml"
+    if not xml.is_file():
+        return out
+    try:
+        root = ET.parse(xml).getroot()
+    except ET.ParseError:
+        return out
+    for tc in root.iter("testcase"):
+        failure = tc.find("failure")
+        if failure is None:
+            continue
+        message = (failure.get("message") or failure.text or "")
+        if not _DEM_FAILURE_RE.search(message):
+            continue
+        group = (tc.get("classname") or "").split(".")[-1]
+        fname = "Test_" + re.sub(r"_Group$", "", group) + ".cpp"
+        if (test_dir / fname).is_file():
+            out.setdefault(fname, []).append((tc.get("name") or "?", message.strip().replace("\n", " | ")[:300]))
+    return out
+
+
+def function_source(test_dir: Path | str, name: str) -> str:
+    """The C source of function ``name`` from the code under test in ``test_dir`` ('' when not found)."""
+    for c_file in sorted(Path(test_dir).glob("*.c")):
+        if c_file.name == "Rte_Stubs.c":
+            continue
+        text = c_file.read_text(encoding="utf-8", errors="ignore")
+        m = re.search(rf"^[A-Za-z_][\w \t\*]*\b{re.escape(name)}\s*\([^)]*\)\s*\n?\s*\{{", text, re.MULTILINE)
+        if not m:
+            continue
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += (text[i] == "{") - (text[i] == "}")
+            i += 1
+        return text[m.start():i]
+    return ""
+
+
+def fix_dem_expectations(test_dir: Path | str, result: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """One correction round for tests whose Dem expectations contradict the code's own reports.
+
+    Returns ``(result, corrected file names)``. A file is replaced only when the rebuilt suite has fewer
+    failing tests; otherwise the original file is restored.
+    """
+    test_dir = Path(test_dir)
+    if result.get("status") != "test_failed":
+        return result, []
+    wrong = failing_dem_tests(test_dir)
+    if not wrong:
+        return result, []
+    before = _failure_count(test_dir)
+    originals: dict[str, str] = {}
+    for fname, failures in wrong.items():
+        path = test_dir / fname
+        code = path.read_text(encoding="utf-8", errors="ignore")
+        group = re.sub(r"^Test_|\.cpp$", "", fname)
+        src = function_source(test_dir, group)
+        reports = list(dict.fromkeys(f"{ev}, {st}" for ev, st in _DEM_CALL_RE.findall(src)))
+        listing = "\n".join(f"- {n}: {m}" for n, m in failures[:12])
+        prompt = (
+            "These CppUTest tests fail because their expectations about Dem_ReportErrorStatus do not match what "
+            "the code under test really reports. The code is the reference for WHAT it reports: read its source, "
+            "work out for each failing test which reports its path makes (a healthy path usually still reports "
+            "DEM_EVENT_STATUS_PASSED), and correct only those expectations — keep every test, its inputs and its "
+            "other assertions, and do not delete or loosen checks. Use <function>_callCount for the count and "
+            "Dem_ReportErrorStatus_hist_arg0[k] / _hist_arg1[k] for the k-th report (k = 0 first). Return ONLY the "
+            "complete corrected file (no markdown fences, no explanation).\n\n"
+            f"FAILING TESTS ({fname}):\n{listing}\n\n"
+            f"DEM REPORTS IN THE CODE (event, status): {'; '.join(reports) or 'none found'}\n\n"
+            f"FUNCTION UNDER TEST:\n```c\n{src[:6000]}\n```\n\n"
+            f"FILE ({fname}):\n```cpp\n{code}\n```\n"
+            f"{_TEST_API_HINT}"
+        )
+        fixed = _fixer_generate(prompt)
+        if not fixed:
+            continue
+        fixed = re.sub(r"\s*```$", "", re.sub(r"^```(?:cpp|c\+\+)?\s*", "", fixed.strip()))
+        if fixed and fixed != code and same_test_groups(code, fixed):
+            originals[fname] = code
+            path.write_text(fixed, encoding="utf-8")
+    if not originals:
+        return result, []
+    rebuilt = build_and_run(test_dir)
+    after = _failure_count(test_dir) if rebuilt.get("status") in ("test_failed", "passed") else None
+    if after is None or after >= before:
+        for fname, code in originals.items():       # no improvement: put the original tests back
+            (test_dir / fname).write_text(code, encoding="utf-8")
+        return build_and_run(test_dir), []
+    return rebuilt, sorted(originals)
+
+
+def _failure_count(test_dir: Path | str) -> int:
+    import xml.etree.ElementTree as ET
+    xml = Path(test_dir) / "test-results.xml"
+    try:
+        return sum(1 for tc in ET.parse(xml).getroot().iter("testcase") if tc.find("failure") is not None)
+    except (ET.ParseError, OSError):
+        return 10 ** 6
 
 
 _PROTOTYPE_RE = re.compile(r"^\s*void\s+(\w+)\s*\(\s*void\s*\)\s*;", re.MULTILINE)
