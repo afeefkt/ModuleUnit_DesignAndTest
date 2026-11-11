@@ -14,7 +14,7 @@ _NAME_RE = re.compile(r"^#\s*MUD Spec:\s*([A-Za-z_]\w*)", re.M)
 _TABLE_NAME_RE = re.compile(r"^\|\s*SWC Name\s*\|\s*([A-Za-z_]\w*)\s*\|", re.M)
 
 
-def check_spec(spec_md: str, swc: str) -> dict[str, Any]:
+def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> dict[str, Any]:
     """Return ``{ok, name_in_spec, name_matches, runnables, usable, placeholder, empty, problems}``."""
     from mudtool.ai.mud_activity_context import build_mud_activity_context, runnable_flow_quality
 
@@ -35,6 +35,8 @@ def check_spec(spec_md: str, swc: str) -> dict[str, Any]:
             f"calls (e.g. Rte_Cbk_* stubs) and {len(empty)} have no steps."
         )
     name_matches = not name_in_spec or name_in_spec == swc
+    have = {r.name for r in ctx.runnables}
+    missing_planned = [n for n in (planned or []) if n not in have]
     never_set: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
@@ -54,6 +56,7 @@ def check_spec(spec_md: str, swc: str) -> dict[str, Any]:
         "empty": empty,
         "never_set": never_set,
         "undescribed_helpers": undescribed,
+        "missing_planned": missing_planned,
         "problems": problems,
     }
 
@@ -93,7 +96,8 @@ def gap_count(result: dict[str, Any]) -> int:
     """Number of concrete design gaps a targeted spec repair can fix."""
     return (sum(len(v) for v in (result.get("never_set") or {}).values())
             + sum(len(v) for v in (result.get("undescribed_helpers") or {}).values())
-            + len(result.get("placeholder") or []) + len(result.get("empty") or []))
+            + len(result.get("placeholder") or []) + len(result.get("empty") or [])
+            + len(result.get("missing_planned") or []))
 
 
 _LOCAL_RE = re.compile(r"\bl_[A-Za-z0-9_]+\b")

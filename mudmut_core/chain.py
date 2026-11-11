@@ -295,7 +295,7 @@ async def _run_full_chain(
     # Strict pseudo-code rule: stop here (before any slow AI step) when Section 7 has no
     # implementable logic — everything after it would be built on nothing.
     from mudmut_core import spec_check
-    sc = spec_check.check_spec(spec_md, chosen.swc_name)
+    sc = spec_check.check_spec(spec_md, chosen.swc_name, chosen.runnables)
     # Concrete design gaps (a local read but never set, a helper whose logic is written nowhere,
     # a runnable without logic): one targeted repair call, kept only if the re-check is better.
     if spec_check.gap_count(sc):
@@ -309,7 +309,7 @@ async def _run_full_chain(
             repaired = ""
             warnings.append(f"Spec repair call failed ({exc}); kept the first spec.")
         if repaired and len(repaired.strip()) >= 200:
-            sc2 = spec_check.check_spec(repaired, chosen.swc_name)
+            sc2 = spec_check.check_spec(repaired, chosen.swc_name, chosen.runnables)
             # A rewrite cut off at the output limit has fewer gaps simply because a runnable is gone.
             truncated = spec_check.rewrite_problem(spec_md, repaired)
             better = (sc2["ok"] or not sc["ok"]) and spec_check.gap_count(sc2) < spec_check.gap_count(sc) \
@@ -354,7 +354,7 @@ async def _run_full_chain(
             review_empty = bool(getattr(review, "ai_review_empty", False))
             review_approved = bool(review.approved)
             if reviewed_md and reviewed_md != best_md:
-                sc_rev = spec_check.check_spec(reviewed_md, chosen.swc_name)
+                sc_rev = spec_check.check_spec(reviewed_md, chosen.swc_name, chosen.runnables)
                 truncated = spec_check.rewrite_problem(best_md, reviewed_md)
                 worse = (not sc_rev["ok"]) or len(sc_rev["usable"]) < len(best_sc["usable"]) \
                     or spec_check.gap_count(sc_rev) > spec_check.gap_count(best_sc) or bool(truncated)

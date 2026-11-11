@@ -189,6 +189,11 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for name in check.get("missing_planned") or []:
+        issues.append(("error", f"The module plan names runnable {name} but Section 7 has no '### {name}' entry "
+                                "of its own (it was folded into another runnable as a sub-function). Add a "
+                                f"'### {name}' subsection with its Guard / Read / Validate / Compute / Write steps "
+                                "and call it from its parent, keeping all existing runnables unchanged."))
     for runnable in (check.get("placeholder") or []) + (check.get("empty") or []):
         issues.append(("error", f"{runnable} has no implementable pseudo-code steps. Write its Guard / Read / "
                                 "Validate / Compute / Write steps as C statements."))

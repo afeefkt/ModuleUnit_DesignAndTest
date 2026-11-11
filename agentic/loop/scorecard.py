@@ -62,7 +62,7 @@ def score_spec(folder: Path) -> tuple[float, str]:
     sc = _j(folder / "01_mud" / "spec_check.json")
     if not sc:
         return 0.0, "no spec_check.json"
-    n = max(1, sc.get("runnables", 0))
+    n = max(1, sc.get("runnables", 0) + len(sc.get("missing_planned", [])))
     s = 100.0 * len(sc.get("usable", [])) / n
     s -= 10 * len(sc.get("problems", [])) + 10 * len(sc.get("placeholder", [])) + 10 * len(sc.get("empty", []))
     s -= 5 * len(sc.get("never_set", {})) + 5 * len(sc.get("undescribed_helpers", {}))

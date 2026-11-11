@@ -41,3 +41,11 @@ def test_undeclared_hint_lists_real_stub_variables(tmp_path: Path):
     hint = verify._undeclared_hint("t.cpp:7:5: error: ‘Rte_Read_IRV_Real’ was not declared", tmp_path)
     assert "Rte_Read_IRV_Real" in hint and "IRV_Real" in hint and "DELETE" in hint
     assert verify._undeclared_hint("some other error", tmp_path) == ""
+
+
+def test_spec_check_flags_planned_runnables_folded_away():
+    from mudmut_core import spec_check, design
+    check = {"missing_planned": ["RE_RampPressure"], "never_set": {}, "undescribed_helpers": {}}
+    assert spec_check.gap_count(check) == 1
+    issues = design.spec_check_issues(check)
+    assert issues and "RE_RampPressure" in issues[0][1]
