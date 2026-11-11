@@ -187,6 +187,14 @@ def _normalize_judge(value: Any) -> Optional[dict[str, Any]]:
 
 
 # ── mermaid export ────────────────────────────────────────────────────────────
+def judge_mermaid(result: GenerationResult) -> str:
+    """The Mermaid source for the judge without comment and style-only lines (they are ~30 % of a large
+    diagram and pushed the last runnables past the input cap, which the judge then reported as 'truncated')."""
+    keep = [ln for ln in mermaid_text(result).splitlines()
+            if not ln.lstrip().startswith(("%%", "class ", "classDef "))]
+    return "\n".join(keep)
+
+
 def mermaid_text(result: GenerationResult) -> str:
     from mudtool.generator.mermaid_exporter import MermaidExporter
     return "\n\n".join(MermaidExporter().export_result_inline(result).values())
@@ -324,7 +332,7 @@ def markdown(q: dict[str, Any]) -> str:
 
 # The judge must see the whole design: at 6k/8k chars it saw one runnable of six and reported the rest missing.
 _JUDGE_SPEC_CHARS = 40000
-_JUDGE_MMD_CHARS = 40000
+_JUDGE_MMD_CHARS = 80000
 
 _JUDGE_PROMPT = """You are a strict reviewer of an AUTOSAR activity / code-flow diagram.
 
@@ -371,7 +379,7 @@ def deepseek_judge(stage: str = "activity_qa", *, timeout: int = 300):
         if provider is None:
             raise RuntimeError(f"no provider for activity_qa judge ({provider_id})")
         prompt = _JUDGE_PROMPT.format(reqs=", ".join(requirement_ids) or "(none)",
-                                      spec=(spec_md or "")[:_JUDGE_SPEC_CHARS], mmd=mermaid_text(result)[:_JUDGE_MMD_CHARS])
+                                      spec=(spec_md or "")[:_JUDGE_SPEC_CHARS], mmd=judge_mermaid(result)[:_JUDGE_MMD_CHARS])
         return chat_blocking(provider, model, [{"role": "user", "content": prompt}],
                              max_tokens=16000, temperature=0.1, timeout=timeout)   # a reasoner thinks inside this budget
     return judge
