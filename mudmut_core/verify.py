@@ -227,8 +227,10 @@ _TEST_API_HINT = (
     "Set Rte_Read_<port> and Rte_Prm_<port> before calling a runnable, check Rte_Write_<port> after, "
     "and call Rte_Stubs_Reset() in setup(). Rte_Prm(<port>) is assignable too. Accessors with an element "
     "name (Rte_Read_<port>_<elem>, Rte_IRead_<port>_<elem>, Rte_Write_<port>_<elem>) are variables in the "
-    "same way: assign or compare them, never call them from a test. Use only constants that exist in the "
-    "headers; for \"a value different from X\" write (X + 1).\n"
+    "same way: assign or compare them, never call them from a test. IRVs (Rte_IrvRead/Rte_IrvWrite(IRV_X, ..)) are "
+    "the variables IRV_X. Calls to other functions (Dem_*, WdgM_*, Rte_Call_* ...) are recorded: check "
+    "<function>_callCount and <function>_arg0, <function>_arg1 ...; never define your own mock of them. "
+    "Use only constants that exist in the headers; for \"a value different from X\" write (X + 1).\n"
 )
 
 

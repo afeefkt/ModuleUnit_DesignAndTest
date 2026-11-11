@@ -50,7 +50,7 @@ def test_make_compilable_keeps_bitmask_logic_and_unstatics_helpers(tmp_path):
     rte_h = (tmp_path / "Rte_SWC_X.h").read_text()
     assert "fabsf" not in rte_h                       # comes from <math.h>
     assert "extern uint32 irvFault;" in rte_h
-    assert "float64 Map(MUDMUT_ANY_ARGS);" in rte_h
+    assert "float64 Map(float64, float64);" in rte_h          # a value-returning helper stays float64 (and is recorded)
     assert "void Helper(void);" in (tmp_path / "SWC_X.h").read_text()   # tests can call it
 
 

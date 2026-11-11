@@ -21,6 +21,74 @@ _SYM_EXTERN_RE = re.compile(r"^[ \t]*extern[ \t]+([\w \t\*]+?)[ \t]+(\w+)[ \t]*;
 _SYM_SKIP = ("_H", "MUDMUT_ANY_ARGS", "TRUE", "FALSE", "E_OK", "E_NOT_OK", "NULL")
 
 
+# Calls to other functions (Dem_*, NvM_*, WdgM_*, Rte_Call_*) are recorded by the generated stubs
+# (mudmut_core.compilable). A mock the model writes itself is a C++ symbol the C code never calls,
+# so a test that checks it fails ("expected <1> but was <0>") even when the code is right.
+CALL_RECORDER_HINT = (
+    "   Calls to other functions (Dem_*, NvM_*, WdgM_*, Rte_Call_*, helpers) are recorded for you. After the call\n"
+    "   CHECK <function>_callCount (calls since Rte_Stubs_Reset) and <function>_arg0, <function>_arg1 ...\n"
+    "   (the arguments of the LAST call), e.g.\n"
+    "   LONGS_EQUAL(1, Dem_ReportErrorStatus_callCount);\n"
+    "   LONGS_EQUAL(SWC_DEM_E_ActuatorFault, (long)Dem_ReportErrorStatus_arg0);\n"
+    "   Use only the <function>_callCount / <function>_arg<N> names listed in AVAILABLE SYMBOLS.\n"
+    "   Never define your own mock or stub of these functions (no redefinition, no extern \"C\" body, no call counter\n"
+    "   of your own): the code under test would call the real stub, not yours."
+)
+
+
+_IO_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+_IO_IN = (
+    (re.compile(r"\bRte_Irv(?:I?Read)\s*\(\s*(\w+)\s*,"), "{0}"),
+    (re.compile(r"\bRte_Read\s*\(\s*(\w+)\s*,"), "Rte_Read_{0}"),
+    (re.compile(r"\bRte_Prm\s*\(\s*(\w+)\s*\)"), "Rte_Prm_{0}"),
+    (re.compile(r"\b(Rte_I?Read_\w+)\s*\("), "{0}"),
+)
+_IO_OUT = (
+    (re.compile(r"\bRte_Irv(?:I?Write)\s*\(\s*(\w+)\s*,"), "{0}"),
+    (re.compile(r"\bRte_Write\s*\(\s*(\w+)\s*,"), "Rte_Write_{0}"),
+    (re.compile(r"\b(Rte_I?Write_\w+)\s*\("), "{0}"),
+)
+
+
+def function_io(source_code: str, symbols: str = "") -> dict:
+    """The exact variables a test must set / check for one function, read from its own source.
+
+    ``set``: variables the function reads (inputs, calibration, IRVs); ``check``: variables it writes;
+    ``calls``: functions it calls that have a call recorder (``<fn>_callCount`` in ``symbols``).
+    The model otherwise picks a plausible but different accessor name and the test never reaches the
+    path it is about.
+    """
+    code = _IO_COMMENT_RE.sub(" ", source_code or "")
+
+    def collect(rules) -> list[str]:
+        found: list[tuple[int, str]] = []
+        for rx, fmt in rules:
+            found += [(m.start(), fmt.format(m.group(1))) for m in rx.finditer(code)]
+        return list(dict.fromkeys(name for _pos, name in sorted(found)))
+
+    called = list(dict.fromkeys(m.group(1) for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", code)))
+    return {
+        "set": collect(_IO_IN),
+        "check": collect(_IO_OUT),
+        "calls": [f for f in called if f"{f}_callCount" in (symbols or "")],
+    }
+
+
+def function_io_block(io: dict) -> str:
+    """Prompt text for :func:`function_io` ("" when the function uses none of them)."""
+    lines = []
+    if io["set"]:
+        lines.append("  set before the call:  " + ", ".join(io["set"]))
+    if io["check"]:
+        lines.append("  check after the call: " + ", ".join(io["check"]))
+    if io["calls"]:
+        lines.append("  calls recorded (<fn>_callCount, <fn>_arg0 ...): " + ", ".join(io["calls"]))
+    if not lines:
+        return ""
+    return ("\nTHIS FUNCTION'S TEST INTERFACE (exact variable names, taken from its source; "
+            "set / check these and no other variable for the same signal):\n" + "\n".join(lines) + "\n")
+
+
 def available_symbols(source_file: Path, limit: int = 120) -> str:
     """Constants (with values) and variables a test of ``source_file`` can use.
 
@@ -57,6 +125,7 @@ async def generate_cpputest(function_info: FunctionInfo, examples: List[Dict]) -
         f"{symbols}\n"
         "For \"a value different from X\" write (X + 1); never make up a new constant name.\n"
     ) if symbols else ""
+    symbols_block += function_io_block(function_io(function_info.source_code, symbols))
 
     # Build context from examples
     examples_context = "\n\n".join([
@@ -104,8 +173,7 @@ REQUIREMENTS:
    Rte_IRead_<port>_<elem> and Rte_Write_<port>_<elem> are variables you set / check in the same way,
    e.g. Rte_Read_RP_Speed_Speed = 10.0; ... DOUBLES_EQUAL(20.0, Rte_Write_PP_Out_Value, 1e-6);
    Never call these accessors from the test and never compare them with a function call.
-   Other dependencies (Dem_*, NvM_*, Rte_Call_*, helper calls) are plain stub functions returning E_OK / 0.
-   Do NOT mock them, do NOT count calls (no .call_count(), no mock objects).
+{CALL_RECORDER_HINT}
    Test through inputs and outputs: set the variables the function reads, call it, then CHECK
    the variables it writes
 6. Add comments explaining what each test validates

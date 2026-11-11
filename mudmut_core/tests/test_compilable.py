@@ -136,7 +136,8 @@ def test_explicit_rte_accessors_are_test_variables(tmp_path):
     hdr = (tmp_path / "Rte_SWC_T.h").read_text()
     for var in ("Rte_Read_RP_Speed_Speed", "Rte_IRead_RP_Mode_Mode", "Rte_Write_PP_Out_Value"):
         assert f"extern float64 {var};" in hdr, var
-    assert "Rte_Call_RP_Dem_SetEventStatus(MUDMUT_ANY_ARGS);" in hdr
+    assert "Rte_Call_RP_Dem_SetEventStatus(float64, float64);" in hdr          # stays a function, now recorded
+    assert "extern uint32 Rte_Call_RP_Dem_SetEventStatus_callCount;" in hdr
     if not toolchain.check_toolchain().ok:
         return
     # A C++ test sets the inputs, runs the runnable, checks the output and resets.
@@ -270,6 +271,82 @@ def test_default_typed_locals_used_as_floats_become_float32(tmp_path):
         assert f"uint32 {name};" in rep.c_code, name          # integer use: unchanged
     assert "uint32 l_u8Mode;" in rep.c_code                    # Hungarian integer prefix: unchanged
     assert "uint8 l_declared;" in rep.c_code                   # the spec's declaration still wins
+
+
+def test_external_calls_are_recorded_for_tests(tmp_path):
+    """Calls to external functions (Dem_*, WdgM_*, ...) can be observed: ``<fn>_callCount`` and the
+    last call's ``<fn>_arg<N>``, reset by Rte_Stubs_Reset().
+
+    Run 20261111_005406: requirements such as "report event X to the Dem" could only be tested with
+    a mock the model wrote itself — a C++ function the C code never calls — so 11 cases failed
+    ("expected <1> but was <0>") although the code did report the event.
+    """
+    from mudmut_core import toolchain
+    code = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+        "uint32 l_ready;\n\n"
+        "void RE_Check(void)\n{\n"
+        "    if (l_ready != TRUE)\n    {\n"
+        "        Dem_ReportErrorStatus(SWC_DEM_E_InitFailed, DEM_EVENT_STATUS_FAILED);  /* FAULT */\n"
+        "        return;\n    }\n"
+        "    Dem_ReportErrorStatus(SWC_DEM_E_BadSignal, DEM_EVENT_STATUS_PASSED);\n"
+        "    WdgM_TriggerAliveCounter(0);\n"
+        "    NvM_WriteBlock(&l_ready);\n"                  # pointer argument: not recorded, stays a plain stub
+        "}\n"
+    )
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert rep.stubbed_statements == 0
+    hdr = (tmp_path / "Rte_SWC_T.h").read_text()
+    stubs = (tmp_path / "Rte_Stubs.c").read_text()
+    for sym in ("Dem_ReportErrorStatus_callCount", "Dem_ReportErrorStatus_arg0", "Dem_ReportErrorStatus_arg1",
+                "WdgM_TriggerAliveCounter_callCount", "WdgM_TriggerAliveCounter_arg0"):
+        assert f"extern " in hdr and f" {sym};" in hdr, sym
+    assert "NvM_WriteBlock_callCount" not in hdr and "NvM_WriteBlock(MUDMUT_ANY_ARGS);" in hdr
+    # The two event ids are different constants (an id that is a variable was 0 for every event).
+    assert "SWC_DEM_E_InitFailed (" in hdr and "SWC_DEM_E_BadSignal (" in hdr
+    assert "Dem_ReportErrorStatus_callCount = 0;" in stubs
+    if not toolchain.check_toolchain().ok:
+        return
+    (tmp_path / "t.cpp").write_text(
+        '#include "SWC_T.h"\n'
+        "int main(){\n"
+        "  Rte_Stubs_Reset();\n"
+        "  l_ready = 0; RE_Check();\n"
+        "  if (Dem_ReportErrorStatus_callCount != 1) return 1;\n"
+        "  if (Dem_ReportErrorStatus_arg0 != SWC_DEM_E_InitFailed || Dem_ReportErrorStatus_arg1 != DEM_EVENT_STATUS_FAILED) return 2;\n"
+        "  if (SWC_DEM_E_InitFailed == SWC_DEM_E_BadSignal) return 3;\n"
+        "  if (WdgM_TriggerAliveCounter_callCount != 0) return 4;\n"
+        "  Rte_Stubs_Reset();\n"
+        "  l_ready = 1; RE_Check();\n"
+        "  if (Dem_ReportErrorStatus_callCount != 1 || Dem_ReportErrorStatus_arg0 != SWC_DEM_E_BadSignal) return 5;\n"
+        "  if (WdgM_TriggerAliveCounter_callCount != 1 || WdgM_TriggerAliveCounter_arg0 != 0) return 6;\n"
+        "  Rte_Stubs_Reset();\n"
+        "  return (Dem_ReportErrorStatus_callCount == 0 && Dem_ReportErrorStatus_arg0 == 0) ? 0 : 7; }\n",
+        encoding="utf-8")
+    for src in ("SWC_T.c", "Rte_Stubs.c"):
+        r = toolchain.run_c(["gcc", "-std=c99", "-w", "-c", f"-I{tmp_path}", str(tmp_path / src),
+                             "-o", str(tmp_path / (src + ".o"))], cwd=str(tmp_path))
+        assert r.returncode == 0, r.stderr
+    r = toolchain.run_c(["g++", f"-I{tmp_path}", str(tmp_path / "t.cpp"), str(tmp_path / "SWC_T.c.o"),
+                         str(tmp_path / "Rte_Stubs.c.o"), "-o", str(tmp_path / "t")], cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    run = toolchain.run_c([str(tmp_path / "t")])
+    assert run.returncode == 0, f"exit code {run.returncode}"
+
+
+def test_call_arities_need_one_plain_shape():
+    code = ("Dem_Report(A_B_C, 1); Dem_Report(A_B_D, 2); Wdg(0); Wdg(1, 2); Nv(&x); "
+            "Str(\"s\"); Zero(); Zero(); Nest(f(1)); Member(a.b);")
+    got = compilable.call_arities(code, {"Dem_Report", "Wdg", "Nv", "Str", "Zero", "Nest", "Member", "Missing"})
+    assert got == {"Dem_Report": 2, "Zero": 0}          # mixed arity, pointer, string, nested call, member: no recorder
+
+
+def test_enum_like_names_are_constants_not_variables():
+    for name in ("SWC_DEM_E_ActuatorInitFailed", "DEM_EVENT_STATUS_FAILED", "ACT_FAULT_DEVIATION", "DEM_E_Foo"):
+        assert compilable._is_constant_name(name), name
+    for name in ("IRV_TargetBrakePressure", "RP_CalPrm_KVehMass", "l_fPressure", "irvState", "Rte_Foo_Bar", "WdgM_Update"):
+        assert not compilable._is_constant_name(name), name
 
 
 def test_irv_macros_only_when_used_in_the_two_argument_form():

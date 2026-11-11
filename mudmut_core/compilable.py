@@ -234,6 +234,50 @@ def apply_spec_local_types(c_code: str, types: dict[str, str]) -> str:
     return _FILE_SCOPE_LOCAL_RE.sub(fix, c_code)
 
 
+# ── calls to external functions, recorded for tests ──────────────────────────
+# A stub that does nothing cannot be checked, so a requirement such as "report event X to the Dem" had
+# no test: the model wrote its own mock (a C++ symbol the C code never calls) and the case failed with
+# "expected <1> but was <0>". Each external function whose calls all have one plain shape becomes
+#     uint32  <fn>_callCount;   float64 <fn>_arg0, <fn>_arg1 …   (arguments of the LAST call)
+# which a test reads after the runnable; Rte_Stubs_Reset() clears them.
+_UNPLAIN_ARG_RE = re.compile(r"&|\"|'|->|[A-Za-z_]\w*\s*\.\s*[A-Za-z_]|\[")
+
+
+def call_arities(c_code: str, names: set[str]) -> dict[str, int]:
+    """``{function: argument count}`` for functions whose every call site is plain and has the same count.
+
+    Plain: no pointer (``&x``), string, member access, index or nested call in the arguments.
+    A function with any other call shape is left out and stays an unrecorded stub.
+    """
+    body = _COMMENT_RE.sub(" ", c_code)
+    out: dict[str, int] = {}
+    for name in names:
+        n = re.escape(name)
+        total = len(re.findall(rf"\b{n}\s*\(", body))
+        sites = re.findall(rf"\b{n}\s*\(([^()]*)\)", body)
+        if not total or len(sites) != total:          # no call, or one with a nested call
+            continue
+        counts = set()
+        for args in sites:
+            args = args.strip()
+            if args and _UNPLAIN_ARG_RE.search(args):
+                counts = set()
+                break
+            counts.add(len([a for a in args.split(",")]) if args else 0)
+        if len(counts) == 1:
+            out[name] = next(iter(counts))
+    return out
+
+
+def _call_vars(calls: dict[str, int]) -> list[tuple[str, str]]:
+    """``(c_type, variable)`` of every call recorder."""
+    rows: list[tuple[str, str]] = []
+    for name in sorted(calls):
+        rows.append(("uint32", f"{name}_callCount"))
+        rows += [("float64", f"{name}_arg{i}") for i in range(calls[name])]
+    return rows
+
+
 _FLOAT_LIT = r"(?:\d+\.\d*|\.\d+)[fF]?|\d+[fF]\b"
 _FLOAT_FUNCS = r"(?:fabsf?|fminf?|fmaxf?|sqrtf?|floorf?|ceilf?|roundf?|truncf?|fmodf?|powf?)"
 _ARITH = r"(?:<=|>=|==|!=|<|>|\+=|-=|\*=|/=|=|\+|-|\*|/)"
@@ -393,7 +437,10 @@ def collect_identifiers(c_code: str) -> tuple[set[str], set[str]]:
 
 
 def _is_constant_name(name: str) -> bool:
-    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", name))
+    """UPPER_CASE names, and enum-like ones with two or more capitalised prefix segments
+    (``SWC_DEM_E_ActuatorInitFailed``). Those were variables, so every Dem event id was 0 and a test
+    could not tell one event from another; as constants they get distinct values."""
+    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*|(?:[A-Z][A-Z0-9]*_){2,}[A-Za-z0-9_]+", name))
 
 
 def generate_rte_swc_header(
@@ -408,21 +455,24 @@ def generate_rte_swc_header(
     defaults: dict[str, tuple[str, str]] | None = None,
     accessors: dict[str, str] | None = None,
     irv: dict[str, str] | None = None,
+    calls: dict[str, int] | None = None,
 ) -> str:
     """Return ``Rte_<SWC>.h``: RTE/helper declarations plus design symbols the
     skeleton uses but the MUD never defined (placeholder constants/variables).
 
     ``irv`` = generic ``Rte_IrvRead/Write`` macros (see :func:`irv_macros`): macros over the IRV
-    variables, so they are not declared as functions.
+    variables, so they are not declared as functions. ``calls`` = external functions with a call
+    recorder (see :func:`call_arities`).
     """
     types = types or {}
     signals = signals or {}
     accessors = accessors or {}
     irv = irv or {}
+    calls = {k: v for k, v in (calls or {}).items() if k in rte_functions}
     rte_functions = set(rte_functions) - set(accessors) - set(irv)
     sig_rows = _signal_decls(signals, defaults or {}, accessors)
     macro_block = ""
-    if sig_rows or irv:
+    if sig_rows or irv or calls:
         macros = "\n".join([_SIGNAL_MACROS[k] for k in SIGNAL_APIS if signals.get(k)]
                            + list(accessors.values()) + list(irv.values()))
         macro_block = (
@@ -439,7 +489,11 @@ def generate_rte_swc_header(
     # C++ unit tests get a variadic declaration of the same extern "C" symbol.
     decls: list[str] = []
     for name in sorted(rte_functions):
-        decls.append(f"{types.get(name, 'Std_ReturnType')} {name}(MUDMUT_ANY_ARGS);")
+        if name in calls:
+            params = ", ".join(["float64"] * calls[name]) or "void"
+            decls.append(f"{types.get(name, 'Std_ReturnType')} {name}({params});")
+        else:
+            decls.append(f"{types.get(name, 'Std_ReturnType')} {name}(MUDMUT_ANY_ARGS);")
     for name in sorted(extra_funcs or ()):
         if name not in rte_functions:
             decls.append(f"void {name}(MUDMUT_ANY_ARGS);")
@@ -447,7 +501,9 @@ def generate_rte_swc_header(
         decls.append(f"extern {types.get(name, 'float64')} {name};  /* TODO(design): type not defined in the MUD */")
     for ctype, var, _value in sig_rows:
         decls.append(f"extern {ctype} {var};")
-    if sig_rows or irv:
+    for ctype, var in _call_vars(calls):
+        decls.append(f"extern {ctype} {var};")
+    if sig_rows or irv or calls:
         decls.append("void Rte_Stubs_Reset(void);")
     guard = f"RTE_{swc.upper()}_H"
     body = "\n".join(f"    {d}" for d in decls) if decls else "    /* no RTE API calls found */"
@@ -497,28 +553,38 @@ def generate_rte_stubs(
     defaults: dict[str, tuple[str, str]] | None = None,
     accessors: dict[str, str] | None = None,
     irv: dict[str, str] | None = None,
+    calls: dict[str, int] | None = None,
 ) -> str:
     """Return ``Rte_Stubs.c`` with default definitions so the test binary links."""
     types = types or {}
     rte_functions = set(rte_functions) - set(accessors or {}) - set(irv or {})
+    calls = {k: v for k, v in (calls or {}).items() if k in rte_functions}
     sig_rows = _signal_decls(signals or {}, defaults or {}, accessors)
     defs: list[str] = []
     if sig_rows:
         defs.append("\n".join(f"{ctype} {var} = {value};" for ctype, var, value in sig_rows))
+    if calls:
+        defs.append("\n".join(f"{ctype} {var} = 0;" for ctype, var in _call_vars(calls)))
     for name in sorted(rte_functions):
         ret_type = types.get(name, "Std_ReturnType")
         ret = "E_OK" if ret_type == "Std_ReturnType" else "0"
+        if name in calls:
+            params = ", ".join(f"float64 a{i}" for i in range(calls[name])) or "void"
+            record = "".join(f"    {name}_arg{i} = a{i};\n" for i in range(calls[name]))
+            defs.append(f"{ret_type} {name}({params})\n{{\n    {name}_callCount++;\n{record}    return {ret};\n}}")
+            continue
         defs.append(f"{ret_type} {name}()\n{{\n    (void)0;\n    return {ret};\n}}")
     for name in sorted(extra_funcs or ()):
         if name not in rte_functions:
             defs.append(f"void {name}()\n{{\n    (void)0;\n}}")
     for name in sorted(variables or ()):
         defs.append(f"{types.get(name, 'float64')} {name} = 0;")
-    if sig_rows or irv:
+    if sig_rows or irv or calls:
         # Reset signals AND the placeholder variables (IRVs …) defined above, so state from one
         # test (e.g. a deviation timer) does not leak into the next.
         resets = "\n".join([f"    {var} = {value};" for _ctype, var, value in sig_rows]
-                           + [f"    {name} = 0;" for name in sorted(variables or ())])
+                           + [f"    {name} = 0;" for name in sorted(variables or ())]
+                           + [f"    {var} = 0;" for _ctype, var in _call_vars(calls)])
         defs.append(f"void Rte_Stubs_Reset(void)\n{{\n{resets}\n}}")
     body = "\n\n".join(defs) if defs else "/* no stubs needed */"
     return f"""/* Generated by mudmut_core.compilable — stub definitions for {swc}. */
@@ -716,15 +782,16 @@ def make_compilable(
     var_types: dict[str, str] = {}
 
     def write_support_files() -> dict[str, str]:
+        calls = call_arities(current, declared - set(accessors) - set(irv))
         files = {
             "Rte_Type.h": generate_rte_type_header(),
             f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants,
                                                     variables=variables | forward, types=var_types,
                                                     signals=signals, defaults=defaults, accessors=accessors,
-                                                    irv=irv),
+                                                    irv=irv, calls=calls),
             "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables, types=var_types,
                                               signals=signals, defaults=defaults, accessors=accessors,
-                                              irv=irv),
+                                              irv=irv, calls=calls),
             f"{swc}.h": generate_swc_header(swc, current),
         }
         # The skeleton may include Rte_<owner_swc>.h under another SWC name.

@@ -37,6 +37,50 @@ def test_test_prompt_lists_the_symbols_that_exist(tmp_path):
     assert "RTE_SWC_T_H" not in text and "dst" not in text        # no guards, no function-like macros
 
 
+def test_test_prompt_teaches_the_call_recorders(tmp_path):
+    """The prompt used to forbid counting calls; the stubs now record them, so it must say how to read them."""
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import CALL_RECORDER_HINT, available_symbols
+    assert "_callCount" in CALL_RECORDER_HINT and "_arg0" in CALL_RECORDER_HINT
+    assert "Never define your own mock" in CALL_RECORDER_HINT
+    assert "Do NOT mock" not in CALL_RECORDER_HINT
+    # the recorder variables of the generated header reach the AVAILABLE SYMBOLS list
+    (tmp_path / "SWC_T.c").write_text('#include "Rte_SWC_T.h"\nvoid RE_Run(void)\n{\n}\n')
+    (tmp_path / "Rte_SWC_T.h").write_text(
+        "    float64 Dem_ReportErrorStatus(float64, float64);\n"
+        "    extern uint32 Dem_ReportErrorStatus_callCount;\n    extern float64 Dem_ReportErrorStatus_arg0;\n")
+    text = available_symbols(tmp_path / "SWC_T.c")
+    assert "uint32 Dem_ReportErrorStatus_callCount;" in text and "float64 Dem_ReportErrorStatus_arg0;" in text
+
+
+def test_prompt_names_the_exact_variables_a_function_uses():
+    """Run 20261111_005406, Test_RE_Init: the code reads ``IRV_InitComplete`` (Rte_IrvRead) but the model set
+    ``Rte_IRead_IRV_InitComplete_InitComplete`` — another variable — so the runnable never took the path
+    the test was about. The prompt lists the exact names, derived from the function's own source."""
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import function_io
+    src = (
+        "void RE_X(void)\n{\n"
+        "    Rte_IrvRead(IRV_InitComplete, &l_a);\n"
+        "    Rte_IRead_RP_Demand_Value(&l_b);\n"
+        "    l_c = Rte_Prm(RP_CalPrm_PMax);\n"
+        "    Rte_Read(RP_Speed, &l_d);\n"
+        "    /* Rte_IrvRead(IRV_InComment, &x); */\n"
+        "    Dem_ReportErrorStatus(SWC_DEM_E_X, DEM_EVENT_STATUS_FAILED);\n"
+        "    Helper_NoRecorder();\n"
+        "    Rte_IrvWrite(IRV_Out, l_a);\n"
+        "    Rte_IWrite_PP_Pressure_Value(l_b);\n"
+        "    Rte_Write(PP_Fault, 1);\n"
+        "    Rte_IrvWrite(IRV_Out, 2);\n"
+        "}\n")
+    io = function_io(src, "uint32 Dem_ReportErrorStatus_callCount;\nfloat64 Dem_ReportErrorStatus_arg0;")
+    assert io["set"] == ["IRV_InitComplete", "Rte_IRead_RP_Demand_Value", "Rte_Prm_RP_CalPrm_PMax", "Rte_Read_RP_Speed"]
+    assert io["check"] == ["IRV_Out", "Rte_IWrite_PP_Pressure_Value", "Rte_Write_PP_Fault"]
+    assert io["calls"] == ["Dem_ReportErrorStatus"]
+
+
 def test_settings_roundtrip_and_env_override(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "SETTINGS_FILE", tmp_path / "settings.json")
     monkeypatch.delenv("MUDMUT_CPPUTEST_HOME", raising=False)
