@@ -165,8 +165,10 @@ REQUIREMENTS:
 4. Use appropriate CppUTest macros (CHECK, CHECK_EQUAL, LONGS_EQUAL, STRCMP_EQUAL, etc.)
 5. RTE signals are plain variables (declared for you):
    - inputs:      set  Rte_Read_<port>   before the call, e.g. Rte_Read_RP_BrakeDemand = 4.0;
+                  (the code's Rte_IRead(<port>) reads the variable Rte_IRead_<port>: set that one instead)
    - calibration: set  Rte_Prm_<port>    (starts at the MUD default), e.g. Rte_Prm_RP_CalPrm_PMax = 250.0F;
    - outputs:     CHECK Rte_Write_<port> after the call, e.g. DOUBLES_EQUAL(0.0, Rte_Write_PP_BrakePressure, 1e-6);
+                  (Rte_IWrite(<port>, v) stores into Rte_IWrite_<port>: check that variable)
    - call Rte_Stubs_Reset(); in setup() so every test starts from the defaults.
    The same for accessors with an element name: when the function calls Rte_Read_<port>_<elem>(&x),
    x = Rte_IRead_<port>_<elem>() or Rte_Write_<port>_<elem>(v), then Rte_Read_<port>_<elem>,

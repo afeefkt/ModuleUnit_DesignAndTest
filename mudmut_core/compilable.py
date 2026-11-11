@@ -93,8 +93,13 @@ STDLIB_FUNCS = {
 # Rte_Read / Rte_Write / Rte_Prm with a port name become macros over one variable per port, so a
 # unit test can set inputs and calibrations and check outputs (a stub function returning 0 cannot
 # be controlled — tests wrote "Rte_Prm(RP_CalPrm_X) = 0.5F;" and were quarantined).
-SIGNAL_APIS = ("Read", "Write", "Prm")
+SIGNAL_APIS = ("Read", "Write", "Prm", "IRead", "IWrite")
 _RTE_SIGNAL_RE = re.compile(r"\bRte_(Read|Write|Prm)\s*\(\s*([A-Za-z_]\w*)\s*[,)]")
+# The implicit sender-receiver forms the design uses as values: ``x = Rte_IRead(RP_X);`` and
+# ``Rte_IWrite(PP_Y, v);`` (one resp. two arguments). Without a macro they were stub functions returning a
+# status, and the test's input variable was a dummy the code never read (26 of 43 generated tests failed).
+_RTE_IREAD_RE = re.compile(r"\bRte_IRead\s*\(\s*([A-Za-z_]\w*)\s*\)")
+_RTE_IWRITE_RE = re.compile(r"\bRte_IWrite\s*\(\s*([A-Za-z_]\w*)\s*,")
 _CALPRM_ROW_RE = re.compile(
     r"^\|\s*`?(RP_\w+)`?\s*\|[^|\n]*\|\s*`?(\w+)`?\s*\|\s*`?([-+]?\d+(?:\.\d+)?)[fFuU]?`?\s*\|", re.M)
 _C_TYPES = {"uint8", "uint16", "uint32", "uint64", "sint8", "sint16", "sint32", "sint64",
@@ -104,7 +109,11 @@ _C_TYPES = {"uint8", "uint16", "uint32", "uint64", "sint8", "sint16", "sint32", 
 def rte_signals(c_code: str) -> dict[str, list[str]]:
     """``{"Read": [ports], "Write": [ports], "Prm": [ports]}`` used with a plain port name."""
     found: dict[str, list[str]] = {k: [] for k in SIGNAL_APIS}
-    for kind, port in _RTE_SIGNAL_RE.findall(_COMMENT_RE.sub(" ", c_code)):
+    text = _COMMENT_RE.sub(" ", c_code)
+    pairs = list(_RTE_SIGNAL_RE.findall(text))
+    pairs += [("IRead", p) for p in _RTE_IREAD_RE.findall(text)]
+    pairs += [("IWrite", p) for p in _RTE_IWRITE_RE.findall(text)]
+    for kind, port in pairs:
         if port not in found[kind]:
             found[kind].append(port)
     return found
@@ -138,6 +147,8 @@ _SIGNAL_MACROS = {
     "Read": "#define Rte_Read(port, dst)  ((*(dst) = Rte_Read_##port), E_OK)",
     "Write": "#define Rte_Write(port, val) ((Rte_Write_##port = (val)), E_OK)",
     "Prm": "#define Rte_Prm(port)        (Rte_Prm_##port)",
+    "IRead": "#define Rte_IRead(port)      (Rte_IRead_##port)",
+    "IWrite": "#define Rte_IWrite(port, val) ((Rte_IWrite_##port = (val)), E_OK)",
 }
 
 # Explicit accessors — Rte_Read_<port>_<elem>(&x), x = Rte_IRead_<port>_<elem>(), Rte_Write_<port>_<elem>(v),
@@ -477,8 +488,8 @@ def generate_rte_swc_header(
                            + list(accessors.values()) + list(irv.values()))
         macro_block = (
             "/* Test interface: every RTE signal is a variable.\n"
-            " *   set   Rte_Read_<port> / Rte_Prm_<port>  before calling a runnable (inputs, calibration)\n"
-            " *   check Rte_Write_<port>                  after it (outputs)\n"
+            " *   set   Rte_Read_<port> / Rte_IRead_<port> / Rte_Prm_<port>  before calling a runnable (inputs, calibration)\n"
+            " *   check Rte_Write_<port> / Rte_IWrite_<port>         after it (outputs)\n"
             " *   call  Rte_Stubs_Reset()                 in setup() to restore the defaults\n"
             " * The same holds for explicit accessors: Rte_Read_<port>_<elem>, Rte_IRead_<port>_<elem>,\n"
             " * Rte_Write_<port>_<elem> … are variables too (the call form used by the code is a macro).\n"

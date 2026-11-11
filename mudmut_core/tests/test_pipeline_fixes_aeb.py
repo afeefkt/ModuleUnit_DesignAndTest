@@ -278,3 +278,29 @@ def test_a_bare_identifier_statement_is_removed_without_counting_as_stubbed(tmp_
     rep = compilable.make_compilable(c, "SWC_T", c and tmp_path)
     assert "TODO(design): l_maxPressure;" in rep.c_code
     assert rep.stubbed_statements == 1                 # only the prose label Guard; counts
+
+
+@pytest.mark.skipif(not _gcc_available(), reason="gcc not available")
+def test_implicit_sr_value_form_reads_and_writes_the_port_variables(tmp_path):
+    """x = Rte_IRead(RP_In) and Rte_IWrite(PP_Out, v) must reach variables a test can set and check."""
+    c = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_X.h"\n\nfloat32 l_in;\n\n'
+        "void RE_X(void)\n{\n"
+        "    l_in = Rte_IRead(RP_In);\n"
+        "    if (l_in > 10.0f)\n    {\n        l_in = 10.0f;\n    }\n"
+        "    Rte_IWrite(PP_Out, l_in);\n}\n"
+    )
+    rep = compilable.make_compilable(c, "SWC_X", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    hdr = (tmp_path / "Rte_SWC_X.h").read_text()
+    assert "#define Rte_IRead(port)" in hdr and "#define Rte_IWrite(port, val)" in hdr
+    assert "extern float64 Rte_IRead_RP_In;" in hdr and "extern float64 Rte_IWrite_PP_Out;" in hdr
+    assert "Std_ReturnType Rte_IRead(float64)" not in hdr           # no longer a status-returning stub
+    test = tmp_path / "t.cpp"
+    test.write_text('#include "SWC_X.h"\nint main(){ Rte_Stubs_Reset(); Rte_IRead_RP_In = 400.0; RE_X();'
+                    " return Rte_IWrite_PP_Out == 10.0 ? 0 : 1; }\n")
+    import subprocess
+    build = subprocess.run(["sh", "-c", f"cd {tmp_path} && gcc -std=c99 -c -I. SWC_X.c Rte_Stubs.c && "
+                                        "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
+                           capture_output=True, text=True)
+    assert build.returncode == 0, build.stderr + build.stdout
