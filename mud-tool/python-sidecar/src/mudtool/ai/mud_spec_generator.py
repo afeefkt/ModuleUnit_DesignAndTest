@@ -232,6 +232,10 @@ RULES (follow ALL — do not deviate):
       "3. Validate calibration [REQ-XYZ-012, REQ-XYZ-013]" (IDs from "Linked Requirement IDs")
     * Every local variable a step READS must be ASSIGNED earlier in the same runnable
       (or be an IRV produced by another runnable) — no reads of never-set variables
+    * Locals are SCALARS only: never declare a struct/typedef-typed local (e.g. DT_X l_cmd) and
+      never use member access on a local (l_cmd.pressure = ..). For a composite port element use
+      one scalar local per element (l_cmdPressure, l_cmdStatus) and write each element with its
+      own Rte_Write_<port>_<element>(l_cmdPressure) call
     * Do NOT call a sub-function whose logic you do not write out — write its statements
       inline in the step instead (an undescribed helper becomes an empty function)
 - Signal ranges must use engineering units (Nm, deg, m/s, %, A, V)

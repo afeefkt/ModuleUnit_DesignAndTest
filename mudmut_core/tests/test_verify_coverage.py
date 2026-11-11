@@ -49,3 +49,11 @@ def test_spec_check_flags_planned_runnables_folded_away():
     assert spec_check.gap_count(check) == 1
     issues = design.spec_check_issues(check)
     assert issues and "RE_RampPressure" in issues[0][1]
+
+
+def test_struct_locals_detected_in_section7():
+    from mudmut_core import spec_check
+    bad = "DT_Cmd l_cmd = {0.0f, IDLE};\nl_cmd.pressure = 0.0f;\nif (l_a == 1) { }\n"
+    assert spec_check.struct_locals(bad) == ["DT_Cmd l_cmd", "l_cmd.pressure ="]
+    assert spec_check.struct_locals("l_p = Rte_IRead(x);\nl_s = l_p + 1; // l_c.d = 1\n") == []
+    assert spec_check.gap_count({"struct_locals": {"RE_X": ["a", "b"]}}) == 2

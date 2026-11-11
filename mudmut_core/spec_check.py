@@ -38,11 +38,15 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     have = {r.name for r in ctx.runnables}
     missing_planned = [n for n in (planned or []) if n not in have]
     never_set: dict[str, list[str]] = {}
+    struct_loc: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        sl = struct_locals(r.functional_description)
+        if sl:
+            struct_loc[r.name] = sl
         helpers = undescribed_helpers(r.functional_description, {x.name for x in ctx.runnables})
         if helpers:
             undescribed[r.name] = helpers
@@ -57,6 +61,7 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "never_set": never_set,
         "undescribed_helpers": undescribed,
         "missing_planned": missing_planned,
+        "struct_locals": struct_loc,
         "problems": problems,
     }
 
@@ -97,7 +102,8 @@ def gap_count(result: dict[str, Any]) -> int:
     return (sum(len(v) for v in (result.get("never_set") or {}).values())
             + sum(len(v) for v in (result.get("undescribed_helpers") or {}).values())
             + len(result.get("placeholder") or []) + len(result.get("empty") or [])
-            + len(result.get("missing_planned") or []))
+            + len(result.get("missing_planned") or [])
+            + sum(len(v) for v in (result.get("struct_locals") or {}).values()))
 
 
 _LOCAL_RE = re.compile(r"\bl_[A-Za-z0-9_]+\b")
@@ -121,6 +127,16 @@ def read_but_never_set(text: str) -> list[str]:
         if not assigned:
             out.append(name)
     return out
+
+
+_STRUCT_LOCAL_RE = re.compile(r"\bDT_\w+\s+l_\w+|\bl_\w+\s*\.\s*\w+\s*=(?!=)")
+
+
+def struct_locals(text: str) -> list[str]:
+    """Struct-typed locals / member assignments on locals in a runnable's Section 7 (they cannot be generated as C)."""
+    code = re.sub(r"//[^\n]*", "", text or "")
+    return list(dict.fromkeys(m.group(0).strip() for m in _STRUCT_LOCAL_RE.finditer(code)))
+
 
 
 def undescribed_helpers(text: str, runnables: set[str]) -> list[str]:

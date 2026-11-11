@@ -189,6 +189,11 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, items in (check.get("struct_locals") or {}).items():
+        issues.append(("error", f"{runnable} uses struct-typed locals or member access on locals "
+                                f"({'; '.join(items[:4])}). Replace each with one scalar local per element "
+                                "(e.g. l_cmdPressure, l_cmdStatus) and write each element with its own "
+                                "Rte_Write_<port>_<element>(...) call."))
     for name in check.get("missing_planned") or []:
         issues.append(("error", f"The module plan names runnable {name} but Section 7 has no '### {name}' entry "
                                 "of its own (it was folded into another runnable as a sub-function). Add a "
