@@ -286,7 +286,7 @@ async def _run_full_chain(
     _check_cancel(cancel, "spec")
     t0 = time.time()
     observe.set_stage("spec")
-    spec_md = await design.generate_mud_spec(chosen, text, mode=mode, progress=progress)
+    spec_md = design.clean_spec_markdown(await design.generate_mud_spec(chosen, text, mode=mode, progress=progress))
     if not spec_md or len(spec_md.strip()) < 200:
         raise ChainError(f"MUD spec generation produced too little content ({len(spec_md or '')} chars)")
     run.save_in("mud", "mud_spec.md", spec_md)
@@ -303,7 +303,8 @@ async def _run_full_chain(
         _emit(progress, "spec", f"Spec check found {spec_check.gap_count(sc)} design gap(s) — asking the model to fix them")
         t1 = time.time()
         try:
-            repaired = await design.repair_spec_from_check(chosen, text, spec_md, sc, progress=progress)
+            repaired = design.clean_spec_markdown(
+                await design.repair_spec_from_check(chosen, text, spec_md, sc, progress=progress))
         except Exception as exc:  # noqa: BLE001 - the repair is optional; keep the first spec
             repaired = ""
             warnings.append(f"Spec repair call failed ({exc}); kept the first spec.")
@@ -349,6 +350,7 @@ async def _run_full_chain(
             reviewed_md, review = await design.review_and_improve(
                 chosen, text, best_md, progress=progress,
                 max_rounds=int(os.environ.get("MUDMUT_REVIEW_ROUNDS", "2") or 2))
+            reviewed_md = design.clean_spec_markdown(reviewed_md)
             review_empty = bool(getattr(review, "ai_review_empty", False))
             review_approved = bool(review.approved)
             if reviewed_md and reviewed_md != best_md:

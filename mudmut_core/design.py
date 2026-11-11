@@ -6,6 +6,7 @@ is a cached singleton, so repeated calls share one backend/client.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Optional
@@ -69,6 +70,18 @@ async def plan_modules(text: str, temperature: float = 0.2):
 
 
 # ── MUD spec ─────────────────────────────────────────────────────────────────
+_STRAY_LANG_LINE_RE = re.compile(r"(?m)^(```[ \t]*(?:c|cpp|c\+\+)[ \t]*)\n[ \t]*(?:c|C|cpp|c\+\+)[ \t]*\n")
+
+
+def clean_spec_markdown(markdown: str) -> str:
+    """Drop the language tag the model repeats as the first line of a code block (``` c / ``c`` / ```).
+
+    The stray line is not C, so it garbles the Section 7 steps and the reviewer reports the runnable as
+    truncated. Only a line that is just the language name directly after the opening fence is removed.
+    """
+    return _STRAY_LANG_LINE_RE.sub(r"\1\n", markdown or "")
+
+
 async def generate_mud_spec(
     module,
     requirements_text_: str,

@@ -304,3 +304,14 @@ def test_implicit_sr_value_form_reads_and_writes_the_port_variables(tmp_path):
                                         "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
                            capture_output=True, text=True)
     assert build.returncode == 0, build.stderr + build.stdout
+
+
+def test_clean_spec_markdown_drops_the_repeated_language_tag_line():
+    from mudmut_core import design
+    spec = ("**1. Guard**\n```c\nc\nboolean l_a = FALSE;\n```\n\n**2. Read**\n```c\nC\nx = 1;\n```\n"
+            "```c\nint c;\n```\n```text\nc\nkeep\n```\n")
+    out = design.clean_spec_markdown(spec)
+    assert "```c\nboolean l_a = FALSE;" in out and "```c\nx = 1;" in out
+    assert "```c\nint c;" in out                       # real code that starts with c… is untouched
+    assert "```text\nc\nkeep" in out                   # other languages are not touched
+    assert design.clean_spec_markdown(None) == ""
