@@ -331,6 +331,8 @@ class Loop:
                       or (run.read_json_in("mut", "results.json") or {}).get("generation") or {})
         comp = run.read_json_in("code", "compilability.json") or {}
         activity_quality = data.get("activity_quality")
+        results_run = (run.read_json_in("mut", "results.json") or {}).get("run") or {}
+        link_errors = results_run.get("link_errors") or []
 
         issues: list[str] = []
         if activity_quality and not activity_quality.get("passed"):
@@ -394,6 +396,7 @@ class Loop:
                 "status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
             "code_source": (run.state or {}).get("code_source", "generated"),
             "activity_quality": activity_quality,
+            "link_errors": link_errors,
         }
 
     @staticmethod
@@ -434,7 +437,9 @@ class Loop:
         spec_file = run_folder / "01_mud" / "mud_spec.md"
         spec_md = spec_file.read_text(encoding="utf-8") if spec_file.is_file() else None
         before = cfile.read_text(encoding="utf-8")
-        rep = compilable.make_compilable(before, SWC, code, spec_md=spec_md)
+        fixer = None if os.environ.get("MUDMUT_COMPILE_FIX", "on").lower() in ("off", "0", "false", "no") \
+            else compilable.llm_code_fixer()
+        rep = compilable.make_compilable(before, SWC, code, spec_md=spec_md, fixer=fixer)
         record = design_run.compilability_json(rep, SWC)
         record["placeholder_constants"] = list(rep.placeholder_constants)
         record["placeholder_variables"] = list(rep.placeholder_variables)
@@ -445,6 +450,10 @@ class Loop:
             "run_folder": str(run_folder),
             "changed_c": before != after,
             "summary": rep.summary(),
+            "last_error": rep.last_error,
+            "fix_requests": rep.fix_requests,
+            "fixes_applied": rep.fixes_applied,
+            "stubbed_logic": rep.stubbed_logic,
             **{k: record.get(k) for k in (
                 "compile_ok", "kept_statements", "stubbed_statements", "logic_stubbed",
                 "never_assigned", "dropped_arguments", "placeholder_constants",
@@ -562,6 +571,9 @@ class Loop:
             add("build_failed", "mud-test-fixer", "the test build failed", "fix the test/harness compile errors", True)
         if tests.get("quarantined_tests"):
             add("quarantined", "mud-test-fixer", f"{len(tests['quarantined_tests'])} file(s) quarantined", "fix the quarantined test files", True)
+        if verdict.get("link_errors"):
+            add("link_error", "mud-c-implementer", "undefined reference to " + ", ".join(verdict["link_errors"][:8]),
+                "implement or declare the missing C symbols", False)
         if verdict.get("code_defect_candidates"):
             add("code_defect", "report-only", "failing tests: " + ", ".join(verdict["code_defect_candidates"][:8]),
                 "do not edit the frozen C; record as a known code defect", False)

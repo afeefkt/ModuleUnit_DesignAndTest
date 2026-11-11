@@ -131,6 +131,25 @@ def test_freeze_blocks_on_placeholders(loop, tmp_path):
         loop.freeze(0)
 
 
+def test_recheck_c_passes_the_compile_fixer(loop, tmp_path, monkeypatch):
+    run = _fake_run(tmp_path)
+    loop.it_dir(0).mkdir(parents=True, exist_ok=True)
+    (loop.it_dir(0) / "run.txt").write_text(str(run) + "\n", encoding="utf-8")
+    sentinel = lambda c, e, h="", n="": c
+    monkeypatch.setattr(run_loop.compilable, "llm_code_fixer", lambda *a, **k: sentinel)
+    captured = {}
+
+    def fake_make(c_code, swc, workdir, *, max_rounds=40, spec_md=None, fixer=None, max_fix_requests=8):
+        captured["fixer"] = fixer
+        return run_loop.compilable.CompilabilityReport(swc=swc, c_code=c_code, compile_ok=True)
+
+    monkeypatch.setattr(run_loop.compilable, "make_compilable", fake_make)
+    monkeypatch.setattr(run_loop.design_run, "compilability_json", lambda rep, swc: {"swc": swc, "compile_ok": True})
+    out = loop.recheck_c(0)
+    assert captured["fixer"] is sentinel
+    assert out["compile_ok"] is True and out["fix_requests"] == 0
+
+
 def test_freeze_accepts_zero_stub_baseline(loop, tmp_path):
     run = _fake_run(tmp_path)
     loop.it_dir(0).mkdir(parents=True, exist_ok=True)

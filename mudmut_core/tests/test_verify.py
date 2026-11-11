@@ -76,7 +76,6 @@ def test_fix_loop_keeps_asking_until_the_test_compiles(tmp_path, monkeypatch):
 
 
 def test_fix_loop_stops_when_the_model_makes_no_progress(tmp_path, monkeypatch):
-    from mudmut_core import verify
     f = tmp_path / "Test_A.cpp"
     f.write_text("TEST_GROUP(A_Group) {};\nBAD one\n")
     asked = []
@@ -88,6 +87,21 @@ def test_fix_loop_stops_when_the_model_makes_no_progress(tmp_path, monkeypatch):
     assert len(asked) == 3          # the first answer, then two with the same error: not asked forever
     assert result["quarantined_tests"] == ["Test_A.cpp"]                  # the honest fallback, reported
     assert "still shows the same error" in asked[-1]                     # the later requests say what failed before
+
+
+def test_fix_loop_records_link_errors(tmp_path, monkeypatch):
+    f = tmp_path / "Test_A.cpp"
+    f.write_text("TEST_GROUP(A_Group) {};\n")
+    monkeypatch.setattr(verify, "build_and_run", lambda d: {
+        "status": "build_failed",
+        "build_error": "/usr/bin/ld: undefined reference to `AEB_ComputeTTC'",
+        "build_output": ""})
+    monkeypatch.setattr(verify, "define_invented_constants", lambda log, d: False)
+    monkeypatch.setattr(verify, "write_smoke_test", lambda d: False)
+    monkeypatch.setattr(verify, "_fixer_generate", lambda prompt, **k: "")
+    result = verify.fix_loop(tmp_path, max_attempts=2)
+    assert result["link_errors"] == ["AEB_ComputeTTC"]
+    assert result["status"] == "build_failed"
 
 
 def test_define_invented_constants_adds_placeholders(tmp_path):

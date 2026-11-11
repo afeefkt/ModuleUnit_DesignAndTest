@@ -352,6 +352,11 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict
             smoke = True
             result = build_and_run(test_dir)
 
+    link_errors = list(dict.fromkeys(
+        re.findall(r"undefined reference to [`']([^`']+)['`]",
+                   (result.get("build_error") or "") + (result.get("build_output") or ""))
+    ))
+    result["link_errors"] = link_errors
     result["fix_attempts"] = attempts
     result["quarantined_tests"] = quarantined
     result["smoke_fallback"] = smoke
