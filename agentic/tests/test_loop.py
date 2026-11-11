@@ -30,7 +30,7 @@ def _write(path: Path, text: str = "x") -> None:
 def _fake_run(tmp_path: Path, *, build="✅", passed=3, failures=0,
               failed_names=(), stubbed=0, logic=0, never=(), dropped=0,
               generated=2, quarantined=(), smoke=False,
-              placeholders=()) -> Path:
+              placeholders=(), quality="pass") -> Path:
     run = tmp_path / "run_x"
     _write(run / "state.json", json.dumps({"swc": run_loop.SWC, "preset": run_loop.PRESET,
                                            "quick": False, "code_source": "pinned"}))
@@ -39,6 +39,9 @@ def _fake_run(tmp_path: Path, *, build="✅", passed=3, failures=0,
     _write(run / "run.json", json.dumps({
         "verdicts": verdicts,
         "models": {},
+        "activity_quality": (None if quality is None else
+                             {"score": 90 if quality == "pass" else 60, "passed": quality == "pass",
+                              "missing_requirements": []}),
         "cloud_providers": ["deepseek"],
         "timings": {"spec": 1.0, "build_run": 0.5},
         "tests": {"status": "passed" if not smoke else "passed",
@@ -92,6 +95,17 @@ def test_verdicts_tool_green_with_clean_run(loop, tmp_path):
     assert v["tool_green"] is True
     assert v["strict_green"] is True
     assert v["test_app_issues"] == []
+
+
+def test_verdicts_low_activity_quality_blocks_tool_green(loop, tmp_path):
+    v = loop.verdicts(_fake_run(tmp_path, quality="low"))
+    assert v["tool_green"] is False and v["pipeline_green"] is False
+
+
+def test_verdicts_missing_activity_quality_blocks_tool_green(loop, tmp_path):
+    v = loop.verdicts(_fake_run(tmp_path, quality=None))
+    assert v["tool_green"] is False
+    assert any("not computed" in i for i in v["test_app_issues"])
 
 
 def test_verdicts_code_defect_is_not_a_test_app_issue(loop, tmp_path):

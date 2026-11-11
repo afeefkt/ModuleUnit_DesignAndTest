@@ -335,7 +335,9 @@ class Loop:
         link_errors = results_run.get("link_errors") or []
 
         issues: list[str] = []
-        if activity_quality and not activity_quality.get("passed"):
+        if not activity_quality:
+            issues.append("activity quality was not computed (activity_qa skipped or failed)")
+        elif not activity_quality.get("passed"):
             issues.append(f"activity quality {activity_quality.get('score')}% < 80%")
         failed_functions = generation.get("failed_functions") or []
         if failed_functions:
@@ -365,7 +367,7 @@ class Loop:
                     and int(comp.get("stubbed_statements") or 0) == 0
                     and not comp.get("placeholder_constants")
                     and not comp.get("placeholder_variables")
-                    and (not activity_quality or activity_quality.get("passed")))
+                    and bool(activity_quality and activity_quality.get("passed")))
         build = verdicts.get("build_run")
         pipeline_green = bool(gates_ok and build in ("✅", "⚠️") and not issues)
         failed = int(row.get("failed") or 0)

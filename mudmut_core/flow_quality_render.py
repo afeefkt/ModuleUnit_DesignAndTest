@@ -19,9 +19,11 @@ def _mmdc_available() -> bool:
 
 
 def _playwright_available() -> bool:
+    """Playwright is usable only when its Chromium binary is actually installed."""
     try:
-        import playwright.sync_api  # noqa: F401
-        return True
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            return Path(p.chromium.executable_path).is_file()
     except Exception:
         return False
 

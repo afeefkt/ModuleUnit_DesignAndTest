@@ -344,7 +344,9 @@ def deepseek_judge(stage: str = "activity_qa", *, timeout: int = 300):
         env.ensure_environment()
         st = agents.get_stages().get(stage, {})
         provider_id = st.get("provider") or "deepseek"
-        model = st.get("model") or "deepseek-chat"
+        model = st.get("model") or ("deepseek-chat" if provider_id == "deepseek" else "")
+        if not model:
+            raise RuntimeError(f"activity_qa has no model for provider {provider_id} — set one on the Settings page")
         provider = get_providers().get(provider_id) or get_providers().get("deepseek")
         if provider is None:
             raise RuntimeError(f"no provider for activity_qa judge ({provider_id})")
