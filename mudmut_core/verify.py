@@ -252,10 +252,33 @@ def errors_for_file(stderr: str, filename: str, limit: int = 3000) -> str:
 
 
 MAX_FIX_ATTEMPTS = 8      # rebuild-and-ask rounds (each round asks for every file that still fails)
+COVERAGE_ROUNDS = 2       # coverage-gap rounds after the suite is green (0 = off)
 MAX_FIX_STALLS = 2        # a file whose compiler error did not change this many answers in a row is given up
 
 
-def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict[str, Any]:
+def available_stub_symbols(test_dir: Path | str, limit: int = 120) -> str:
+    """Names of the extern variables / functions the Rte header gives a test (so a fixer stops inventing others)."""
+    names: list[str] = []
+    for h in sorted(Path(test_dir).glob("Rte_*.h")):
+        text = h.read_text(encoding="utf-8", errors="ignore")
+        for m in re.finditer(r"^[ \t]*extern[ \t]+[\w \t\*]+?(\w+)[ \t]*(?:\[[^\]]*\])?[ \t]*[;(]", text, re.M):
+            names.append(m.group(1))
+    return ", ".join(dict.fromkeys(names))[:limit * 40]
+
+
+def _undeclared_hint(errors: str, test_dir: Path) -> str:
+    missing = list(dict.fromkeys(re.findall(r"['‘]([A-Za-z_]\w*)['’] was not declared", errors)))
+    if not missing:
+        return ""
+    return (
+        "\nThese names do not exist: " + ", ".join(missing) + ". Do NOT invent them. The variables a test can use are: "
+        + available_stub_symbols(test_dir) + ". If a scenario cannot be expressed with them (for example forcing a "
+        "read of an IRV or port to fail - those reads always succeed), DELETE that TEST instead of inventing symbols.\n"
+    )
+
+
+
+def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS, *, coverage_rounds: int = COVERAGE_ROUNDS) -> dict[str, Any]:
     """Rebuild; when a ``Test_*.cpp`` fails to compile, send the compiler errors to the model for a
     corrected file — again and again until every file compiles.
 
@@ -303,7 +326,7 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict
                 "The following CppUTest file fails to compile. Fix the compile errors "
                 "and return ONLY the corrected, complete file (no markdown fences, no explanation). "
                 f"Keep its TEST_GROUP and TEST names; do not write tests for other functions.\n\n"
-                f"COMPILER ERRORS (for {f.name} only):\n{errors}\n{again}\n"
+                f"COMPILER ERRORS (for {f.name} only):\n{errors}\n{again}{_undeclared_hint(errors, test_dir)}\n"
                 f"FILE ({f.name}):\n```cpp\n{code}\n```\n"
                 f"{_TEST_API_HINT}"
             )
@@ -356,6 +379,10 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict
     if result.get("status") == "test_failed" and not smoke:
         result, dem_corrected = fix_dem_expectations(test_dir, result)
 
+    coverage_extended: list[str] = []
+    if coverage_rounds and result.get("status") in ("passed", "test_failed") and not smoke:
+        result, coverage_extended = improve_coverage(test_dir, result, rounds=coverage_rounds)
+
     link_errors = list(dict.fromkeys(
         re.findall(r"undefined reference to [`']([^`']+)['`]",
                    (result.get("build_error") or "") + (result.get("build_output") or ""))
@@ -365,6 +392,7 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict
     result["quarantined_tests"] = quarantined
     result["smoke_fallback"] = smoke
     result["dem_expectations_corrected"] = dem_corrected
+    result["coverage_extended"] = coverage_extended
     return result
 
 
@@ -480,6 +508,198 @@ def _failure_count(test_dir: Path | str) -> int:
         return sum(1 for tc in ET.parse(xml).getroot().iter("testcase") if tc.find("failure") is not None)
     except (ET.ParseError, OSError):
         return 10 ** 6
+
+
+
+# ── coverage gaps: ask for tests that reach the lines / branches no test reaches ─────────────────────────
+COVERAGE_TARGET = 85.0          # per-function line+branch percentage below which a function gets one more round
+
+
+def coverage_gaps(test_dir: Path | str) -> dict[str, dict[str, Any]]:
+    """``{function: {pct, lines (uncovered line numbers), branch_lines, start, end, file}}`` from coverage.info."""
+    test_dir = Path(test_dir)
+    info = test_dir / "coverage.info"
+    if not info.is_file():
+        return {}
+    gaps: dict[str, dict[str, Any]] = {}
+    for rec in info.read_text(encoding="utf-8", errors="replace").split("end_of_record"):
+        sf = re.search(r"^SF:(.+)$", rec, re.M)
+        if not sf or Path(sf.group(1).strip()).name == "Rte_Stubs.c":
+            continue
+        fname = Path(sf.group(1).strip()).name
+        ranges = {int(m.group(1)): (int(m.group(2)), int(m.group(3)))
+                  for m in re.finditer(r"^FNL:(\d+),(\d+),(\d+)\s*$", rec, re.M)}
+        names = {int(m.group(1)): m.group(3) for m in re.finditer(r"^FNA:(\d+),(\d+),(.+)$", rec, re.M)}
+        lines = {int(m.group(1)): int(m.group(2)) for m in re.finditer(r"^DA:(\d+),(\d+)", rec, re.M)}
+        branches = [(int(m.group(1)), m.group(2)) for m in re.finditer(r"^BRDA:(\d+),\d+,\d+,(\S+)$", rec, re.M)]
+        for idx, (start, end) in ranges.items():
+            name = names.get(idx)
+            if not name:
+                continue
+            in_fn = {ln: c for ln, c in lines.items() if start <= ln <= end}
+            br = [(ln, c) for ln, c in branches if start <= ln <= end]
+            total = len(in_fn) + len(br)
+            if not total:
+                continue
+            hit = sum(1 for c in in_fn.values() if c > 0) + sum(1 for _l, c in br if c not in ("-", "0"))
+            gaps[name] = {
+                "pct": 100.0 * hit / total, "file": fname, "start": start, "end": end,
+                "lines": sorted(ln for ln, c in in_fn.items() if c == 0),
+                "branch_lines": sorted({ln for ln, c in br if c in ("-", "0")}),
+            }
+    return gaps
+
+
+def _coverage_pct(test_dir: Path | str) -> float:
+    gaps = coverage_gaps(test_dir)
+    return sum(g["pct"] for g in gaps.values()) / len(gaps) if gaps else 0.0
+
+
+def _numbered_source(test_dir: Path, gap: dict[str, Any]) -> str:
+    src = (test_dir / gap["file"]).read_text(encoding="utf-8", errors="ignore").splitlines()
+    unreached = set(gap["lines"]) | set(gap["branch_lines"])
+    out = []
+    for n in range(gap["start"], min(gap["end"], len(src)) + 1):
+        out.append(f"{'>>' if n in unreached else '  '} {n:4d}| {src[n - 1]}")
+    return "\n".join(out)
+
+
+def failing_tests(test_dir: Path | str) -> dict[str, list[tuple[str, str]]]:
+    """``{Test_X.cpp: [(test name, failure message), ...]}`` for every failing test in test-results.xml."""
+    import xml.etree.ElementTree as ET
+    test_dir = Path(test_dir)
+    out: dict[str, list[tuple[str, str]]] = {}
+    try:
+        root = ET.parse(test_dir / "test-results.xml").getroot()
+    except (ET.ParseError, OSError):
+        return out
+    for tc in root.iter("testcase"):
+        failure = tc.find("failure")
+        if failure is None:
+            continue
+        group = (tc.get("classname") or "").split(".")[-1]
+        fname = "Test_" + re.sub(r"_Group$", "", group) + ".cpp"
+        if (test_dir / fname).is_file():
+            msg = (failure.get("message") or failure.text or "").strip().replace("\n", " | ")[:300]
+            out.setdefault(fname, []).append((tc.get("name") or "?", msg))
+    return out
+
+
+def remove_tests(code: str, names: set[str]) -> str:
+    """``code`` without the ``TEST(group, name) { ... }`` blocks whose name is in ``names``."""
+    out, pos = [], 0
+    for m in re.finditer(r"^[ \t]*TEST\s*\(\s*\w+\s*,\s*(\w+)\s*\)\s*\{", code, re.M):
+        if m.start() < pos or m.group(1) not in names:
+            continue
+        depth, i = 1, m.end()
+        while i < len(code) and depth:
+            depth += (code[i] == "{") - (code[i] == "}")
+            i += 1
+        out.append(code[pos:m.start()])
+        pos = i
+    out.append(code[pos:])
+    return "".join(out)
+
+
+def _repair_new_failures(test_dir: Path, before: dict[str, set[str]]) -> None:
+    """Tests that fail now but did not before: one correction round with their failure messages and the
+    function source, then the ones that still fail are removed (a failing generated test is not trusted)."""
+    for attempt in ("repair", "drop"):
+        now = failing_tests(test_dir)
+        new = {f: [(n, m) for n, m in items if n not in before.get(f, set())] for f, items in now.items()}
+        new = {f: items for f, items in new.items() if items}
+        if not new:
+            return
+        for fname, items in new.items():
+            path = test_dir / fname
+            code = path.read_text(encoding="utf-8", errors="ignore")
+            if attempt == "repair":
+                group = re.sub(r"^Test_|\.cpp$", "", fname)
+                listing = "\n".join(f"- {n}: {m}" for n, m in items[:12])
+                prompt = (
+                    "These newly added CppUTest tests fail. The C code is the reference: read its source, work out by "
+                    "hand what it returns / writes / reports for each failing test's inputs, and correct the "
+                    "expectation (or the inputs that do not reach the intended path). Keep every other test unchanged; "
+                    "do not weaken checks to constants. Return ONLY the complete corrected file "
+                    "(no markdown fences, no explanation).\n\n"
+                    f"FAILING TESTS ({fname}):\n{listing}\n\n"
+                    f"FUNCTION UNDER TEST:\n```c\n{function_source(test_dir, group)[:6000]}\n```\n\n"
+                    f"FILE ({fname}):\n```cpp\n{code}\n```\n{_TEST_API_HINT}"
+                )
+                fixed = re.sub(r"\s*```$", "", re.sub(r"^```(?:cpp|c\+\+)?\s*", "", (_fixer_generate(prompt) or "").strip()))
+                if fixed and fixed != code and same_test_groups(code, fixed):
+                    path.write_text(fixed, encoding="utf-8")
+            else:
+                path.write_text(remove_tests(code, {n for n, _m in items}), encoding="utf-8")
+        build_and_run(test_dir)
+
+
+def improve_coverage(test_dir: Path | str, result: dict[str, Any], rounds: int = 2) -> tuple[dict[str, Any], list[str]]:
+    """Up to ``COVERAGE_ROUNDS`` rounds: functions below ``COVERAGE_TARGET`` get extra tests for their unreached
+    lines / branches. A round is kept only when overall coverage rises and the failing-test count does not grow.
+    Returns ``(result, files extended)``."""
+    test_dir = Path(test_dir)
+    extended: list[str] = []
+    for _round in range(rounds):
+        if result.get("status") not in ("passed", "test_failed"):
+            break
+        weak = {n: g for n, g in coverage_gaps(test_dir).items()
+                if g["pct"] < COVERAGE_TARGET and (test_dir / f"Test_{n}.cpp").is_file()}
+        if not weak:
+            break
+        before_cov, before_fail = _coverage_pct(test_dir), _failure_count(test_dir)
+        originals: dict[str, str] = {}
+        for name, gap in weak.items():
+            path = test_dir / f"Test_{name}.cpp"
+            code = path.read_text(encoding="utf-8", errors="ignore")
+            prompt = (
+                f"The CppUTest file below tests {name}. Its tests leave part of the function unreached "
+                f"(line+branch coverage {gap['pct']:.0f}%). Lines marked '>>' in the source are not executed, "
+                "or have a branch no test takes. ADD new TEST(...) cases to the existing TEST_GROUP that "
+                "drive those lines/branches: choose inputs, stubbed return values and IRV/parameter values "
+                "from the source so each condition is really taken, and assert the result the source computes "
+                "(read the code - do not guess). Keep every existing test unchanged. Use only helpers and "
+                "stub variables already used in the file. Return ONLY the complete corrected file "
+                "(no markdown fences, no explanation).\n\n"
+                f"SOURCE OF {name} ('>>' = not reached):\n```c\n{_numbered_source(test_dir, gap)}\n```\n\n"
+                f"FILE (Test_{name}.cpp):\n```cpp\n{code}\n```\n"
+                f"{_TEST_API_HINT}"
+            )
+            fixed = _fixer_generate(prompt)
+            if not fixed:
+                continue
+            fixed = re.sub(r"\s*```$", "", re.sub(r"^```(?:cpp|c\+\+)?\s*", "", fixed.strip()))
+            if fixed and fixed != code and same_test_groups(code, fixed):
+                originals[path.name] = code
+                path.write_text(fixed, encoding="utf-8")
+        if not originals:
+            print(f"[mudmut_core] coverage round {_round + 1}: no usable reply for {sorted(weak)}")
+            break
+        before_names = {f: {n for n, _m in items} for f, items in failing_tests(test_dir).items()}
+        rebuilt = build_and_run(test_dir)
+        if rebuilt.get("status") == "build_failed":      # new tests that do not compile: let the compile fixer repair them
+            rebuilt = fix_loop(test_dir, max_attempts=3, coverage_rounds=0)
+            if set(rebuilt.get("quarantined_tests", [])) & set(originals):
+                rebuilt = {"status": "build_failed"}      # a file we extended was given up: revert below
+        if rebuilt.get("status") == "test_failed" and _failure_count(test_dir) > before_fail:
+            _repair_new_failures(test_dir, before_names)
+            rebuilt = build_and_run(test_dir)
+        ok = rebuilt.get("status") in ("passed", "test_failed")
+        after_cov = _coverage_pct(test_dir) if ok else -1.0
+        after_fail = _failure_count(test_dir) if ok else -1
+        print(f"[mudmut_core] coverage round {_round + 1}: {before_cov:.1f}% -> {after_cov:.1f}%, "
+              f"failing {before_fail} -> {after_fail}, status={rebuilt.get('status')}")
+        if ok and after_cov > before_cov and after_fail <= before_fail:
+            result = rebuilt
+            extended.extend(f for f in originals if f not in extended)
+            continue
+        for fname, code in originals.items():       # no gain: put the original tests back
+            (test_dir / fname).unlink(missing_ok=True)
+            (test_dir / "quarantined" / fname).unlink(missing_ok=True)
+            (test_dir / fname).write_text(code, encoding="utf-8")
+        result = build_and_run(test_dir)
+        break
+    return result, extended
 
 
 _PROTOTYPE_RE = re.compile(r"^\s*void\s+(\w+)\s*\(\s*void\s*\)\s*;", re.MULTILINE)
