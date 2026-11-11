@@ -361,5 +361,5 @@ def deepseek_judge(stage: str = "activity_qa", *, timeout: int = 300):
         prompt = _JUDGE_PROMPT.format(reqs=", ".join(requirement_ids) or "(none)",
                                       spec=(spec_md or "")[:6000], mmd=mermaid_text(result)[:8000])
         return chat_blocking(provider, model, [{"role": "user", "content": prompt}],
-                             max_tokens=2000, temperature=0.1, timeout=timeout)
+                             max_tokens=16000, temperature=0.1, timeout=timeout)   # a reasoner thinks inside this budget
     return judge

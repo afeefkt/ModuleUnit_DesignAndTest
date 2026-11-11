@@ -762,6 +762,45 @@ def llm_code_fixer(stage: str = "mud_spec_generator", *, timeout: int = 300) -> 
     return fix
 
 
+# ── BSW services are provided by the environment, never defined by the SWC ───────────────────────────
+_BSW_PREFIXES = ("WdgM_", "Dem_", "Det_", "NvM_", "Os_", "Com_", "EcuM_", "BswM_", "SchM_", "Fee_", "MemIf_",
+                 "Rte_", "Csm_", "CanIf_", "ComM_", "Dcm_", "FiM_")
+_BSW_DEF_RE = re.compile(
+    r"^(?:[A-Za-z_]\w*[ \t\*]+)+(?:%s)\w*\s*\([^;{}]*\)\s*(\{|;)" % "|".join(p.rstrip("_") + "_" for p in _BSW_PREFIXES),
+    re.M)
+
+
+def strip_bsw_definitions(c_code: str) -> tuple[str, list[str]]:
+    """Remove definitions and prototypes of BSW service functions (``WdgM_*``, ``Dem_*``, ...).
+
+    The activity step sometimes draws a sub-diagram for a BSW call and invents a body for it; the C then
+    defines a function the stubs (and, on target, the BSW) already provide: "multiple definition".
+    """
+    removed: list[str] = []
+    out: list[str] = []
+    pos = 0
+    for m in _BSW_DEF_RE.finditer(c_code):
+        if m.start() < pos:
+            continue
+        name = re.search(r"((?:%s)\w*)\s*\(" % "|".join(p.rstrip("_") + "_" for p in _BSW_PREFIXES), m.group(0)).group(1)
+        end = m.end()
+        if m.group(1) == "{":
+            depth, i = 1, m.end()
+            while i < len(c_code) and depth:
+                depth += (c_code[i] == "{") - (c_code[i] == "}")
+                i += 1
+            end = i
+        else:                                   # a prototype: drop the rest of its line (the comment)
+            nl_at = c_code.find("\n", end)
+            end = nl_at if nl_at != -1 else len(c_code)
+        out.append(c_code[pos:m.start()])
+        pos = end
+        if name not in removed:
+            removed.append(name)
+    out.append(c_code[pos:])
+    return "".join(out), removed
+
+
 @dataclass
 class CompilabilityReport:
     swc: str
@@ -779,6 +818,7 @@ class CompilabilityReport:
     dropped_arguments: int = 0                                    # helper calls emitted without the design's args
     fix_requests: int = 0                                         # compile errors sent to the model
     fixes_applied: int = 0                                        # answers that reduced the errors and were kept
+    removed_bsw_definitions: list[str] = field(default_factory=list)  # BSW functions the design defined itself
 
     @property
     def logic_stubbed(self) -> int:
@@ -843,6 +883,7 @@ def make_compilable(
     # Helper functions too: a static helper cannot be linked by its unit test
     # (one "undefined reference" quarantined every AI test file of a run).
     current = _STATIC_FUNC_RE.sub(r"\1", current)
+    current, removed_bsw = strip_bsw_definitions(current)
     current = apply_spec_local_types(current, spec_local_types(spec_md))   # the design's declaration first
     current = apply_float_locals(current)                                  # then usage, for what it leaves at uint32
 
@@ -1013,4 +1054,5 @@ def make_compilable(
         dropped_arguments=current.count("TODO(args)"),
         fix_requests=fix_requests,
         fixes_applied=fixes_applied,
+        removed_bsw_definitions=removed_bsw,
     )

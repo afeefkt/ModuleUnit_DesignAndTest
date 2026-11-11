@@ -175,11 +175,17 @@ async def _generate_activity_from_mud(
             ],
         )
 
-    async def _generate(ctx, reqs):
+    async def _generate(ctx, reqs, focus=None):
+        module_context = request.module_context
+        if focus:
+            # One runnable per call: without this the model draws every runnable named in the spec
+            # header and the answer is cut at the output-token limit (8192 on deepseek-chat).
+            module_context = (f"{module_context} - draw ONLY the runnable {focus}; the other runnables are "
+                              "separate calls, do not draw their steps")
         return await orchestrator.generate_diagram(
             DiagramType.ACTIVITY,
             reqs,
-            module_context=request.module_context,
+            module_context=module_context,
             existing_swcs=request.existing_swcs,
             temperature=request.temperature,
             progress_callback=progress_callback,
@@ -235,7 +241,8 @@ async def _generate_activity_from_mud(
             # requirements, otherwise the prompt has an empty traceability block, the model invents IDs and the
             # validator retries three times per runnable.
             own_reqs = [r for r in requirements if r.req_id in own] or list(requirements)
-            part = await _generate(dataclasses.replace(mud_context, runnables=[runnable]), own_reqs)
+            part = await _generate(dataclasses.replace(mud_context, runnables=[runnable]), own_reqs,
+                                   focus=runnable.name)
             result.diagrams.extend(part.diagrams)
             result.warnings.extend(part.warnings)
             result.errors.extend(f"{runnable.name}: {e}" for e in part.errors)

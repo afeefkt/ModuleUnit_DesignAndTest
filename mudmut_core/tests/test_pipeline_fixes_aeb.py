@@ -257,3 +257,16 @@ def test_chain_keeps_repaired_spec_only_when_better(tmp_path, monkeypatch):
     assert calls["repair"] == 1
     assert "ReadInputs" not in (run_dir / "01_mud" / "mud_spec.md").read_text()
     assert (run_dir / "01_mud" / "mud_spec_first.md").is_file()
+
+
+def test_swc_never_defines_bsw_services():
+    from mudmut_core import compilable
+    c = ("Std_ReturnType WdgM_UpdateAliveCounter(float64 a0);  /* see sub-diagram */\n"
+         "void RE_Run(void)\n{\n    WdgM_UpdateAliveCounter(1);\n}\n\n"
+         "Std_ReturnType WdgM_UpdateAliveCounter(float64 a0)\n{\n    if (a0) { l_x = 1; }\n    return RTE_E_OK;\n}\n\n"
+         "void SF_Own(void)\n{\n}\n")
+    out, removed = compilable.strip_bsw_definitions(c)
+    assert removed == ["WdgM_UpdateAliveCounter"]
+    assert "Std_ReturnType WdgM_UpdateAliveCounter" not in out
+    assert "    WdgM_UpdateAliveCounter(1);" in out          # the call stays
+    assert "void RE_Run(void)" in out and "void SF_Own(void)" in out
