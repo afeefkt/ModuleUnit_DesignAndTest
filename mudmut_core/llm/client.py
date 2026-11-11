@@ -164,8 +164,8 @@ async def achat(provider: Provider, model: str, messages: list[dict], *, max_tok
     started = time.monotonic()
     try:
         # httpx's timeout is per read, so keep-alive bytes from a stalled provider never trip it:
-        # a hard wall-clock deadline per attempt (MUD_CALL_DEADLINE, default 1200 s), retried.
-        deadline = min(float(timeout), float(os.environ.get("MUD_CALL_DEADLINE", "1200") or 1200))
+        # a hard wall-clock deadline per attempt (MUD_CALL_DEADLINE, default 360 s), retried.
+        deadline = min(float(timeout), float(os.environ.get("MUD_CALL_DEADLINE", "360") or 360))
         attempts = max(1, int(os.environ.get("MUD_CALL_ATTEMPTS", "3") or 3))
         last: Exception | None = None
         async with httpx.AsyncClient(timeout=timeout) as client:

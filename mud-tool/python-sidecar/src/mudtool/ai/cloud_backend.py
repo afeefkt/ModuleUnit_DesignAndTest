@@ -252,10 +252,10 @@ class CloudBackend(BaseAIBackend):
 
         httpx's timeout is per read: a provider that keeps a stalled connection alive with
         keep-alive bytes never trips it, and one call can hang for the whole run. The deadline
-        (MUD_CALL_DEADLINE seconds, default 1200) cancels such a call and asks again.
+        (MUD_CALL_DEADLINE seconds, default 360) cancels such a call and asks again.
         """
         import httpx
-        deadline = float(os.environ.get("MUD_CALL_DEADLINE", "1200") or 1200)
+        deadline = float(os.environ.get("MUD_CALL_DEADLINE", "360") or 360)
         attempts = max(1, int(os.environ.get("MUD_CALL_ATTEMPTS", "3") or 3))
         last: Exception = RuntimeError("no attempt made")
         for attempt in range(1, attempts + 1):

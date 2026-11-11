@@ -231,8 +231,11 @@ async def _generate_activity_from_mud(
                     "message": f"[Activity:MUD] Runnable {i}/{len(runnables)}: {runnable.name}",
                 })
             own = set(ids_named(all_ids, f"{runnable.summary}\n{runnable.functional_description}"))
-            part = await _generate(dataclasses.replace(mud_context, runnables=[runnable]),
-                                   [r for r in requirements if r.req_id in own])
+            # A spec that cites no requirement IDs (the usual case) names none per runnable: send the module's
+            # requirements, otherwise the prompt has an empty traceability block, the model invents IDs and the
+            # validator retries three times per runnable.
+            own_reqs = [r for r in requirements if r.req_id in own] or list(requirements)
+            part = await _generate(dataclasses.replace(mud_context, runnables=[runnable]), own_reqs)
             result.diagrams.extend(part.diagrams)
             result.warnings.extend(part.warnings)
             result.errors.extend(f"{runnable.name}: {e}" for e in part.errors)
