@@ -22,9 +22,9 @@ def run_tests(test_dir: Path | str) -> Dict:
     return verify.build_and_run(Path(test_dir))
 
 
-def fix_loop(test_dir: Path | str, max_attempts: int = verify.MAX_FIX_ATTEMPTS) -> Dict:
+def fix_loop(test_dir: Path | str, max_attempts: int | None = None) -> Dict:
     """Build, run, and repair failing test files (same signature as verify.fix_loop)."""
     if str(_REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(_REPO_ROOT))
     from mudmut_core import verify
-    return verify.fix_loop(Path(test_dir), max_attempts=max_attempts)
+    return verify.fix_loop(Path(test_dir), max_attempts=max_attempts or verify.MAX_FIX_ATTEMPTS)
