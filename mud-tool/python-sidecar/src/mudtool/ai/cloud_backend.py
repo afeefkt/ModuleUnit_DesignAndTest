@@ -478,12 +478,24 @@ class CloudBackend(BaseAIBackend):
 
                 resp.raise_for_status()
 
-                async for raw_line in resp.aiter_lines():
+                idle = float(os.environ.get("MUD_STREAM_IDLE", "180") or 180)
+                last_data = time.monotonic()
+                lines = resp.aiter_lines().__aiter__()
+                while True:
+                    # A stalled stream (silent, or only keep-alive bytes) must not hang the run:
+                    # raise, and the fallback below asks again with the deadline-guarded call.
+                    try:
+                        raw_line = await asyncio.wait_for(lines.__anext__(), timeout=idle)
+                    except StopAsyncIteration:
+                        break
                     raw_line = raw_line.strip()
+                    if time.monotonic() - last_data > idle:
+                        raise asyncio.TimeoutError(f"no stream data for {idle:.0f}s")
                     if not raw_line:
                         continue
                     if not raw_line.startswith("data: "):
                         continue
+                    last_data = time.monotonic()
                     chunk_str = raw_line[6:]
                     if chunk_str == "[DONE]":
                         break
