@@ -358,6 +358,22 @@ async def _run_full_chain(
                 truncated = spec_check.rewrite_problem(best_md, reviewed_md)
                 worse = (not sc_rev["ok"]) or len(sc_rev["usable"]) < len(best_sc["usable"]) \
                     or spec_check.gap_count(sc_rev) > spec_check.gap_count(best_sc) or bool(truncated)
+                if worse and not truncated and spec_check.gap_count(sc_rev) and len(sc_rev["usable"]) >= len(best_sc["usable"]):
+                    # The review fixed its findings but left deterministic gaps (e.g. a read of a never-set
+                    # local): one targeted repair of the rewrite instead of throwing the review's work away.
+                    try:
+                        fixed_md = design.clean_spec_markdown(
+                            await design.repair_spec_from_check(chosen, text, reviewed_md, sc_rev, progress=progress))
+                    except Exception as exc:  # noqa: BLE001 - optional
+                        fixed_md = ""
+                        warnings.append(f"Repair of the review rewrite failed ({exc}).")
+                    if fixed_md and len(fixed_md.strip()) >= 200:
+                        sc_fix = spec_check.check_spec(fixed_md, chosen.swc_name, chosen.runnables)
+                        if (sc_fix["ok"] and len(sc_fix["usable"]) >= len(best_sc["usable"])
+                                and spec_check.gap_count(sc_fix) <= spec_check.gap_count(best_sc)
+                                and not spec_check.rewrite_problem(best_md, fixed_md)):
+                            reviewed_md, sc_rev, worse = fixed_md, sc_fix, False
+                            review_note += "; review rewrite repaired"
                 if worse:
                     run.save_in("mud", "mud_spec_review_rejected.md", reviewed_md)
                     warnings.append("The review's rewritten spec was worse in the spec check"
