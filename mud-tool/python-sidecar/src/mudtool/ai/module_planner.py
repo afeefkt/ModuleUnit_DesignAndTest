@@ -71,6 +71,11 @@ DECOMPOSITION RULES — read carefully before responding:
    - asil:          QM | ASIL-A | ASIL-B | ASIL-C | ASIL-D  (default QM)
    - runnables:     list of RE_ names — include ALL sub-functions as runnables
                     (e.g. ["RE_Init","RE_OvercurrentProtection","RE_FaultReport"])
+                    DENSITY: one RE_Init plus about one runnable per 3 requirements
+                    of the SWC (14 requirements -> about 6 runnables). Give each
+                    distinct behaviour (mapping, limiting, ramping, monitoring,
+                    commanding, reporting) its own runnable; never collapse a
+                    SWC with many requirements into only RE_Init + one runnable.
    - req_ids:       list of requirement IDs that belong to this SWC
    - port_count:    estimated number of ports
    - calprm_count:  estimated number of calibration parameters

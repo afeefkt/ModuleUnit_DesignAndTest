@@ -29,6 +29,35 @@ def _clamp(x: float) -> float:
     return max(0.0, min(100.0, x))
 
 
+def score_plan(folder: Path) -> tuple[float, str]:
+    """Plan: every requirement assigned to a module, and enough runnables per module (>= 1 per 3 requirements)."""
+    log = folder / "llm_log.jsonl"
+    if not log.exists():
+        return 0.0, "no llm_log.jsonl"
+    modules = None
+    for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("stage") == "plan" and e.get("response"):
+            r = e["response"]
+            try:
+                modules = json.loads(r[r.index("{"):r.rindex("}") + 1]).get("modules")
+            except ValueError:
+                modules = None
+            break
+    if not modules:
+        return 0.0, "no plan response"
+    dens = []
+    for m in modules:
+        need = max(2, -(-len(m.get("req_ids", [])) // 3) + 1)          # RE_Init + ceil(reqs/3)
+        dens.append(min(1.0, len(m.get("runnables", [])) / need))
+    s = 100.0 * sum(dens) / len(dens)
+    thin = [m["swc_name"] for m, d in zip(modules, dens) if d < 0.6]
+    return _clamp(s), f"{len(modules)} modules, thin: {thin}"
+
+
 def score_spec(folder: Path) -> tuple[float, str]:
     sc = _j(folder / "01_mud" / "spec_check.json")
     if not sc:
@@ -108,6 +137,7 @@ def score_coverage(folder: Path) -> tuple[float, str]:
 
 
 STEPS = [
+    ("0 plan runnables", score_plan),
     ("1 MUD  spec", score_spec),
     ("2 MUD  review", score_review),
     ("3 MUD  activity", score_activity),
