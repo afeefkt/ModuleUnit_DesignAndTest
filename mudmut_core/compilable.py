@@ -203,6 +203,97 @@ def irv_macros(c_code: str) -> dict[str, str]:
             for name, kinds in sorted(shapes.items()) if len(kinds) == 1 and "other" not in kinds}
 
 
+# Local variables: the exporter guesses a type from a Hungarian prefix in the name and falls back to
+# uint32 (``l_fDecelDemand``, ``l_finalPressure`` → uint32), but the spec declares the real one
+# (``float32 l_fDecelDemand``). A physical value stored in uint32 is truncated (123.5 → 123) and a
+# negative one wraps (-10 → 4294967286), so the spec's declaration wins.
+_SPEC_LOCAL_RE = re.compile(
+    r"\b(uint8|uint16|uint32|uint64|sint8|sint16|sint32|sint64|float32|float64|boolean)\s+(l_[A-Za-z0-9_]+)\b")
+_FILE_SCOPE_LOCAL_RE = re.compile(r"^(?P<type>\w+)(?P<sp>[ \t]+)(?P<name>l_\w+)(?P<end>[ \t]*;)", re.MULTILINE)
+
+
+def spec_local_types(spec_md: str | None) -> dict[str, str]:
+    """``{l_name: type}`` for locals the spec declares with one consistent type (conflicts are left out)."""
+    seen: dict[str, set[str]] = {}
+    for ctype, name in _SPEC_LOCAL_RE.findall(spec_md or ""):
+        seen.setdefault(name, set()).add(ctype)
+    return {name: next(iter(types)) for name, types in seen.items() if len(types) == 1}
+
+
+def apply_spec_local_types(c_code: str, types: dict[str, str]) -> str:
+    """Give the skeleton's file-scope ``<type> l_name;`` declarations the type the spec declares."""
+    if not types:
+        return c_code
+
+    def fix(m: re.Match) -> str:
+        want = types.get(m.group("name"))
+        if not want or want == m.group("type"):
+            return m.group(0)
+        return f"{want}{m.group('sp')}{m.group('name')}{m.group('end')}"
+
+    return _FILE_SCOPE_LOCAL_RE.sub(fix, c_code)
+
+
+_FLOAT_LIT = r"(?:\d+\.\d*|\.\d+)[fF]?|\d+[fF]\b"
+_FLOAT_FUNCS = r"(?:fabsf?|fminf?|fmaxf?|sqrtf?|floorf?|ceilf?|roundf?|truncf?|fmodf?|powf?)"
+_ARITH = r"(?:<=|>=|==|!=|<|>|\+=|-=|\*=|/=|=|\+|-|\*|/)"
+# Hungarian prefixes that say "integer" in the name: never retyped by usage.
+_INT_PREFIX_RE = re.compile(r"^l_(?:u8|u16|u32|u64|s8|s16|s32|s64|b)[A-Z]")
+
+
+def float_locals(c_code: str) -> set[str]:
+    """File-scope ``uint32 l_x;`` locals the code uses as floating-point values.
+
+    Evidence: compared with / assigned a float literal, assigned from a float math function, or
+    computed from another such local (repeated until nothing new is found). Locals with an integer
+    Hungarian prefix and any other use stay uint32.
+    """
+    cands = {m.group("name") for m in _FILE_SCOPE_LOCAL_RE.finditer(c_code)
+             if m.group("type") == "uint32" and not _INT_PREFIX_RE.match(m.group("name"))}
+    body = _COMMENT_RE.sub(" ", c_code)
+    stmts = [s for s in re.split(r"[;{}]", body)]
+    floats: set[str] = set()
+    for name in cands:
+        n = re.escape(name)
+        if re.search(rf"\b{n}\b\s*{_ARITH}\s*\(?\s*-?\s*(?:{_FLOAT_LIT})|(?:{_FLOAT_LIT})\s*{_ARITH}\s*\(?\s*{n}\b", body) \
+                or re.search(rf"\b{n}\s*=\s*{_FLOAT_FUNCS}\s*\(", body):
+            floats.add(name)
+    assigns = []                                  # (target, right-hand side) of every plain assignment
+    for s in stmts:
+        m = re.search(r"\b(l_\w+)\s*=(?!=)([^=].*)$", s, re.S)
+        if m:
+            assigns.append((m.group(1), m.group(2)))
+    changed = True
+    while changed:
+        changed = False
+        for target, rhs in assigns:
+            names = {n for n in cands if re.search(rf"\b{re.escape(n)}\b", rhs)}
+            if target in floats:                  # x = a - b with float x: a and b are floats too
+                new = names - floats
+            elif target in cands and names & floats:
+                new = {target}                    # x = a - b with a float: x is a float
+            else:
+                new = set()
+            if new:
+                floats |= new
+                changed = True
+    return floats
+
+
+def apply_float_locals(c_code: str) -> str:
+    """Declare the locals :func:`float_locals` found as ``float32``."""
+    floats = float_locals(c_code)
+    if not floats:
+        return c_code
+
+    def fix(m: re.Match) -> str:
+        if m.group("name") in floats and m.group("type") == "uint32":
+            return f"float32{m.group('sp')}{m.group('name')}{m.group('end')}"
+        return m.group(0)
+
+    return _FILE_SCOPE_LOCAL_RE.sub(fix, c_code)
+
+
 _BITWISE_USE =r"(?:\b{n}\s*(?:\||\^|%|<<|>>|&(?!&))|(?:\||\^|%|<<|>>|~)\s*{n}\b|[\w)\]]\s*&\s*{n}\b|\b{n}\s*=\s*[^;]*\d+[uU]\b)"
 
 
@@ -598,6 +689,8 @@ def make_compilable(
     # Helper functions too: a static helper cannot be linked by its unit test
     # (one "undefined reference" quarantined every AI test file of a run).
     current = _STATIC_FUNC_RE.sub(r"\1", current)
+    current = apply_spec_local_types(current, spec_local_types(spec_md))   # the design's declaration first
+    current = apply_float_locals(current)                                  # then usage, for what it leaves at uint32
 
     lines = current.splitlines()
     total = sum(1 for line in lines if _is_statement_line(line))

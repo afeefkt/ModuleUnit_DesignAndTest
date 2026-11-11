@@ -215,6 +215,63 @@ def test_generic_irv_read_write_are_controllable_by_tests(tmp_path):
     assert toolchain.run_c([str(tmp_path / "t")]).returncode == 0
 
 
+def test_spec_declared_local_types_replace_the_exporters_guess(tmp_path):
+    """The exporter guesses a local's type from a Hungarian prefix and falls back to uint32; the spec
+    declares the real one (``float32 l_fDecelDemand``).
+
+    Run 20261111_005406: pressures were uint32, so a test's 123.5 was stored as 123 and -10 became
+    4294967286 — a wrong value in the C, not in the design.
+    """
+    spec = (
+        "```c\nfloat32 l_fDecelDemand = Rte_IRead(RP_DecelDemand);\n"
+        "float32 l_finalPressure = 0.0f;\nuint8 l_counter = 0U;\nboolean l_ok = FALSE;\n```\n"
+        "In RE_A: float32 l_mixed; in RE_B: uint8 l_mixed;\n"          # conflicting declarations: leave as is
+    )
+    assert compilable.spec_local_types(spec) == {
+        "l_fDecelDemand": "float32", "l_finalPressure": "float32", "l_counter": "uint8", "l_ok": "boolean"}
+    code = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+        "uint32 l_fDecelDemand;\nuint32 l_finalPressure;\nuint32 l_counter;\nuint32 l_mixed;\nuint32 l_unknown;\n\n"
+        "void RE_A(void)\n{\n    l_fDecelDemand = -10.5F;  /* in */\n    l_finalPressure = l_fDecelDemand * 2.0F;\n}\n"
+    )
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path, spec_md=spec)
+    assert rep.compile_ok, rep.last_error
+    assert "float32 l_fDecelDemand;" in rep.c_code and "float32 l_finalPressure;" in rep.c_code
+    assert "uint8 l_counter;" in rep.c_code
+    assert "uint32 l_mixed;" in rep.c_code and "uint32 l_unknown;" in rep.c_code
+    assert "extern float32 l_fDecelDemand;" in (tmp_path / "SWC_T.h").read_text()      # tests see the same type
+
+
+def test_default_typed_locals_used_as_floats_become_float32(tmp_path):
+    """A local the spec does not declare keeps the exporter's uint32 default — even when the code
+    compares it with ``0.0f`` or takes ``fabsf`` of it (run 20261111_005406, RE_BrakeFeedbackCheck:
+    a test's -5.0 feedback wrapped to 4294967291). Usage decides: float literal, float function,
+    or an expression of another float local.
+    """
+    code = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+        "uint32 l_feedbackPressure;\nuint32 l_commandedPressure;\nuint32 l_deviation;\nuint32 l_absDeviation;\n"
+        "uint32 l_debounceCounter;\nuint32 l_u8Mode;\nuint32 l_ready;\nuint32 l_declared;\n\n"
+        "void RE_A(void)\n{\n"
+        "    Rte_IRead_RP_Feedback_Value(&l_feedbackPressure);\n"
+        "    if (l_feedbackPressure < 0.0f)\n    {\n        l_feedbackPressure = 0.0f;\n    }\n"
+        "    l_deviation = l_commandedPressure - l_feedbackPressure;\n"
+        "    l_absDeviation = fabsf(l_deviation);\n"
+        "    l_debounceCounter = l_debounceCounter + 1U;\n"
+        "    if (l_u8Mode == 1U && l_ready == TRUE)\n    {\n        l_declared = 5U;\n    }\n"
+        "}\n"
+    )
+    assert compilable.float_locals(code) == {"l_feedbackPressure", "l_commandedPressure", "l_deviation", "l_absDeviation"}
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path, spec_md="uint8 l_declared = 0U;")
+    assert rep.compile_ok, rep.last_error
+    for name in ("l_feedbackPressure", "l_commandedPressure", "l_deviation", "l_absDeviation"):
+        assert f"float32 {name};" in rep.c_code, name
+    for name in ("l_debounceCounter", "l_ready"):
+        assert f"uint32 {name};" in rep.c_code, name          # integer use: unchanged
+    assert "uint32 l_u8Mode;" in rep.c_code                    # Hungarian integer prefix: unchanged
+    assert "uint8 l_declared;" in rep.c_code                   # the spec's declaration still wins
+
+
 def test_irv_macros_only_when_used_in_the_two_argument_form():
     assert compilable.irv_macros("Rte_IrvRead(IRV_A, &l_x); Rte_IrvWrite(IRV_B, 1);").keys() == {"Rte_IrvRead", "Rte_IrvWrite"}
     assert compilable.irv_macros("/* Rte_IrvRead(IRV_A, &x) */ int y;") == {}               # only in a comment
