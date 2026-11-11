@@ -1347,6 +1347,10 @@ def _split_heading_prefix(step: str) -> tuple[str | None, str | None]:
     tail = parts[1].strip()
     if not head or not tail:
         return None, None
+    # "l_abs = (l_a < 0.0f) ? -l_a : l_a;" has a colon too, but its head is code (an assignment / the
+    # condition of a ternary), not a title: splitting it kept only "l_a" and dropped the assignment.
+    if "?" in head or _ASSIGN_RE.search(head):
+        return None, None
     if _classify_step_kind(head) != "action":
         return None, None
     return head, tail

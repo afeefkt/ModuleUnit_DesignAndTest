@@ -113,3 +113,29 @@ def test_normalized_section7_improves_activity_context_branching():
         for b in by_status.values():
             if a != b:
                 assert b not in reachable(a)        # the three branches never run one after another
+
+
+def test_ternary_assignment_is_kept_whole_not_cut_at_its_colon():
+    """'l_abs = (l_a < 0.0f) ? -l_a : l_a;' has a colon: it was split as 'heading: tail' and became 'l_a'."""
+    md = """# MUD Spec: SWC_T
+
+## 3. Runnables
+| Runnable | Trigger | Period | ASIL | Description |
+|----------|---------|--------|------|-------------|
+| RE_X | Cyclic | 5 ms | ASIL-D | demo |
+
+## 7. Functional Description
+### RE_X
+**1. Compute**
+```c
+l_a = l_b - l_c;
+l_abs = (l_a < 0.0f) ? -l_a : l_a;
+if (l_abs > 5.0f) {
+   l_flag = TRUE;
+}
+```
+"""
+    context = build_mud_activity_context(md, module_context="SWC_T")
+    names = [n.name for n in synthesize_activity_diagrams_from_context(context, [])[0].nodes]
+    assert "l_abs = (l_a < 0.0f) ? -l_a : l_a" in names
+    assert "l_a" not in names                                  # no node reduced to the tail
