@@ -296,12 +296,14 @@ if out and out.ok:
         improved, review = out.result
         if improved and improved != spec_md:
             sc_new = spec_check.check_spec(improved, spec_swc)
+            truncated = spec_check.rewrite_problem(spec_md, improved)
             worse = (not sc_new["ok"]) or len(sc_new["usable"]) < len(sc.get("usable") or []) \
-                or spec_check.gap_count(sc_new) > spec_check.gap_count(sc)
+                or spec_check.gap_count(sc_new) > spec_check.gap_count(sc) or bool(truncated)
             if worse:
                 run.save_in("mud", "mud_spec_review_rejected.md", improved)
-                note = "; rewrite discarded (failed the spec check)"
-                st.warning("The improved spec was worse in the spec check, so the saved spec was kept "
+                note = "; rewrite discarded (" + (truncated or "failed the spec check") + ")"
+                st.warning("The improved spec was worse" + (f" ({truncated})" if truncated else " in the spec check")
+                           + ", so the saved spec was kept "
                            "(the rewrite is in `01_mud/mud_spec_review_rejected.md`).")
             else:
                 run.save_in("mud", "mud_spec.md", improved)

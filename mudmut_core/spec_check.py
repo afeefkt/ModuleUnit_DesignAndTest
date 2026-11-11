@@ -58,6 +58,37 @@ def check_spec(spec_md: str, swc: str) -> dict[str, Any]:
     }
 
 
+_SECTION7_RE = re.compile(r"^##\s*7\b.*?(?=^##\s*\d|\Z)", re.M | re.S)
+_RUNNABLE_HEADER_RE = re.compile(r"^###\s+([A-Za-z_]\w*)", re.M)
+
+
+def rewrite_problem(old_md: str, new_md: str) -> str:
+    """Why ``new_md`` cannot replace ``old_md`` as a rewrite of the same spec ("" when it can).
+
+    A model asked to rewrite the whole spec runs into its output cap and the document ends
+    mid-statement (run 20261111_005406: RE_CommandBrake's section was gone, yet the gap count looked
+    *better*). A rewrite is refused when a Section 7 runnable section disappeared, the text ends inside
+    a code block, or it lost more than a fifth of the old text.
+    """
+    if not (old_md or "").strip():
+        return ""
+    new_md = new_md or ""
+
+    def runnable_sections(md: str) -> list[str]:
+        m = _SECTION7_RE.search(md)
+        return list(dict.fromkeys(_RUNNABLE_HEADER_RE.findall(m.group(0)))) if m else []
+
+    kept = set(runnable_sections(new_md))
+    lost = [n for n in runnable_sections(old_md) if n not in kept]
+    if lost:
+        return f"the rewrite lost the Section 7 section of {', '.join(lost)} (cut off at the output limit?)"
+    if new_md.count("```") % 2 and not old_md.count("```") % 2:
+        return "the rewrite ends inside a code block (cut off at the output limit?)"
+    if len(new_md) < 0.8 * len(old_md):
+        return f"the rewrite is {100 - round(100 * len(new_md) / len(old_md))} % shorter than the spec it replaces"
+    return ""
+
+
 def gap_count(result: dict[str, Any]) -> int:
     """Number of concrete design gaps a targeted spec repair can fix."""
     return (sum(len(v) for v in (result.get("never_set") or {}).values())

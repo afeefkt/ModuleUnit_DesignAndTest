@@ -308,9 +308,15 @@ async def _run_full_chain(
             warnings.append(f"Spec repair call failed ({exc}); kept the first spec.")
         if repaired and len(repaired.strip()) >= 200:
             sc2 = spec_check.check_spec(repaired, chosen.swc_name)
-            better = (sc2["ok"] or not sc["ok"]) and spec_check.gap_count(sc2) < spec_check.gap_count(sc)
+            # A rewrite cut off at the output limit has fewer gaps simply because a runnable is gone.
+            truncated = spec_check.rewrite_problem(spec_md, repaired)
+            better = (sc2["ok"] or not sc["ok"]) and spec_check.gap_count(sc2) < spec_check.gap_count(sc) \
+                and not truncated
             repair_note = (f"repair: gaps {spec_check.gap_count(sc)} → {spec_check.gap_count(sc2)}, "
-                           f"{'kept' if better else 'discarded'} ({time.time() - t1:.0f}s)")
+                           f"{'kept' if better else 'discarded'}{': ' + truncated if truncated else ''} "
+                           f"({time.time() - t1:.0f}s)")
+            if truncated:
+                warnings.append(f"The spec repair was discarded: {truncated}.")
             stage_notes["spec"] += f"; {repair_note}"
             if better:
                 run.save_in("mud", "mud_spec_first.md", spec_md)
@@ -344,13 +350,15 @@ async def _run_full_chain(
         review_note = ""
         if reviewed_md and reviewed_md != spec_md:
             sc_rev = spec_check.check_spec(reviewed_md, chosen.swc_name)
+            truncated = spec_check.rewrite_problem(spec_md, reviewed_md)
             worse = (not sc_rev["ok"]) or len(sc_rev["usable"]) < len(sc["usable"]) \
-                or spec_check.gap_count(sc_rev) > spec_check.gap_count(sc)
+                or spec_check.gap_count(sc_rev) > spec_check.gap_count(sc) or bool(truncated)
             if worse:
                 run.save_in("mud", "mud_spec_review_rejected.md", reviewed_md)
-                review_note = "; review rewrite discarded (failed the spec check)"
-                warnings.append("The review's rewritten spec was worse in the spec check "
-                                "(saved as 01_mud/mud_spec_review_rejected.md); the checked spec was kept.")
+                review_note = "; review rewrite discarded (" + (truncated or "failed the spec check") + ")"
+                warnings.append("The review's rewritten spec was worse in the spec check"
+                                + (f" ({truncated})" if truncated else "")
+                                + " (saved as 01_mud/mud_spec_review_rejected.md); the checked spec was kept.")
             else:
                 spec_md, sc = reviewed_md, sc_rev
                 run.save_json_in("mud", "spec_check.json", sc)

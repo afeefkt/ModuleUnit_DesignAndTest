@@ -39,6 +39,11 @@ from mudtool.ai.section7_normalizer import (
 
 logger = logging.getLogger(__name__)
 
+# Output room for a call that writes the WHOLE spec (generation and regeneration). A real spec is 20-27k
+# characters (7-8k tokens); with 6144 / 7168 the answer was cut off mid-statement and the last runnable's
+# section was lost (run 20261111_005406). 8192 is the largest output DeepSeek chat accepts.
+SPEC_OUTPUT_TOKENS = 8192
+
 # ── Generation system prompt ─────────────────────────────────────────────────
 
 _GEN_SYSTEM_PROMPT = _PSEUDO_GUIDELINE_BLOCK + """
@@ -1018,7 +1023,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=6144,
+                max_tokens=SPEC_OUTPUT_TOKENS,
             ):
                 if not _first_token_received:
                     _first_token_received = True
@@ -1067,7 +1072,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=6144,
+                max_tokens=SPEC_OUTPUT_TOKENS,
                 response_format="text",   # ← no JSON mode for Markdown output
             )
             chunks = [response.content]
@@ -1397,7 +1402,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=7168,
+                max_tokens=SPEC_OUTPUT_TOKENS,
             ):
                 chunks.append(chunk)
                 char_count += len(chunk)
@@ -1432,7 +1437,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=7168,
+                max_tokens=SPEC_OUTPUT_TOKENS,
                 response_format="text",   # ← Markdown output, never JSON mode
             )
             chunks = [response.content]

@@ -1,6 +1,7 @@
 """Fixes from the DeepSeek AEB run: compile repairs, spec gaps and the targeted spec repair."""
 
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -148,6 +149,77 @@ def test_spec_check_reports_never_set_and_undescribed_helpers():
     assert "l_eState" in text and "ReadInputs()" in text
     msgs = [m for _s, m in design.spec_check_issues(sc)]
     assert any("never assigns" in m for m in msgs) and any("inline" in m for m in msgs)
+
+
+SPEC_TWO_RUNNABLES = SPEC_WITH_GAPS + """### RE_Second
+1. Guard
+```c
+if (l_u8B != 0U) {
+   return;
+}
+```
+2. Write
+```c
+l_u8B = 1U;
+Rte_Write(PP_Out, l_u8B);
+```
+"""
+
+
+def test_rewrite_problem_detects_a_truncated_spec():
+    """Run 20261111_005406: the spec repair rewrote the whole document through an output cap, was cut off
+    mid-statement and lost RE_CommandBrake's section; "gaps 2 → 1" made the chain keep it."""
+    full = SPEC_TWO_RUNNABLES
+    assert spec_check.rewrite_problem(full, full) == ""
+    assert spec_check.rewrite_problem(full, full.replace("l_f32D = fabsf(l_f32T);", "l_f32D = 0.0F;")) == ""
+    lost = full[: full.index("### RE_Second")]
+    assert "RE_Second" in spec_check.rewrite_problem(full, lost)                      # a runnable section vanished
+    cut = full[: full.index("l_u8B = 1U;")]
+    assert "RE_Second" not in cut or "code block" in spec_check.rewrite_problem(full, cut) \
+        or "shorter" in spec_check.rewrite_problem(full, cut)
+    unclosed = full.replace("Rte_Write(PP_Out, l_u8B);\n```\n", "Rte_Write(PP_Out, l_u8B")      # ends inside a code block
+    assert "code block" in spec_check.rewrite_problem(full, unclosed)
+    assert "shorter" in spec_check.rewrite_problem(full + "x" * 4000, full)           # lost more than 20 %
+    assert spec_check.rewrite_problem("", full) == ""                                 # nothing to compare with
+
+
+def test_chain_discards_a_truncated_repair_even_when_it_has_fewer_gaps(tmp_path, monkeypatch):
+    calls = {"repair": 0}
+
+    async def fake_plan(text, temperature=0.2):
+        return SimpleNamespace(modules=[SimpleNamespace(swc_name="SWC_X", description="x", asil="QM",
+                                                        runnables=["RE_Init", "RE_Second"], req_ids=["REQ-001"])],
+                               architecture_summary="x")
+
+    async def fake_spec(module, text, mode="two_stage", progress=None):
+        return SPEC_TWO_RUNNABLES + "\n" + "Filler text for length. " * 10
+
+    async def fake_repair(module, text, spec_md, check, progress=None):
+        calls["repair"] += 1
+        # cut off after the first runnable: no gaps left, but RE_Second's section is gone
+        return spec_md[: spec_md.index("### RE_Second")].replace("ReadInputs();\n", "")
+
+    async def stop_after_spec(*a, **k):
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(design, "plan_modules", fake_plan)
+    monkeypatch.setattr(design, "generate_mud_spec", fake_spec)
+    monkeypatch.setattr(design, "repair_spec_from_check", fake_repair)
+    monkeypatch.setattr(design, "generate_activity", stop_after_spec)
+    monkeypatch.setattr(chain, "_unload_models", lambda models: None)
+    monkeypatch.setattr(chain, "_mud_models", lambda: [])
+    req = tmp_path / "r.csv"
+    req.write_text("Req_ID,Title,Description,Type,Priority,Safety,Module\n"
+                   "REQ-001,T,The SWC shall x,functional,must,QM,SWC_X\n")
+    with pytest.raises(RuntimeError):
+        asyncio.run(chain.run_full_chain(str(req), swc="SWC_X", quick=True, root=tmp_path / "runs"))
+    run_dir = next(d for d in (tmp_path / "runs").iterdir() if d.is_dir())
+    assert calls["repair"] == 1
+    spec = (run_dir / "01_mud" / "mud_spec.md").read_text()
+    assert "### RE_Second" in spec and "ReadInputs" in spec        # the first spec was kept
+    assert not (run_dir / "01_mud" / "mud_spec_first.md").exists()
+    warnings = json.loads((run_dir / "run.json").read_text())["warnings"]
+    assert any("spec repair was discarded" in w and "RE_Second" in w for w in warnings), warnings   # and the report says why
 
 
 def test_chain_keeps_repaired_spec_only_when_better(tmp_path, monkeypatch):

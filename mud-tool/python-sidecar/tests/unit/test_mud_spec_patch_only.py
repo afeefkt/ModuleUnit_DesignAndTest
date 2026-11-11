@@ -96,6 +96,46 @@ def test_deterministic_coverage_detects_explicit_section7_trace():
     assert coverage["uncovered_req_ids"] == []
 
 
+class _RecordingStreamBackend:
+    backend_name = "recording"
+
+    def __init__(self) -> None:
+        self.max_tokens: list[int] = []
+
+    async def generate_stream(self, **kwargs):
+        self.max_tokens.append(kwargs["max_tokens"])
+        yield SPEC
+
+    async def generate(self, **kwargs):
+        self.max_tokens.append(kwargs["max_tokens"])
+        return AIResponse(content=SPEC, model="recording")
+
+
+class _StreamOrchestrator:
+    def __init__(self) -> None:
+        self.backend = _RecordingStreamBackend()
+
+    def _get_generator_backend(self):
+        return self.backend
+
+    def _get_reviewer_backend(self):
+        return self.backend
+
+
+@pytest.mark.asyncio
+async def test_whole_spec_rewrites_get_the_largest_output_room():
+    """Run 20261111_005406: the repair rewrote a 26 000-character spec through max_tokens=7168, was cut off
+    mid-statement and lost the last runnable's section. A rewrite of the whole document needs the
+    provider's full output room (8192 for DeepSeek chat)."""
+    orch = _StreamOrchestrator()
+    generator = MudSpecGenerator(orch)
+    review = SpecReviewResult(approved=False, coverage_pct=0)
+    await generator.regenerate_spec(
+        swc_name="SWC_Test", asil="ASIL-B", requirements_text="REQ-CTRL-001,Control,SWC_Test shall clamp",
+        current_spec_markdown=SPEC, review=review, temperature=0.1, progress_callback=None, repair_attempt=True)
+    assert orch.backend.max_tokens and min(orch.backend.max_tokens) >= 8192
+
+
 class _EmptyReviewBackend:
     backend_name = "empty-review"
 
