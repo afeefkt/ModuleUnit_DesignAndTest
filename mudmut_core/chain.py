@@ -407,6 +407,37 @@ async def _run_full_chain(
     run.save_in("code", f"{chosen.swc_name}.c", c_code)
     timings["export"] = time.time() - t0
 
+    # ── 6b. activity quality (≥ 80 %) ─────────────────────────────────────────
+    # Score the flow against Section 7 and the requirements, with an optional DeepSeek judge and
+    # a local render. Non-fatal here: the loop's TOOL_GREEN gate enforces the pass.
+    from mudmut_core import flow_quality, flow_quality_render
+    from mudtool.models.json_uml import GenerationResult
+    activity_quality = None
+    if isinstance(activity, GenerationResult):
+        req_ids = [getattr(r, "req_id", str(r)) for r in module_reqs.requirements]
+        qa_render = flow_quality_render.render_mermaid_png if flow_quality_render.renderer_available() else None
+        qa_judge = flow_quality.deepseek_judge() if not quick else None
+        qa_png = run.dir("mud") / "activity_qa" / "flow.png"
+        try:
+            activity_quality = flow_quality.evaluate(
+                activity, spec_md, req_ids, render=qa_render, judge=qa_judge, png_path=qa_png)
+        except Exception as exc:  # noqa: BLE001 - QA is advisory in the chain
+            warnings.append(f"Activity quality check failed: {exc}")
+            activity_quality = None
+    if activity_quality is not None:
+        run.save_json_in("mud", "flow_quality.json", activity_quality)
+        run.save_in("mud", "flow_quality.md", flow_quality.markdown(activity_quality))
+        stage_notes["activity_qa"] = f"{activity_quality['score']}% {flow_quality.verdict(activity_quality['score'])}"
+        _emit(progress, "activity_qa",
+              f"Activity quality: {activity_quality['score']}% {flow_quality.verdict(activity_quality['score'])}",
+              done=True)
+        if not activity_quality["passed"]:
+            warnings.append(f"Activity quality {activity_quality['score']}% < 80%: "
+                            f"{flow_quality.feedback_text(activity_quality)[:200]}")
+    else:
+        stage_notes["activity_qa"] = "skipped (deterministic activity)"
+        _emit(progress, "activity_qa", "Activity quality: skipped", done=True)
+
     # ── 7. make the C compilable ──────────────────────────────────────────────
     project_dir = run.dir("code")
     _check_cancel(cancel, "compilable")
@@ -470,6 +501,7 @@ async def _run_full_chain(
         "tests": test_result,
         "trace": trace_record,
         "code_source": code_source,
+        "activity_quality": activity_quality,
     }
 
     # ── 11. run report ────────────────────────────────────────────────────────

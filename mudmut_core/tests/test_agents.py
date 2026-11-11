@@ -7,7 +7,7 @@ def test_stage_registry_has_mud_and_mut():
     assert "mud_spec_generator" in keys
     assert "test_generator" in keys
     assert "rag_embed" in keys
-    assert len(keys) == 12
+    assert len(keys) == 13
     sides = {s.side for s in agents.STAGES}
     assert sides == {"mud", "mut"}
 

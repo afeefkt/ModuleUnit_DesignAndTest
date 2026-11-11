@@ -53,7 +53,7 @@ PRESET = "deepseek"
 MAX_RUNS = 3
 WALL_SECONDS = 3600
 
-GATE_STAGES = ("import", "plan", "spec", "review", "activity", "compilable", "generate_tests")
+GATE_STAGES = ("import", "plan", "spec", "review", "activity", "activity_qa", "compilable", "generate_tests")
 STAGE_ORDER = report.STAGE_ORDER
 CLOUD_AGENTS = {
     "orchestrator": "deepseek/deepseek-flash",
@@ -330,8 +330,11 @@ class Loop:
         generation = (run.read_json_in("mut", "generation.json")
                       or (run.read_json_in("mut", "results.json") or {}).get("generation") or {})
         comp = run.read_json_in("code", "compilability.json") or {}
+        activity_quality = data.get("activity_quality")
 
         issues: list[str] = []
+        if activity_quality and not activity_quality.get("passed"):
+            issues.append(f"activity quality {activity_quality.get('score')}% < 80%")
         failed_functions = generation.get("failed_functions") or []
         if failed_functions:
             issues.append(f"test generation failed for {len(failed_functions)} function(s)")
@@ -359,7 +362,8 @@ class Loop:
         gates_ok = (all(verdicts.get(s) == "✅" for s in GATE_STAGES)
                     and int(comp.get("stubbed_statements") or 0) == 0
                     and not comp.get("placeholder_constants")
-                    and not comp.get("placeholder_variables"))
+                    and not comp.get("placeholder_variables")
+                    and (not activity_quality or activity_quality.get("passed")))
         build = verdicts.get("build_run")
         pipeline_green = bool(gates_ok and build in ("✅", "⚠️") and not issues)
         failed = int(row.get("failed") or 0)
@@ -389,6 +393,7 @@ class Loop:
             "tests": {k: tests.get(k) for k in (
                 "status", "junit", "fix_attempts", "quarantined_tests", "smoke_fallback")},
             "code_source": (run.state or {}).get("code_source", "generated"),
+            "activity_quality": activity_quality,
         }
 
     @staticmethod
@@ -532,6 +537,11 @@ class Loop:
             add("review_not_approved", "mud-design-fixer", "review verdict is not ✅", "retry review; if empty, patch reviewer prompt", True)
         if v.get("activity") not in (None, "✅"):
             add("activity_failed", "mud-design-fixer", "activity verdict is not ✅", "patch the activity prompt (whitelist) and rerun", True)
+        aq = verdict.get("activity_quality")
+        if aq and not aq.get("passed"):
+            add("activity_quality_low", "mud-design-fixer",
+                f"activity quality {aq.get('score')}% < 80% (missing requirements: {', '.join(aq.get('missing_requirements') or [])})",
+                "add trace_reqs and missing steps; patch the activity prompt if it recurs", True)
         if comp.get("logic_stubbed"):
             add("logic_stubbed", "mud-c-implementer", f"{comp['logic_stubbed']} statement(s) commented out", "complete the C logic in the baseline", False)
         if comp.get("never_assigned"):

@@ -17,7 +17,7 @@ from mudmut_core.workspace import RUN_JSON, RUN_REPORT, Run
 
 # Pipeline stages in execution order (verdict keys).
 STAGE_ORDER = (
-    "import", "plan", "spec", "review", "activity",
+    "import", "plan", "spec", "review", "activity", "activity_qa",
     "compilable", "generate_tests", "build_run", "trace",
 )
 
@@ -223,12 +223,19 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
             return "⚠️"   # the reviewer model answered nothing: only the deterministic ID check ran
         return "✅" if summary.get("review_approved", True) else "⚠️"
 
+    def activity_qa_v():
+        qa = summary.get("activity_quality")
+        if not qa:
+            return "—"
+        return _verdict(qa.get("passed", False))
+
     verdicts: dict[str, str] = {
         "import": "✅",
         "plan": "✅",
         "spec": "✅",
         "review": review_v(),
         "activity": "✅",
+        "activity_qa": activity_qa_v(),
         "compilable": compilable_v(),
         "generate_tests": gen_v(),
         "build_run": run_v(),
@@ -271,6 +278,7 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
             "requirements": len(trace.get("source_requirements", [])),
             "summary": trace.get("summary", {}),
         },
+        "activity_quality": summary.get("activity_quality"),
     }
     run.save_json(RUN_JSON, run_json)
 
@@ -300,6 +308,7 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         "spec": "MUD spec",
         "review": "Review",
         "activity": "Activity flow",
+        "activity_qa": "Activity quality",
         "compilable": "Compilable C skeleton",
         "generate_tests": "Generate tests",
         "build_run": "Build & run",
@@ -326,7 +335,28 @@ def write_run_report(run: Run, summary: dict[str, Any], *, stage_notes: Optional
         f"- **Tests:** {tests.get('status', 'skipped')} — {passed} passed / {failed} failed"
         f" (fix_attempts={tests.get('fix_attempts', 0)})",
         f"- **Trace:** {len(trace.get('source_requirements', []))} requirement(s)",
-    ] + ([
+    ]
+    qa = summary.get("activity_quality")
+    if qa:
+        lines += ["", "## Activity quality (threshold 80%)", "",
+                  f"- **Score:** {qa.get('score')} / 100 {verdicts.get('activity_qa', '—')}"]
+        for part, val in (qa.get("parts") or {}).items():
+            lines.append(f"- {part}: {val:g}")
+        if qa.get("missing_requirements"):
+            lines.append("- Missing requirements: " + ", ".join(qa["missing_requirements"]))
+        if qa.get("missing_steps"):
+            lines.append("- Missing Section 7 steps: " + ", ".join(qa["missing_steps"]))
+        if qa.get("problems"):
+            lines.append("- Problems: " + "; ".join(qa["problems"]))
+        judge = qa.get("judge")
+        if isinstance(judge, dict):
+            lines.append(f"- Judge ({judge.get('score'):g}): " + ("; ".join(judge.get("wrong") or []) or "no wrong findings"))
+        r = qa.get("render")
+        if r is not None:
+            lines.append("- Render: " + ("ok → " + r.get("png", "") if r.get("ok") else "failed — " + r.get("error", "")))
+        lines.append("")
+        lines.append("_AI-assisted draft — not a requirement-verification claim._")
+    lines += ([
         f"- **CppUTest:** `{cpp.get('home')}` (include `{cpp.get('include_dir')}`, lib `{cpp.get('lib_dir')}`)"
         if cpp.get("found") else "- **CppUTest:** ❌ not found — set the folder on the Settings page"
     ] if cpp else []) + [

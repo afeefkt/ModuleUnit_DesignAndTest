@@ -20,12 +20,12 @@ from mudmut_core.env import REPO_ROOT
 
 TIMINGS_FILE = REPO_ROOT / "config" / "stage_timings.json"
 
-ORDER = ("import", "plan", "spec", "review", "activity", "compilable", "generate_tests", "build_run", "trace")
+ORDER = ("import", "plan", "spec", "review", "activity", "activity_qa", "compilable", "generate_tests", "build_run", "trace")
 
 # Typical share of the total time (local 7-8 B models, from the verified quick run:
 # plan 110 s, spec 490 s, tests 99 s, build 62 s). Review and AI activity only run in full mode.
 _BASE_WEIGHTS = {
-    "import": 1, "plan": 14, "spec": 58, "review": 15, "activity": 10,
+    "import": 1, "plan": 14, "spec": 58, "review": 15, "activity": 10, "activity_qa": 3,
     "compilable": 2, "generate_tests": 14, "build_run": 9, "trace": 1,
 }
 _QUICK_WEIGHTS = {**_BASE_WEIGHTS, "activity": 1}

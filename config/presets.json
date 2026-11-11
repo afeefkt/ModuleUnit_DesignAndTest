@@ -1,7 +1,7 @@
 {
   "local-recommended": {
     "label": "Local - recommended",
-    "note": "One 16k-context model (qwen3:8b-ctx16384) for every MUD stage: fits an 8 GB GPU and avoids model swaps between stages. deepseek-r1:7b loads a 131k context by default — create a capped variant (see docs/providers.md) before selecting it.",
+    "note": "One 16k-context model (qwen3:8b-ctx16384) for every MUD stage: fits an 8 GB GPU and avoids model swaps between stages. deepseek-r1:7b loads a 131k context by default \u2014 create a capped variant (see docs/providers.md) before selecting it.",
     "stages": {
       "planner": {
         "provider": "ollama",
@@ -34,6 +34,10 @@
       "visual_qa": {
         "provider": "ollama",
         "model": "llava:7b"
+      },
+      "activity_qa": {
+        "provider": "ollama",
+        "model": "qwen3:8b-ctx16384"
       },
       "guidelines_embed": {
         "provider": "ollama",
@@ -89,6 +93,10 @@
         "provider": "ollama",
         "model": "llava:7b"
       },
+      "activity_qa": {
+        "provider": "ollama",
+        "model": "qwen2.5:7b"
+      },
       "guidelines_embed": {
         "provider": "ollama",
         "model": "all-minilm:latest"
@@ -142,6 +150,10 @@
       "visual_qa": {
         "provider": "ollama",
         "model": "llava:7b"
+      },
+      "activity_qa": {
+        "provider": "openrouter",
+        "model": ""
       },
       "guidelines_embed": {
         "provider": "ollama",
@@ -197,6 +209,10 @@
         "provider": "ollama",
         "model": "llava:7b"
       },
+      "activity_qa": {
+        "provider": "nvidia",
+        "model": ""
+      },
       "guidelines_embed": {
         "provider": "ollama",
         "model": "bge-m3"
@@ -250,6 +266,10 @@
       "visual_qa": {
         "provider": "ollama",
         "model": "llava:7b"
+      },
+      "activity_qa": {
+        "provider": "deepseek",
+        "model": "deepseek-reasoner"
       },
       "guidelines_embed": {
         "provider": "ollama",
@@ -305,6 +325,10 @@
         "provider": "ollama",
         "model": "llava:7b"
       },
+      "activity_qa": {
+        "provider": "ollama_cloud",
+        "model": ""
+      },
       "guidelines_embed": {
         "provider": "ollama",
         "model": "bge-m3"
@@ -358,6 +382,10 @@
       "visual_qa": {
         "provider": "ollama",
         "model": "llava:7b"
+      },
+      "activity_qa": {
+        "provider": "ollama_cloud",
+        "model": "gpt-oss:120b"
       },
       "guidelines_embed": {
         "provider": "ollama",
