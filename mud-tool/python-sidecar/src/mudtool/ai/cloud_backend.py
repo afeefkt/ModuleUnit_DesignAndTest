@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import os
 import re
 import time
 from typing import AsyncIterator, Optional
@@ -246,6 +247,33 @@ class CloudBackend(BaseAIBackend):
             latency_ms=latency,
         )
 
+    async def _post_with_deadline(self, client, payload: dict):
+        """POST with a hard wall-clock deadline and retries.
+
+        httpx's timeout is per read: a provider that keeps a stalled connection alive with
+        keep-alive bytes never trips it, and one call can hang for the whole run. The deadline
+        (MUD_CALL_DEADLINE seconds, default 1200) cancels such a call and asks again.
+        """
+        import httpx
+        deadline = float(os.environ.get("MUD_CALL_DEADLINE", "1200") or 1200)
+        attempts = max(1, int(os.environ.get("MUD_CALL_ATTEMPTS", "3") or 3))
+        last: Exception = RuntimeError("no attempt made")
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await asyncio.wait_for(
+                    client.post("/chat/completions", json=payload), timeout=deadline)
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < attempts:
+                    last = RuntimeError(f"HTTP {response.status_code}")
+                    logger.warning(f"AI call got HTTP {response.status_code} (attempt {attempt}/{attempts}); retrying")
+                    await asyncio.sleep(min(30, 5 * attempt))
+                    continue
+                return response
+            except (asyncio.TimeoutError, httpx.TransportError) as exc:
+                last = exc
+                logger.warning(f"AI call failed after up to {deadline:.0f}s ({exc!r}); "
+                               f"attempt {attempt}/{attempts}")
+        raise RuntimeError(f"AI call failed after {attempts} attempt(s): {last!r}")
+
     async def _generate_openai(
         self,
         system_prompt: str,
@@ -296,14 +324,14 @@ class CloudBackend(BaseAIBackend):
             f"response_format={response_format}"
         )
 
-        response = await client.post("/chat/completions", json=payload)
+        response = await self._post_with_deadline(client, payload)
 
         # Auto-pull missing Ollama models and retry once
         if response.status_code == 404 and self._is_local_ollama():
             model_name = payload["model"]
             pulled = await self._pull_ollama_model(model_name)
             if pulled:
-                response = await client.post("/chat/completions", json=payload)
+                response = await self._post_with_deadline(client, payload)
 
         response.raise_for_status()
         data = response.json()

@@ -211,3 +211,15 @@ def test_compare_and_report(loop, tmp_path):
     text = loop.report()
     assert "What this does not prove" in text
     assert (loop.dir / "final" / "EVIDENCE.md").is_file()
+
+
+def test_global_loop_id_survives_the_subcommand(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(run_loop, "_loop", lambda a: seen.setdefault("id", a.loop_id) and (_ for _ in ()).throw(SystemExit(0)))
+    for argv in (["--loop-id", "L1", "status"], ["--loop-id", "L2", "run", "--iteration", "0"], ["status", "--loop-id", "L3"]):
+        seen.clear()
+        try:
+            run_loop.main(argv)
+        except SystemExit:
+            pass
+        assert seen["id"] == argv[argv.index("--loop-id") + 1]

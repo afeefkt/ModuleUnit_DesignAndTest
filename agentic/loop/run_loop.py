@@ -782,10 +782,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     for name in ("init", "preflight", "status", "compare", "report"):
         sp = sub.add_parser(name)
-        sp.add_argument("--loop-id", default=None)
+        sp.add_argument("--loop-id", default=argparse.SUPPRESS)
 
     sp = sub.add_parser("run")
-    sp.add_argument("--loop-id", default=None)
+    sp.add_argument("--loop-id", default=argparse.SUPPRESS)
     sp.add_argument("--iteration", type=int, required=True)
     sp.add_argument("--baseline", default=None,
                     help="'auto' uses code_baseline/ when it exists; a path pins that folder")
@@ -793,17 +793,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="use the current config/stages.json instead of applying the preset")
 
     sp = sub.add_parser("freeze")
-    sp.add_argument("--loop-id", default=None)
+    sp.add_argument("--loop-id", default=argparse.SUPPRESS)
     sp.add_argument("--iteration", type=int, required=True)
     sp.add_argument("--human-authored", action="store_true")
 
     sp = sub.add_parser("recheck-c")
-    sp.add_argument("--loop-id", default=None)
+    sp.add_argument("--loop-id", default=argparse.SUPPRESS)
     sp.add_argument("--iteration", type=int, required=True)
 
     for name in ("analyze", "verify"):
         sp = sub.add_parser(name)
-        sp.add_argument("--loop-id", default=None)
+        sp.add_argument("--loop-id", default=argparse.SUPPRESS)
         sp.add_argument("--iteration", type=int, required=True)
 
     args = p.parse_args(argv)
