@@ -67,6 +67,29 @@ typedef unsigned char Std_ReturnType;
 #endif
 #define E_OK       ((Std_ReturnType) 0U)
 #define E_NOT_OK   ((Std_ReturnType) 1U)
+/* AUTOSAR RTE return codes (SWS_Rte). RTE_E_OK is 0 like E_OK: with a placeholder value the stubs'
+   E_OK never equalled it and every "Rte_IrvRead(..) != RTE_E_OK" guard took its error path. */
+#ifndef RTE_E_OK
+#define RTE_E_OK                 ((Std_ReturnType) 0U)
+#define RTE_E_INVALID            ((Std_ReturnType) 1U)
+#define RTE_E_COM_STOPPED        ((Std_ReturnType) 128U)
+#define RTE_E_TIMEOUT            ((Std_ReturnType) 129U)
+#define RTE_E_LIMIT              ((Std_ReturnType) 130U)
+#define RTE_E_NO_DATA            ((Std_ReturnType) 131U)
+#define RTE_E_TRANSMIT_ACK       ((Std_ReturnType) 132U)
+#define RTE_E_NEVER_RECEIVED     ((Std_ReturnType) 133U)
+#define RTE_E_UNCONNECTED        ((Std_ReturnType) 134U)
+#define RTE_E_IN_EXCLUSIVE_AREA  ((Std_ReturnType) 135U)
+#define RTE_E_SEG_FAULT          ((Std_ReturnType) 136U)
+#define RTE_E_OUT_OF_RANGE       ((Std_ReturnType) 137U)
+#endif
+/* AUTOSAR Dem_EventStatusType (SWS_Dem): the values a design cannot choose. */
+#ifndef DEM_EVENT_STATUS_PASSED
+#define DEM_EVENT_STATUS_PASSED     (0U)
+#define DEM_EVENT_STATUS_FAILED     (1U)
+#define DEM_EVENT_STATUS_PREPASSED  (2U)
+#define DEM_EVENT_STATUS_PREFAILED  (3U)
+#endif
 #ifndef NULL
 #define NULL ((void*) 0)
 #endif

@@ -339,3 +339,25 @@ def test_every_call_of_a_recorded_function_is_kept(tmp_path):
                                         "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
                            capture_output=True, text=True)
     assert build.returncode == 0, (build.returncode, build.stderr + build.stdout)
+
+
+@pytest.mark.skipif(not _gcc_available(), reason="gcc not available")
+def test_rte_e_ok_is_the_standard_zero_not_a_placeholder(tmp_path):
+    """Rte_IrvRead(..) returns E_OK (0); a guard '!= RTE_E_OK' must not fire on a healthy read."""
+    c = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_X.h"\n\nfloat32 l_h;\nuint8 l_out;\n\n'
+        "void RE_X(void)\n{\n"
+        "    if (Rte_IrvRead(IRV_Health, &l_h) != RTE_E_OK)\n    {\n        l_out = 1U;\n        return;\n    }\n"
+        "    l_out = 2U;\n}\n"
+    )
+    rep = compilable.make_compilable(c, "SWC_X", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert "RTE_E_OK" not in rep.placeholder_constants
+    assert "#define RTE_E_OK (" not in (tmp_path / "Rte_SWC_X.h").read_text()
+    test = tmp_path / "t.cpp"
+    test.write_text('#include "SWC_X.h"\nint main(){ Rte_Stubs_Reset(); IRV_Health = 1.0; RE_X(); return l_out == 2 ? 0 : 1; }\n')
+    import subprocess
+    build = subprocess.run(["sh", "-c", f"cd {tmp_path} && gcc -std=c99 -c -I. SWC_X.c Rte_Stubs.c && "
+                                        "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
+                           capture_output=True, text=True)
+    assert build.returncode == 0, (build.returncode, build.stderr + build.stdout)
