@@ -1131,8 +1131,11 @@ class MudSpecGenerator:
         # Truncate inputs so the reviewer prompt stays within model context limits.
         # Limits raised: real AUTOSAR specs are 8k-15k chars; truncating at 4k causes
         # the reviewer to miss issues in the tail and produce incomplete coverage reports.
-        _MAX_REQ_CHARS = 6000
-        _MAX_SPEC_CHARS = 10000
+        # A 6-runnable spec is 22-26k chars: at 10k the reviewer never saw Section 7 and reported it as
+        # missing/truncated (0 % coverage, never approved). Override with MUD_REVIEW_SPEC_CHARS.
+        import os as _os
+        _MAX_REQ_CHARS = int(_os.environ.get("MUD_REVIEW_REQ_CHARS", "12000") or 12000)
+        _MAX_SPEC_CHARS = int(_os.environ.get("MUD_REVIEW_SPEC_CHARS", "48000") or 48000)
         req_text_trimmed = (
             requirements_text[:_MAX_REQ_CHARS] + "\n…[truncated]"
             if len(requirements_text) > _MAX_REQ_CHARS else requirements_text

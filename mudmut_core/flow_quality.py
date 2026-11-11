@@ -314,6 +314,10 @@ def markdown(q: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+# The judge must see the whole design: at 6k/8k chars it saw one runnable of six and reported the rest missing.
+_JUDGE_SPEC_CHARS = 40000
+_JUDGE_MMD_CHARS = 40000
+
 _JUDGE_PROMPT = """You are a strict reviewer of an AUTOSAR activity / code-flow diagram.
 
 Grade the diagram 0-100 on CONTENT ONLY (never layout/spacing), against these rules:
@@ -359,7 +363,7 @@ def deepseek_judge(stage: str = "activity_qa", *, timeout: int = 300):
         if provider is None:
             raise RuntimeError(f"no provider for activity_qa judge ({provider_id})")
         prompt = _JUDGE_PROMPT.format(reqs=", ".join(requirement_ids) or "(none)",
-                                      spec=(spec_md or "")[:6000], mmd=mermaid_text(result)[:8000])
+                                      spec=(spec_md or "")[:_JUDGE_SPEC_CHARS], mmd=mermaid_text(result)[:_JUDGE_MMD_CHARS])
         return chat_blocking(provider, model, [{"role": "user", "content": prompt}],
                              max_tokens=16000, temperature=0.1, timeout=timeout)   # a reasoner thinks inside this budget
     return judge
