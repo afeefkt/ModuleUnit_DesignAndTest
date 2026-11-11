@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 # characters (7-8k tokens); with 6144 / 7168 the answer was cut off mid-statement and the last runnable's
 # section was lost (run 20261111_005406). 8192 is the largest output DeepSeek chat accepts.
 SPEC_OUTPUT_TOKENS = 8192
+REGEN_LARGE_SPEC_CHARS = 14000   # above this a rewrite may not fit an 8192-token model
 
 # ── Generation system prompt ─────────────────────────────────────────────────
 
@@ -1389,6 +1390,17 @@ class MudSpecGenerator:
         # Regeneration edits Section 7 pseudo-code — route through the code-focused
         # generator backend (qwen) for consistency with the generation stage.
         backend = self._orchestrator._get_generator_backend()
+        # A whole-spec rewrite of a 6-runnable design is ~7k tokens: on a model capped at 8192 output
+        # tokens (deepseek-chat) it is cut off mid code block and the repair is discarded. Use the
+        # skeleton stage's model when that is a reasoning model (32k output budget) for large specs.
+        if len(current_spec_markdown or "") > REGEN_LARGE_SPEC_CHARS:
+            try:
+                skeleton_model = (getattr(self._orchestrator.settings, "mud_spec_skeleton_model", "") or "").lower()
+                if any(k in skeleton_model for k in ("reasoner", "thinking", "-r1")):
+                    backend = self._orchestrator._get_skeleton_backend()
+                    logger.info("regenerate_spec: large spec (%d chars) -> %s", len(current_spec_markdown), skeleton_model)
+            except Exception as exc:  # noqa: BLE001 - keep the generator backend
+                logger.warning("regenerate_spec: skeleton backend unavailable (%s)", exc)
 
         # ── Token-streaming regeneration ─────────────────────────────────────
         regen_iter = review.iteration + 1

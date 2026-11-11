@@ -361,3 +361,27 @@ def test_rte_e_ok_is_the_standard_zero_not_a_placeholder(tmp_path):
                                         "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
                            capture_output=True, text=True)
     assert build.returncode == 0, (build.returncode, build.stderr + build.stdout)
+
+
+@pytest.mark.skipif(not _gcc_available(), reason="gcc not available")
+def test_irv_read_in_status_and_value_form_both_read_the_variable(tmp_path):
+    """The generated C mixes 'Rte_IrvRead(IRV_X, &x)' and 'x = Rte_IrvRead(IRV_X)': both must read IRV_X."""
+    c = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_X.h"\n\nfloat32 l_a;\nfloat32 l_b;\nuint8 l_ok;\n\n'
+        "void RE_X(void)\n{\n"
+        "    if (Rte_IrvRead(IRV_A, &l_a) != RTE_E_OK)\n    {\n        l_ok = 0U;\n        return;\n    }\n"
+        "    l_b = Rte_IrvRead(IRV_B);\n"
+        "    l_ok = (l_a == 3.0f && l_b == 4.0f) ? 1U : 0U;\n"
+        "    Rte_IrvWrite(IRV_C, l_a + l_b);\n}\n"
+    )
+    rep = compilable.make_compilable(c, "SWC_X", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert "Std_ReturnType Rte_IrvRead(" not in (tmp_path / "Rte_SWC_X.h").read_text()   # a macro, not a stub
+    test = tmp_path / "t.cpp"
+    test.write_text('#include "SWC_X.h"\nint main(){ Rte_Stubs_Reset(); IRV_A = 3.0; IRV_B = 4.0; RE_X();'
+                    " return (l_ok == 1 && IRV_C == 7.0) ? 0 : 1; }\n")
+    import subprocess
+    build = subprocess.run(["sh", "-c", f"cd {tmp_path} && gcc -std=c99 -c -I. SWC_X.c Rte_Stubs.c && "
+                                        "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
+                           capture_output=True, text=True)
+    assert build.returncode == 0, (build.returncode, build.stderr + build.stdout)

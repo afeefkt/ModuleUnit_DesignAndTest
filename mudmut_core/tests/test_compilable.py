@@ -431,7 +431,10 @@ def test_irv_macros_only_when_used_in_the_two_argument_form():
     assert compilable.irv_macros("Rte_IrvRead(IRV_A, &l_x); Rte_IrvWrite(IRV_B, 1);").keys() == {"Rte_IrvRead", "Rte_IrvWrite"}
     assert compilable.irv_macros("/* Rte_IrvRead(IRV_A, &x) */ int y;") == {}               # only in a comment
     assert compilable.irv_macros("Rte_IrvRead_RP_A_B(&x);") == {}                            # the suffixed form is an accessor
-    assert compilable.irv_macros("Rte_IrvRead(IRV_A);") == {}                                # shape the macro cannot serve
+    assert set(compilable.irv_macros("x = Rte_IrvRead(IRV_A);")) == {"Rte_IrvRead"}          # the value form is served too
+    both = compilable.irv_macros("Rte_IrvRead(IRV_A, &x); y = Rte_IrvRead(IRV_B);")
+    assert "Rte_IrvRead_PICK" in both["Rte_IrvRead"]                                         # one macro, both forms
+    assert compilable.irv_macros("Rte_IrvRead(IRV_A, x);") == {}                             # shape the macro cannot serve
     assert compilable.irv_macros("Rte_IrvWrite(IRV_A, 1); Rte_IrvWrite(IRV_B);") == {}       # inconsistent use: keep the function
 
 

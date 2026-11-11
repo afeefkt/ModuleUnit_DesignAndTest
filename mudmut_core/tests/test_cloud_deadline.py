@@ -111,3 +111,36 @@ def test_stream_that_goes_silent_falls_back_to_the_guarded_call(monkeypatch):
         return [c async for c in b._stream_openai("s", "u", 100, 0.1)]
 
     assert asyncio.run(run()) == ["fallback answer"]
+
+
+def _regen_backend_used(spec_chars, monkeypatch):
+    """Run regenerate_spec with fake backends and report which one streamed the rewrite."""
+    from types import SimpleNamespace
+    from mudtool.ai import mud_spec_generator as m
+
+    used = []
+
+    class Backend:
+        def __init__(self, name): self.name = name
+        async def generate_stream(self, **kw):
+            used.append(self.name)
+            yield "# MUD Spec: SWC_T\n## 7. Functional Description\n"
+
+    orch = SimpleNamespace(
+        settings=SimpleNamespace(mud_spec_skeleton_model="deepseek-reasoner"),
+        _get_generator_backend=lambda: Backend("generator"),
+        _get_skeleton_backend=lambda: Backend("reasoner"))
+    gen = m.MudSpecGenerator(orch)
+    monkeypatch.setattr(m, "apply_patch_only_review_fixes", lambda **kw: (kw["current_spec_markdown"], {"changed": False}))
+    monkeypatch.setattr(gen, "_apply_section7_normalization", lambda md, **kw: md, raising=False)
+    review = m.SpecReviewResult(approved=False, coverage_pct=50)
+    asyncio.run(gen.regenerate_spec("SWC_T", "ASIL-D", "reqs", "x" * spec_chars, review))
+    return used[0]
+
+
+def test_a_large_spec_is_rewritten_on_the_reasoner_backend(monkeypatch):
+    assert _regen_backend_used(20000, monkeypatch) == "reasoner"
+
+
+def test_a_small_spec_keeps_the_generator_backend(monkeypatch):
+    assert _regen_backend_used(3000, monkeypatch) == "generator"

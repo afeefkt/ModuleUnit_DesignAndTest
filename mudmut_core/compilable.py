@@ -214,27 +214,59 @@ _IRV_CALL_RE = re.compile(r"\b(Rte_Irv(?:I?Read|I?Write))\s*\(([^()]*)\)")
 _IRV_MACROS = {
     "get": "#define {n}(var, dst) ((*(dst) = (var)), E_OK)",
     "put": "#define {n}(var, val) (((var) = (val)), E_OK)",
+    # x = Rte_IrvRead(IRV_X);  — the value form, one argument
+    "val": "#define {n}(var) (var)",
 }
 
 
-def irv_macros(c_code: str) -> dict[str, str]:
-    """``{name: #define line}`` for the generic ``Rte_Irv[I]Read/Write(var, …)`` calls used in one shape.
+def _irv_both_forms(n: str) -> str:
+    """One macro for ``Rte_IrvRead(var, &dst)`` (status) and ``x = Rte_IrvRead(var)`` (value) in the same file.
 
-    A name used in any other shape (one argument, a non-variable first argument, a mix) stays a stub
-    function, as before.
+    Generated code mixes both; with only one shape allowed the name stayed a stub function and *no* IRV
+    read worked (the guards read nothing and every runnable saw zeros).
+    """
+    return (f"#define {n}_2(var, dst) ((*(dst) = (var)), E_OK)\n"
+            f"#define {n}_1(var) (var)\n"
+            f"#define {n}_PICK(a, b, NAME, ...) NAME\n"
+            f"#define {n}(...) {n}_PICK(__VA_ARGS__, {n}_2, {n}_1, 0)(__VA_ARGS__)")
+
+
+def _irv_variable_names(c_code: str) -> set[str]:
+    """Names used as the variable argument of ``Rte_Irv*(IRV_X, ..)``: variables even though upper case."""
+    return set(re.findall(r"\bRte_Irv\w*\s*\(\s*([A-Za-z_]\w*)", _COMMENT_RE.sub(" ", c_code)))
+
+
+def irv_macros(c_code: str) -> dict[str, str]:
+    """``{name: #define line(s)}`` for the generic ``Rte_Irv[I]Read/Write(var, …)`` calls.
+
+    Read: ``(var, &dst)`` and/or ``(var)``; write: ``(var, value)``. Any other shape (a non-variable first
+    argument, a mix with a write shape) leaves the name a stub function, as before.
     """
     shapes: dict[str, set[str]] = {}
     for name, args in _IRV_CALL_RE.findall(_COMMENT_RE.sub(" ", c_code)):
         parts = [a.strip() for a in args.split(",")]
-        ok = len(parts) == 2 and re.fullmatch(r"[A-Za-z_]\w*", parts[0]) and parts[1]
-        if not ok:
-            shapes.setdefault(name, set()).add("other")
-        elif "Read" in name:
-            shapes.setdefault(name, set()).add("get" if parts[1].startswith("&") else "other")
+        first_ok = bool(parts and re.fullmatch(r"[A-Za-z_]\w*", parts[0]))
+        if "Read" in name:
+            if first_ok and len(parts) == 2 and parts[1].startswith("&"):
+                shapes.setdefault(name, set()).add("get")
+            elif first_ok and len(parts) == 1:
+                shapes.setdefault(name, set()).add("val")
+            else:
+                shapes.setdefault(name, set()).add("other")
         else:
-            shapes.setdefault(name, set()).add("put")
-    return {name: _IRV_MACROS[next(iter(kinds))].format(n=name)
-            for name, kinds in sorted(shapes.items()) if len(kinds) == 1 and "other" not in kinds}
+            if first_ok and len(parts) == 2 and parts[1]:
+                shapes.setdefault(name, set()).add("put")
+            else:
+                shapes.setdefault(name, set()).add("other")
+    out: dict[str, str] = {}
+    for name, kinds in sorted(shapes.items()):
+        if "other" in kinds:
+            continue
+        if kinds == {"get", "val"}:
+            out[name] = _irv_both_forms(name)
+        elif len(kinds) == 1:
+            out[name] = _IRV_MACROS[next(iter(kinds))].format(n=name)
+    return out
 
 
 # Local variables: the exporter guesses a type from a Hungarian prefix in the name and falls back to
@@ -1036,7 +1068,7 @@ def make_compilable(
                     # with the definition ("conflicting types") and nothing compiled.
                     forward.add(name)
                     var_types[name] = own.group(1)
-                elif _is_constant_name(name):
+                elif _is_constant_name(name) and name not in _irv_variable_names(current):
                     constants[name] = len(constants) + 1  # distinct placeholder values
                 else:
                     variables.add(name)
