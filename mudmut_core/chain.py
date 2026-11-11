@@ -411,7 +411,11 @@ async def _run_full_chain(
     project_dir = run.dir("code")
     _check_cancel(cancel, "compilable")
     t0 = time.time()
-    rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir, spec_md=spec_md)
+    # Compiler errors go back to the model until the C compiles (MUDMUT_COMPILE_FIX=off disables it).
+    import os
+    fixer = None if os.environ.get("MUDMUT_COMPILE_FIX", "on").lower() in ("off", "0", "false", "no") \
+        else compilable.llm_code_fixer()
+    rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir, spec_md=spec_md, fixer=fixer)
     comp_record = design_run.compilability_json(rep, chosen.swc_name)
     run.save_json_in("code", "compilability.json", comp_record)
     timings["compilable"] = time.time() - t0

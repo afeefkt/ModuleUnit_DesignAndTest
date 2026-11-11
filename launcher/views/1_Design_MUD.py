@@ -413,8 +413,8 @@ if st.button("Make compilable", type="primary", disabled=busy,
              help="Compiles with gcc in WSL, declares missing symbols and comments out only what still fails."):
     c.start_step("design_compilable", "Making the C skeleton compilable",
                  lambda report, src=code, w=spec_swc, d=run.dir("code"), s=spec_md:
-                 compilable.make_compilable(src, w, d, spec_md=s),
-                 expected_seconds=_expected("compilable") or 60.0, cancellable=False)
+                 compilable.make_compilable(src, w, d, spec_md=s, fixer=compilable.llm_code_fixer()),
+                 expected_seconds=_expected("compilable") or 120.0, cancellable=False)
     st.rerun()
 rep = ss.get("design_comp")
 if rep is not None:

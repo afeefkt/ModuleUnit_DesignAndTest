@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from mudmut_core import toolchain
 
@@ -683,6 +683,85 @@ def unassigned_reads(c_code: str) -> list[str]:
     return out
 
 
+# ── compile errors → the model → corrected code ──────────────────────────────
+# A fixer takes (c_code, compiler errors, header excerpt, note) and returns corrected C ("" = no answer).
+# ``note`` says why the previous answer was refused (empty on the first request).
+CodeFixer = Callable[..., str]
+
+_FUNC_DEF_RE = re.compile(
+    r"^(?:[A-Za-z_]\w*[ \t\*]+)+(\w+)\s*\((?:[^;{}()]|\([^()]*\))*\)\s*\{", re.MULTILINE)
+MAX_FIX_REQUESTS = 8          # model requests per file
+MAX_FIX_STALLS = 2            # answers in a row that did not reduce the errors
+
+
+def defined_functions(c_code: str) -> set[str]:
+    """Names of the functions a C file defines (not prototypes)."""
+    return set(_FUNC_DEF_RE.findall(_COMMENT_RE.sub(" ", c_code)))
+
+
+def fix_problem(old: str, new: str) -> str:
+    """Why ``new`` cannot replace ``old`` as a compile fix ("" when it can).
+
+    A fix may change statements, but it must keep every function and every requirement ID the design
+    carries: a model that "fixes" a file by deleting a runnable or its trace comments compiles and
+    verifies nothing.
+    """
+    from mudmut_core.trace import extract_requirements
+    if not (new or "").strip():
+        return "no answer"
+    lost = sorted(defined_functions(old) - defined_functions(new))
+    if lost:
+        return f"the fix removed function(s) {', '.join(lost)}"
+    gone = sorted(set(extract_requirements(old)) - set(extract_requirements(new)))
+    if gone:
+        return f"the fix removed requirement comment(s) {', '.join(gone[:5])}"
+    if new.count("```"):
+        return "the answer still contains markdown fences"
+    return ""
+
+
+def _fenceless(text: str) -> str:
+    text = (text or "").strip()
+    text = re.sub(r"^```(?:c|cpp)?\s*\n", "", text)
+    return re.sub(r"\n```\s*$", "", text).strip() + "\n"
+
+
+def llm_code_fixer(stage: str = "mud_spec_generator", *, timeout: int = 300) -> CodeFixer:
+    """A :data:`CodeFixer` that asks the model of ``stage`` (provider + model from the stage registry)."""
+    def fix(c_code: str, errors: str, header: str = "", note: str = "") -> str:
+        import os
+        from mudmut_core import env
+        from mudmut_core.llm import chat_blocking, get_providers
+        env.ensure_environment()
+        provider_id, model = "ollama", os.environ.get("GEN_MODEL", "qwen2.5:7b")
+        try:
+            from mudmut_core import agents
+            st = agents.get_stages().get(stage, {})
+            provider_id = st.get("provider", "ollama")
+            model = st.get("model") or model
+        except Exception:  # noqa: BLE001
+            pass
+        provider = get_providers().get(provider_id) or get_providers().get("ollama")
+        prompt = (
+            "The following C99 file does not compile. Fix the compile errors and return ONLY the complete "
+            "corrected file (no markdown, no explanation).\n"
+            "Rules: change only what the errors require; keep every function with its name and signature; "
+            "keep every comment (/* Requirements: ... */, /* [REQ-...] */); do not delete statements or turn "
+            "them into comments; names that are undeclared are declared for you automatically; use the "
+            "macros and variables of the header below instead of inventing new ones.\n"
+            + (f"\nYour previous answer was refused: {note}. Fix it this time.\n" if note else "")
+            + f"\nCOMPILER ERRORS (gcc -std=c99):\n{errors}\n\nHEADER (declarations and macros available):\n{header}\n"
+              f"\nFILE:\n```c\n{c_code}\n```\n"
+        )
+        try:
+            return _fenceless(chat_blocking(provider, model, [{"role": "user", "content": prompt}],
+                                            max_tokens=8192, temperature=0.1, timeout=timeout))
+        except Exception as exc:  # noqa: BLE001 - a failed request only means "no fix"
+            print(f"[mudmut_core] compile fixer request failed: {exc}")
+            return ""
+    return fix
+
+
 @dataclass
 class CompilabilityReport:
     swc: str
@@ -698,6 +777,8 @@ class CompilabilityReport:
     stubbed_logic: list[str] = field(default_factory=list)       # commented-out assignments / calls
     never_assigned: list[str] = field(default_factory=list)      # read but never set
     dropped_arguments: int = 0                                    # helper calls emitted without the design's args
+    fix_requests: int = 0                                         # compile errors sent to the model
+    fixes_applied: int = 0                                        # answers that reduced the errors and were kept
 
     @property
     def logic_stubbed(self) -> int:
@@ -721,6 +802,8 @@ class CompilabilityReport:
             gate += f"; {self.dropped_arguments} helper call(s) without the design's arguments"
         if self.never_assigned:
             gate += f"; read but never assigned: {', '.join(self.never_assigned)}"
+        if self.fix_requests:
+            gate += f"; {self.fix_requests} fix request(s) to the model, {self.fixes_applied} kept"
         return (
             f"{self.kept_statements} of {self.total_statements} statements kept as C, "
             f"{self.stubbed_statements} stubbed{extra}{gate} (compile_ok={self.compile_ok})"
@@ -732,8 +815,10 @@ def make_compilable(
     swc: str,
     workdir: Path,
     *,
-    max_rounds: int = 25,
+    max_rounds: int = 40,
     spec_md: str | None = None,
+    fixer: CodeFixer | None = None,
+    max_fix_requests: int = MAX_FIX_REQUESTS,
 ) -> CompilabilityReport:
     """Write headers + stubs and iteratively repair the skeleton until it compiles.
 
@@ -741,7 +826,10 @@ def make_compilable(
     1. declare what the design uses but never defined — undeclared helper
        functions, UPPER_CASE constants (unique placeholder values) and other
        identifiers (``float64`` placeholders) — all marked TODO(design);
-    2. only when a statement still cannot compile, turn it into a
+    2. when ``fixer`` is given, send the compiler errors and the file to it and keep its answer when it
+       keeps every function and requirement comment and reduces the errors — repeated until the file
+       compiles, up to ``max_fix_requests`` requests, and stopped after two answers without progress;
+    3. only when a statement still cannot compile, turn it into a
        ``/* TODO(design): … */`` comment (trace comments are kept).
     Markdown fences and prose labels are commented out up front.
     """
@@ -807,6 +895,17 @@ def make_compilable(
     last_error = ""
     rounds = 0
     stubbed_logic: list[str] = []
+    fix_requests = fixes_applied = stalls = 0
+    fix_note = ""
+
+    def compile_now(code: str):
+        c_file.write_text(code, encoding="utf-8", newline="\n")
+        return toolchain.run_c(
+            ["gcc", "-std=c99", "-fsyntax-only", "-w", f"-I{workdir}", str(c_file)], cwd=str(workdir), timeout=120)
+
+    def count_errors(result) -> int:
+        return sum(len(v) for v in _error_lines(result.stderr + "\n" + result.stdout, c_file.name).values()) \
+            or (0 if result.returncode == 0 else 1)
 
     for round_no in range(1, max_rounds + 1):
         rounds = round_no
@@ -849,7 +948,38 @@ def make_compilable(
             headers = write_support_files()
             continue
 
-        # 2. Comment out statements that still cannot compile.
+        # 2. Send the compiler's message to the model and keep a corrected file (recursively, until it compiles).
+        if fixer is not None and fix_requests < max_fix_requests and stalls < MAX_FIX_STALLS:
+            fix_requests += 1
+            before = count_errors(result)
+            errors_text = "\n".join(
+                line for line in diagnostics.splitlines() if c_file.name in line or line.startswith(" "))[:6000]
+            header_text = (workdir / f"Rte_{swc}.h").read_text(encoding="utf-8", errors="ignore")[:6000]
+            try:
+                candidate = fixer(current, errors_text or diagnostics[:6000], header_text, fix_note)
+            except Exception as exc:  # noqa: BLE001 - a failed request only means "no fix"
+                candidate, fix_note = "", f"the request failed ({exc})"
+            problem = fix_problem(current, candidate) if candidate else (fix_note or "no answer")
+            accepted = False
+            if not problem:
+                candidate = candidate if candidate.endswith("\n") else candidate + "\n"
+                trial = compile_now(candidate)
+                after = count_errors(trial)
+                if trial.returncode == 0 or after < before:
+                    current, accepted = candidate, True
+                else:
+                    problem = f"no better: {after} error(s) after the fix, {before} before"
+            c_file.write_text(current, encoding="utf-8", newline="\n")
+            if accepted:
+                fixes_applied += 1
+                stalls, fix_note = 0, ""
+                continue                      # compile again: the next error (or success) decides
+            stalls += 1
+            fix_note = problem                # the next request says why this answer was refused
+            if stalls < MAX_FIX_STALLS and fix_requests < max_fix_requests:
+                continue                      # ask once more, now with the reason
+
+        # 3. Comment out statements that still cannot compile.
         err_lines = _error_lines(diagnostics, c_file.name)
         lines = current.splitlines()
         changed = 0
@@ -881,4 +1011,6 @@ def make_compilable(
         stubbed_logic=stubbed_logic,
         never_assigned=unassigned_reads(current),
         dropped_arguments=current.count("TODO(args)"),
+        fix_requests=fix_requests,
+        fixes_applied=fixes_applied,
     )

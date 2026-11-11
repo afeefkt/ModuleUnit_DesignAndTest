@@ -31,6 +31,8 @@ def compilability_json(rep: Any, swc: str) -> dict[str, Any]:
         "stubbed_logic": rep.stubbed_logic,
         "never_assigned": rep.never_assigned,
         "dropped_arguments": rep.dropped_arguments,
+        "fix_requests": rep.fix_requests,
+        "fixes_applied": rep.fixes_applied,
     }
 
 
@@ -44,6 +46,8 @@ def compilability_summary(data: dict[str, Any]) -> dict[str, Any]:
         "uninitialized_uses": len(data.get("never_assigned") or []),
         "never_assigned": data.get("never_assigned") or [],
         "dropped_arguments": data.get("dropped_arguments") or 0,
+        "fix_requests": data.get("fix_requests") or 0,
+        "fixes_applied": data.get("fixes_applied") or 0,
     }
 
 

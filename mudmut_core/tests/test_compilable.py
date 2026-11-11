@@ -335,6 +335,84 @@ def test_external_calls_are_recorded_for_tests(tmp_path):
     assert run.returncode == 0, f"exit code {run.returncode}"
 
 
+BROKEN_C = (
+    '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+    "uint32 l_a;\nuint32 l_b;\n\n"
+    "/* Requirements: REQ-1 */\n"
+    "void RE_One(void)\n{\n"
+    "    l_a = 5U;  /* [REQ-1] */\n"
+    "    l_b = l_a.value + 1U;  /* member of a plain integer: not C */\n"
+    "}\n\n"
+    "void RE_Two(void)\n{\n    l_a = 0U;\n}\n"
+)
+
+
+def test_compile_errors_are_sent_to_a_fixer_until_it_compiles(tmp_path):
+    """Instead of commenting a failing statement out, the compiler's message goes to the model, which
+    returns corrected code; this repeats until the file compiles (user requirement: compile recursively)."""
+    seen = []
+
+    def fixer(code, errors, header, note=""):
+        seen.append((errors, note))
+        return code.replace("l_a.value + 1U", "l_a + 1U")
+
+    rep = compilable.make_compilable(BROKEN_C, "SWC_T", tmp_path, fixer=fixer)
+    assert rep.compile_ok, rep.last_error
+    assert rep.stubbed_statements == 0 and rep.logic_stubbed == 0     # nothing was commented out
+    assert rep.fix_requests == 1 and rep.fixes_applied == 1
+    assert "l_b = l_a + 1U;" in rep.c_code
+    assert "error" in seen[0][0] and "SWC_T.c" in seen[0][0]            # the compiler message reached the fixer
+    assert "fix request" in rep.summary()
+
+
+def test_second_fix_round_when_the_first_answer_only_partly_helps(tmp_path):
+    code = BROKEN_C.replace("    l_a = 5U;  /* [REQ-1] */\n",
+                            "    l_a = 5U;  /* [REQ-1] */\n    l_a = l_a.other;\n")
+    answers = iter([lambda c: c.replace("l_b = l_a.value + 1U;", "l_b = l_a + 1U;"),       # fixes one of two errors
+                    lambda c: c.replace("l_a = l_a.other;", "l_a = l_a;")])
+    def fixer(c, errors, header, note=""):
+        return next(answers)(c)
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path, fixer=fixer)
+    assert rep.compile_ok and rep.fix_requests == 2 and rep.fixes_applied == 2 and rep.stubbed_statements == 0
+
+
+def test_a_fix_that_loses_a_function_or_a_requirement_comment_is_rejected(tmp_path):
+    def drops_function(c, errors, header, note=""):
+        return c.split("void RE_Two")[0].replace("l_a.value", "l_a")          # RE_Two disappeared
+
+    rep = compilable.make_compilable(BROKEN_C, "SWC_T", tmp_path, fixer=drops_function)
+    assert rep.fixes_applied == 0 and rep.fix_requests >= 1
+    assert "void RE_Two" in rep.c_code                                          # the original was kept
+    assert rep.compile_ok and rep.stubbed_statements == 1 and rep.logic_stubbed == 1   # old fallback: comment out, flagged
+
+    def drops_comment(c, errors, header, note=""):
+        return c.replace("/* Requirements: REQ-1 */", "").replace("/* [REQ-1] */", "").replace("l_a.value", "l_a")
+
+    rep = compilable.make_compilable(BROKEN_C, "SWC_T", tmp_path / "b", fixer=drops_comment)
+    assert rep.fixes_applied == 0 and "REQ-1" in rep.c_code
+
+
+def test_fixer_that_makes_no_progress_is_not_asked_forever(tmp_path):
+    calls = []
+
+    def useless(c, errors, header, note=""):
+        calls.append(note)
+        return c                                                                  # same code, same errors
+
+    rep = compilable.make_compilable(BROKEN_C, "SWC_T", tmp_path, fixer=useless)
+    assert len(calls) == 2 and rep.fix_requests == 2 and rep.fixes_applied == 0   # stops after two answers without progress
+    assert calls[1] and "no" in calls[1].lower()                                  # the second request says why the first was refused
+    assert rep.compile_ok and rep.logic_stubbed == 1
+
+
+def test_fixer_errors_fall_back_to_commenting_out(tmp_path):
+    def broken(c, errors, header, note=""):
+        raise RuntimeError("provider down")
+
+    rep = compilable.make_compilable(BROKEN_C, "SWC_T", tmp_path, fixer=broken)
+    assert rep.compile_ok and rep.fixes_applied == 0 and rep.logic_stubbed == 1
+
+
 def test_call_arities_need_one_plain_shape():
     code = ("Dem_Report(A_B_C, 1); Dem_Report(A_B_D, 2); Wdg(0); Wdg(1, 2); Nv(&x); "
             "Str(\"s\"); Zero(); Zero(); Nest(f(1)); Member(a.b);")

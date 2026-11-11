@@ -36,6 +36,8 @@ def outputs(tmp_path, monkeypatch):
     monkeypatch.setattr(observe, "STATE_LOG", tmp_path / "llm_log.jsonl")
     # No network and no WSL in page tests.
     monkeypatch.setattr(_common, "_get_json", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+    from mudmut_core import compilable
+    monkeypatch.setattr(compilable, "llm_code_fixer", lambda *a, **k: (lambda *x, **y: ""))
     monkeypatch.setattr(llm, "list_models", lambda provider: [])
     monkeypatch.setattr(agents, "available_models", lambda provider_id: [])
     monkeypatch.setattr(toolchain, "check_toolchain", lambda: SimpleNamespace(
