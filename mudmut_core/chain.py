@@ -563,7 +563,7 @@ async def test_existing_code(
         _check_cancel(cancel, "build_run")
         t0 = time.time()
         observe.set_stage("build_run")
-        test_result = verify.fix_loop(out_dir, max_attempts=2)
+        test_result = verify.fix_loop(out_dir, max_attempts=verify.MAX_FIX_ATTEMPTS)
         run.save_json_in("mut", "results.json", {"generation": generation, "run": test_result})
         timings["build_run"] = time.time() - t0
         junit = test_result.get("junit") or {}

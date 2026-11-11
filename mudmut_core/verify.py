@@ -251,8 +251,18 @@ def errors_for_file(stderr: str, filename: str, limit: int = 3000) -> str:
     return text[:limit]
 
 
-def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
-    """Rebuild; when a ``Test_*.cpp`` fails to compile, ask the model to fix it."""
+MAX_FIX_ATTEMPTS = 8      # rebuild-and-ask rounds (each round asks for every file that still fails)
+MAX_FIX_STALLS = 2        # a file whose compiler error did not change this many answers in a row is given up
+
+
+def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS) -> dict[str, Any]:
+    """Rebuild; when a ``Test_*.cpp`` fails to compile, send the compiler errors to the model for a
+    corrected file — again and again until every file compiles.
+
+    Each round asks for every file that still fails. A file is given up (and later quarantined,
+    reported) only after ``max_attempts`` rounds or when its compiler error stayed the same for
+    more than ``MAX_FIX_STALLS`` answers in a row, so the loop cannot run forever.
+    """
     env.ensure_environment()
     from app.config import config
 
@@ -271,19 +281,29 @@ def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
             break
         result = build_and_run(test_dir)
 
+    last_errors: dict[str, str] = {}
+    stalls: dict[str, int] = {}
     while result.get("status") == "build_failed" and attempts < max_attempts:
-        attempts += 1
         stderr = (result.get("build_error") or "") + (result.get("build_output") or "")
         files = _failed_test_files(stderr, test_dir)
         if not files:
             break
+        asked = 0
         for f in files:
+            errors = errors_for_file(stderr, f.name)
+            stalls[f.name] = stalls.get(f.name, -1) + 1 if last_errors.get(f.name) == errors else 0
+            last_errors[f.name] = errors
+            if stalls[f.name] > MAX_FIX_STALLS:
+                continue                      # the model cannot fix this one: it gets quarantined below
+            asked += 1
             code = f.read_text(encoding="utf-8", errors="ignore")
+            again = (f"\nYour previous fix still shows the same error — change the code the error points at.\n"
+                     if stalls[f.name] else "")
             prompt = (
                 "The following CppUTest file fails to compile. Fix the compile errors "
                 "and return ONLY the corrected, complete file (no markdown fences, no explanation). "
                 f"Keep its TEST_GROUP and TEST names; do not write tests for other functions.\n\n"
-                f"COMPILER ERRORS (for {f.name} only):\n{errors_for_file(stderr, f.name)}\n\n"
+                f"COMPILER ERRORS (for {f.name} only):\n{errors}\n{again}\n"
                 f"FILE ({f.name}):\n```cpp\n{code}\n```\n"
                 f"{_TEST_API_HINT}"
             )
@@ -300,6 +320,9 @@ def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> dict[str, Any]:
                     print(f"[mudmut_core] test fixer reply for {f.name} changed its TEST_GROUPs — rejected")
                     continue
                 f.write_text(fixed, encoding="utf-8")
+        if not asked:
+            break                             # every failing file is given up
+        attempts += 1
         result = build_and_run(test_dir)
 
     # Still red: set aside the test files that keep failing to compile so the

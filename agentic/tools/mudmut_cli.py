@@ -345,7 +345,7 @@ def handle_build_run(args) -> dict:
     out_dir = _sec(run_dir, "mut")
     if not any(out_dir.glob("Test_*.cpp")):
         raise ValueError(f"no tests in {out_dir}; run gen-tests first")
-    result = verify.fix_loop(out_dir, max_attempts=2)
+    result = verify.fix_loop(out_dir, max_attempts=verify.MAX_FIX_ATTEMPTS)
     (out_dir / "results.json").write_text(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )

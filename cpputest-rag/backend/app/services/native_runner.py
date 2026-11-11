@@ -22,7 +22,7 @@ def run_tests(test_dir: Path | str) -> Dict:
     return verify.build_and_run(Path(test_dir))
 
 
-def fix_loop(test_dir: Path | str, max_attempts: int = 2) -> Dict:
+def fix_loop(test_dir: Path | str, max_attempts: int = verify.MAX_FIX_ATTEMPTS) -> Dict:
     """Build, run, and repair failing test files (same signature as verify.fix_loop)."""
     if str(_REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(_REPO_ROOT))

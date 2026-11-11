@@ -38,6 +38,58 @@ def test_write_smoke_test_without_header_returns_false(tmp_path):
     assert verify.write_smoke_test(tmp_path) is False
 
 
+def _fake_build(test_dir_calls):
+    """A build that fails while a test file still contains BAD, naming one error line per BAD."""
+    def build(test_dir):
+        test_dir_calls.append(1)
+        errs = []
+        for f in sorted(test_dir.glob("Test_*.cpp")):
+            for i, line in enumerate(f.read_text().splitlines(), 1):
+                if "BAD" in line:
+                    errs.append(f"{f.name}:{i}:5: error: 'BAD' was not declared")
+        if errs:
+            return {"status": "build_failed", "build_error": "\n".join(errs), "build_output": ""}
+        return {"status": "passed", "junit": {"tests": 1, "failures": 0}}
+    return build
+
+
+def test_fix_loop_keeps_asking_until_the_test_compiles(tmp_path, monkeypatch):
+    """Compile errors go back to the model until the file compiles: three errors fixed one per answer
+    needed three requests, and the old limit of two quarantined the file."""
+    from mudmut_core import verify
+    f = tmp_path / "Test_A.cpp"
+    f.write_text("TEST_GROUP(A_Group) {};\nBAD one\nBAD two\nBAD three\n")
+    builds, asked = [], []
+    monkeypatch.setattr(verify, "build_and_run", _fake_build(builds))
+    monkeypatch.setattr(verify, "define_invented_constants", lambda log, d: False)
+    monkeypatch.setattr(verify, "write_smoke_test", lambda d: False)
+
+    def fixer(prompt, **k):
+        asked.append(prompt)
+        text = f.read_text()
+        return text.replace("BAD", "ok", 1)                     # one error fixed per answer
+
+    monkeypatch.setattr(verify, "_fixer_generate", fixer)
+    result = verify.fix_loop(tmp_path, max_attempts=verify.MAX_FIX_ATTEMPTS)
+    assert result["status"] == "passed" and result["fix_attempts"] == 3 and len(asked) == 3
+    assert result["quarantined_tests"] == [] and "BAD" not in f.read_text()
+
+
+def test_fix_loop_stops_when_the_model_makes_no_progress(tmp_path, monkeypatch):
+    from mudmut_core import verify
+    f = tmp_path / "Test_A.cpp"
+    f.write_text("TEST_GROUP(A_Group) {};\nBAD one\n")
+    asked = []
+    monkeypatch.setattr(verify, "build_and_run", _fake_build([]))
+    monkeypatch.setattr(verify, "define_invented_constants", lambda log, d: False)
+    monkeypatch.setattr(verify, "write_smoke_test", lambda d: False)
+    monkeypatch.setattr(verify, "_fixer_generate", lambda prompt, **k: asked.append(prompt) or f.read_text())
+    result = verify.fix_loop(tmp_path, max_attempts=verify.MAX_FIX_ATTEMPTS)
+    assert len(asked) == 3          # the first answer, then two with the same error: not asked forever
+    assert result["quarantined_tests"] == ["Test_A.cpp"]                  # the honest fallback, reported
+    assert "still shows the same error" in asked[-1]                     # the later requests say what failed before
+
+
 def test_define_invented_constants_adds_placeholders(tmp_path):
     f = tmp_path / "Test_RE_A.cpp"
     f.write_text("TEST_GROUP(G){};\nTEST(G, t){ int x = MODULE_NOT_READY; }\n", encoding="utf-8")

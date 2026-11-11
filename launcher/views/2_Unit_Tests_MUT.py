@@ -166,7 +166,7 @@ if test_dir is not None:
                  help="Builds in WSL, asks the model to fix test files that do not compile (2 rounds), "
                       "then runs the tests with coverage. It cannot be cancelled half-way."):
         c.start_step("mut_build", "Building and running the tests",
-                     lambda report, d=test_dir: verify.fix_loop(d, max_attempts=2),
+                     lambda report, d=test_dir: verify.fix_loop(d, max_attempts=verify.MAX_FIX_ATTEMPTS),
                      expected_seconds=_expected("build_run"), cancellable=False,
                      context={"run": str(run.folder)})
         st.rerun()
