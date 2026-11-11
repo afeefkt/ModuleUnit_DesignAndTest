@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import shutil
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -346,7 +347,8 @@ async def _run_full_chain(
         review_note = ""
         for attempt in range(1, 3):          # retry once: the reviewer model sometimes answers empty
             reviewed_md, review = await design.review_and_improve(
-                chosen, text, best_md, max_rounds=1, progress=progress)
+                chosen, text, best_md, progress=progress,
+                max_rounds=int(os.environ.get("MUDMUT_REVIEW_ROUNDS", "2") or 2))
             review_empty = bool(getattr(review, "ai_review_empty", False))
             review_approved = bool(review.approved)
             if reviewed_md and reviewed_md != best_md:
@@ -401,6 +403,58 @@ async def _run_full_chain(
     timings["activity"] = time.time() - t0
     _emit(progress, "activity", f"Generated {len(activity.diagrams)} activity diagram(s)", done=True)
 
+    # ── 5b. activity quality (≥ 80 %) with recovery ───────────────────────────
+    # Score the flow against Section 7 and the requirements (optional DeepSeek judge, local render).
+    # When the AI flow drops Section 7 steps (calibration reads, saturations, ...) the C built from it
+    # reads variables nobody assigns — so the flow built straight from Section 7 is scored too and the
+    # more faithful one is kept. The loop's TOOL_GREEN gate enforces the pass.
+    from mudmut_core import flow_quality, flow_quality_render
+    from mudtool.models.json_uml import GenerationResult
+    req_ids = [getattr(r, "req_id", str(r)) for r in module_reqs.requirements]
+    qa_render = flow_quality_render.render_mermaid_png if flow_quality_render.renderer_available() else None
+    qa_judge = flow_quality.deepseek_judge() if not quick else None
+
+    def _score_activity(act, png_name):
+        if not isinstance(act, GenerationResult):
+            return None
+        try:
+            return flow_quality.evaluate(act, spec_md, req_ids, render=qa_render, judge=qa_judge,
+                                         png_path=run.dir("mud") / "activity_qa" / png_name)
+        except Exception as exc:  # noqa: BLE001 - QA is advisory in the chain
+            warnings.append(f"Activity quality check failed: {exc}")
+            return None
+
+    activity_quality = _score_activity(activity, "flow.png")
+    activity_note = ""
+    if (not quick and activity_quality is not None
+            and (not activity_quality["passed"] or activity_quality["missing_steps"])):
+        try:
+            det = await design.generate_activity(module_reqs, spec_md, chosen.swc_name,
+                                                 use_ai=False, progress=progress)
+            if det.diagrams:
+                # The Section 7 flow carries no requirement tags: tag its diagrams with the module's
+                # requirement IDs the spec itself cites (and any the AI flow had).
+                cited = {r for r in req_ids if r in spec_md}
+                for d in det.diagrams:
+                    d.source_requirements = sorted(set(d.source_requirements or []) | cited)
+            det_quality = _score_activity(det, "flow_deterministic.png") if det.diagrams else None
+        except Exception as exc:  # noqa: BLE001
+            det, det_quality = None, None
+            warnings.append(f"Deterministic activity fallback failed: {exc}")
+        if det_quality is not None:
+            use_det = flow_quality.prefer_alternative(activity_quality, det_quality)
+            run.save_json_in("mud", "flow_quality_ai_discarded.json" if use_det
+                             else "flow_quality_deterministic.json",
+                             activity_quality if use_det else det_quality)
+            if use_det:
+                activity_note = (f" (AI flow dropped {len(activity_quality['missing_steps'])} Section 7 step(s)"
+                                 f" at {activity_quality['score']}%; Section 7 flow used)")
+                warnings.append("The AI activity flow was incomplete against Section 7; the flow built "
+                                "directly from Section 7 was used instead.")
+                activity, activity_quality = det, det_quality
+                run.save_json_in("mud", "activity.json",
+                                 activity.model_dump() if hasattr(activity, "model_dump") else activity.dict())
+
     # ── 6. export C + Mermaid ─────────────────────────────────────────────────
     t0 = time.time()
     exported = design.export(activity)
@@ -415,27 +469,11 @@ async def _run_full_chain(
     run.save_in("code", f"{chosen.swc_name}.c", c_code)
     timings["export"] = time.time() - t0
 
-    # ── 6b. activity quality (≥ 80 %) ─────────────────────────────────────────
-    # Score the flow against Section 7 and the requirements, with an optional DeepSeek judge and
-    # a local render. Non-fatal here: the loop's TOOL_GREEN gate enforces the pass.
-    from mudmut_core import flow_quality, flow_quality_render
-    from mudtool.models.json_uml import GenerationResult
-    activity_quality = None
-    if isinstance(activity, GenerationResult):
-        req_ids = [getattr(r, "req_id", str(r)) for r in module_reqs.requirements]
-        qa_render = flow_quality_render.render_mermaid_png if flow_quality_render.renderer_available() else None
-        qa_judge = flow_quality.deepseek_judge() if not quick else None
-        qa_png = run.dir("mud") / "activity_qa" / "flow.png"
-        try:
-            activity_quality = flow_quality.evaluate(
-                activity, spec_md, req_ids, render=qa_render, judge=qa_judge, png_path=qa_png)
-        except Exception as exc:  # noqa: BLE001 - QA is advisory in the chain
-            warnings.append(f"Activity quality check failed: {exc}")
-            activity_quality = None
     if activity_quality is not None:
         run.save_json_in("mud", "flow_quality.json", activity_quality)
         run.save_in("mud", "flow_quality.md", flow_quality.markdown(activity_quality))
-        stage_notes["activity_qa"] = f"{activity_quality['score']}% {flow_quality.verdict(activity_quality['score'])}"
+        stage_notes["activity_qa"] = (f"{activity_quality['score']}% "
+                                      f"{flow_quality.verdict(activity_quality['score'])}{activity_note}")
         _emit(progress, "activity_qa",
               f"Activity quality: {activity_quality['score']}% {flow_quality.verdict(activity_quality['score'])}",
               done=True)
@@ -443,7 +481,7 @@ async def _run_full_chain(
             warnings.append(f"Activity quality {activity_quality['score']}% < 80%: "
                             f"{flow_quality.feedback_text(activity_quality)[:200]}")
     else:
-        stage_notes["activity_qa"] = "skipped (deterministic activity)"
+        stage_notes["activity_qa"] = "skipped (not an AI/diagram result)"
         _emit(progress, "activity_qa", "Activity quality: skipped", done=True)
 
     # ── 7. make the C compilable ──────────────────────────────────────────────
@@ -451,7 +489,6 @@ async def _run_full_chain(
     _check_cancel(cancel, "compilable")
     t0 = time.time()
     # Compiler errors go back to the model until the C compiles (MUDMUT_COMPILE_FIX=off disables it).
-    import os
     fixer = None if os.environ.get("MUDMUT_COMPILE_FIX", "on").lower() in ("off", "0", "false", "no") \
         else compilable.llm_code_fixer()
     rep = compilable.make_compilable(c_code, chosen.swc_name, project_dir, spec_md=spec_md, fixer=fixer)

@@ -137,3 +137,16 @@ def test_feedback_for_a_retry_names_what_is_missing():
     text = flow_quality.feedback_text(q)
     for needle in ("REQ-3", "Rte_Write(PP_Out, l_out)", "no final node", "clamp branch", "inverted guard"):
         assert needle in text
+
+
+def test_prefer_alternative_takes_the_flow_that_keeps_section7_steps():
+    ai = {"passed": True, "score": 90, "missing_steps": ["a = Rte_Prm(X)"]}
+    det = {"passed": True, "score": 85, "missing_steps": []}
+    assert flow_quality.prefer_alternative(ai, det) is True
+    assert flow_quality.prefer_alternative(det, ai) is False
+
+
+def test_prefer_alternative_never_swaps_a_pass_for_a_fail():
+    ai = {"passed": True, "score": 90, "missing_steps": ["x"]}
+    det = {"passed": False, "score": 67, "missing_steps": []}
+    assert flow_quality.prefer_alternative(ai, det) is False

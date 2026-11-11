@@ -257,6 +257,14 @@ def evaluate(
     }
 
 
+def prefer_alternative(current: dict[str, Any], alternative: dict[str, Any]) -> bool:
+    """True when ``alternative`` should replace ``current``: a passing flow beats a failing one, then
+    fewer dropped Section 7 steps (they become unassigned variables in the C), then the higher score."""
+    def key(q):
+        return (bool(q.get("passed")), -len(q.get("missing_steps") or []), q.get("score", 0))
+    return key(alternative) > key(current)
+
+
 # ── report helpers ────────────────────────────────────────────────────────────
 def verdict(score: float) -> str:
     if score >= 80:
