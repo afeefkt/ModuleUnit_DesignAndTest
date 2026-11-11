@@ -27,6 +27,9 @@ Rte_Write(PP_Out, l_out);
 """
 
 
+SPEC_CITED = SPEC + "\nTraceability: REQ-1, REQ-2, REQ-3, REQ-4\n"
+
+
 def node(id_, name, ntype, *, code=None, trace=None, callee=None):
     return ActivityNode(id=id_, name=name, node_type=ntype, code=code, trace_reqs=trace or [], callee=callee)
 
@@ -56,7 +59,7 @@ def result_of(*diagrams):
 
 
 def test_a_complete_flow_scores_full_marks_without_a_judge():
-    q = flow_quality.evaluate(result_of(good_diagram()), SPEC, ["REQ-1", "REQ-2"], render=None, judge=None)
+    q = flow_quality.evaluate(result_of(good_diagram()), SPEC_CITED, ["REQ-1", "REQ-2"], render=None, judge=None)
     assert q["parts"]["structure"] == 100 and q["parts"]["requirements"] == 100 and q["parts"]["fidelity"] == 100
     assert q["score"] == 100 and q["passed"] is True
     assert q["judge"] is None and "no AI judge" in " ".join(q["notes"])
@@ -78,7 +81,7 @@ def test_requirement_ids_the_flow_never_mentions_are_reported():
     d = good_diagram(reqs=("REQ-1",))
     for n in d.nodes:
         n.trace_reqs = [r for r in n.trace_reqs if r == "REQ-1"]
-    q = flow_quality.evaluate(result_of(d), SPEC, ["REQ-1", "REQ-2", "REQ-3", "REQ-4"], render=None, judge=None)
+    q = flow_quality.evaluate(result_of(d), SPEC_CITED, ["REQ-1", "REQ-2", "REQ-3", "REQ-4"], render=None, judge=None)
     assert q["parts"]["requirements"] == 25 and q["missing_requirements"] == ["REQ-2", "REQ-3", "REQ-4"]
     assert q["passed"] is False                      # coverage 25 % pulls the score under 80
 
@@ -107,7 +110,7 @@ def test_a_failing_judge_call_is_not_a_zero():
 
 
 def test_a_diagram_that_does_not_render_loses_points():
-    q = flow_quality.evaluate(result_of(good_diagram()), SPEC, ["REQ-1", "REQ-2"],
+    q = flow_quality.evaluate(result_of(good_diagram()), SPEC_CITED, ["REQ-1", "REQ-2"],
                               render=lambda mmd, path: (False, "Parse error on line 3"), judge=None)
     assert q["render"]["ok"] is False and q["score"] == 75 and q["passed"] is False
     assert "Parse error" in " ".join(q["problems"])
@@ -150,3 +153,10 @@ def test_prefer_alternative_never_swaps_a_pass_for_a_fail():
     ai = {"passed": True, "score": 90, "missing_steps": ["x"]}
     det = {"passed": False, "score": 67, "missing_steps": []}
     assert flow_quality.prefer_alternative(ai, det) is False
+
+
+def test_a_spec_that_cites_no_requirement_ids_skips_requirement_coverage():
+    q = flow_quality.evaluate(result_of(good_diagram()), SPEC, ["REQ-7", "REQ-8"], render=None, judge=None)
+    assert "requirements" not in q["parts"] and q["missing_requirements"] == []
+    assert any("not measured" in n for n in q["notes"])
+    assert q["score"] == 100

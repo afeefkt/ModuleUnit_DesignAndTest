@@ -762,6 +762,9 @@ def llm_code_fixer(stage: str = "mud_spec_generator", *, timeout: int = 300) -> 
     return fix
 
 
+# A statement that is only a name (``l_maxPressure;``, a code identifier — not a prose label like ``Guard;``) has no effect: it is removed, not counted as stubbed.
+_NOOP_STATEMENT_RE = re.compile(r"^\s*[A-Za-z]+_\w+\s*;?\s*$")
+
 # ── BSW services are provided by the environment, never defined by the SWC ───────────────────────────
 _BSW_PREFIXES = ("WdgM_", "Dem_", "Det_", "NvM_", "Os_", "Com_", "EcuM_", "BswM_", "SchM_", "Fee_", "MemIf_",
                  "Rte_", "Csm_", "CanIf_", "ComM_", "Dcm_", "FiM_")
@@ -894,7 +897,8 @@ def make_compilable(
     for i, line in enumerate(lines):
         if _is_statement_line(line) and _is_junk_statement(line, own_types):
             lines[i] = _comment_line(line)
-            stubbed += 1
+            if not _NOOP_STATEMENT_RE.match(line):      # a bare name does nothing: not stubbed logic
+                stubbed += 1
     current = "\n".join(lines) + "\n"
 
     rte_funcs, _call_idents = collect_identifiers(current)

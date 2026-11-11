@@ -269,7 +269,7 @@
       },
       "activity_qa": {
         "provider": "deepseek",
-        "model": "deepseek-reasoner"
+        "model": "deepseek-chat"
       },
       "guidelines_embed": {
         "provider": "ollama",

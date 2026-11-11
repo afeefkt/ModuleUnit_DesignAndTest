@@ -211,8 +211,16 @@ def evaluate(
     parts["structure"] = s
     problems.extend(sp)
 
-    r, missing_reqs = requirement_coverage(diagrams, list(requirement_ids))
-    parts["requirements"] = r
+    # Requirement coverage is measured against the IDs the spec itself cites. A spec that cites none
+    # gives no per-runnable mapping to hold the flow to (the reviewer scores spec coverage), so the part
+    # is skipped instead of rewarding a model that tags every node with every requirement.
+    cited_ids = [r for r in requirement_ids if r in (spec_md or "")]
+    missing_reqs: list[str] = []
+    if cited_ids:
+        r, missing_reqs = requirement_coverage(diagrams, cited_ids)
+        parts["requirements"] = r
+    else:
+        notes.append("spec cites no requirement IDs: requirement coverage not measured")
 
     f, missing_steps = fidelity_score(diagrams, spec_md)
     parts["fidelity"] = f

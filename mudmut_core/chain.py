@@ -433,8 +433,8 @@ async def _run_full_chain(
                                                  use_ai=False, progress=progress)
             if det.diagrams:
                 # The Section 7 flow carries no requirement tags: tag its diagrams with the module's
-                # requirement IDs (those the spec cites, else all of them — what the AI path is given too).
-                cited = {r for r in req_ids if r in spec_md} or set(req_ids)   # a spec that cites none: the module's own
+                # requirement IDs the spec itself cites (never invented traceability).
+                cited = {r for r in req_ids if r in spec_md}
                 for d in det.diagrams:
                     d.source_requirements = sorted(set(d.source_requirements or []) | cited)
             det_quality = _score_activity(det, "flow_deterministic.png") if det.diagrams else None

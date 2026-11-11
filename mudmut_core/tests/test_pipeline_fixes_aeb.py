@@ -270,3 +270,11 @@ def test_swc_never_defines_bsw_services():
     assert "Std_ReturnType WdgM_UpdateAliveCounter" not in out
     assert "    WdgM_UpdateAliveCounter(1);" in out          # the call stays
     assert "void RE_Run(void)" in out and "void SF_Own(void)" in out
+
+
+def test_a_bare_identifier_statement_is_removed_without_counting_as_stubbed(tmp_path):
+    from mudmut_core import compilable
+    c = ("#include \"Rte_Type.h\"\nfloat32 l_maxPressure;\nvoid RE_Run(void)\n{\n    l_maxPressure;\n    Guard;\n}\n")
+    rep = compilable.make_compilable(c, "SWC_T", c and tmp_path)
+    assert "TODO(design): l_maxPressure;" in rep.c_code
+    assert rep.stubbed_statements == 1                 # only the prose label Guard; counts
