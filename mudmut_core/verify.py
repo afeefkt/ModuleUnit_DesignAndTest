@@ -183,7 +183,7 @@ def build_and_run(test_dir: Path | str) -> dict[str, Any]:
 
 
 # ── fix loop ─────────────────────────────────────────────────────────────────
-def _fixer_generate(prompt: str, *, timeout: int = 300) -> str:
+def _fixer_generate(prompt: str, *, timeout: int = 300, max_tokens: int = 8000) -> str:
     """Generate a corrected test file via the ``test_fixer`` stage (provider+model).
 
     Synchronous (``chat_blocking``) so it can run inside the chain's running loop.
@@ -203,7 +203,7 @@ def _fixer_generate(prompt: str, *, timeout: int = 300) -> str:
     try:
         return chat_blocking(
             provider, model, [{"role": "user", "content": prompt}],
-            max_tokens=4000, temperature=0.2, timeout=timeout,
+            max_tokens=max_tokens, temperature=0.2, timeout=timeout,
         )
     except Exception as exc:  # noqa: BLE001 - a failed fix attempt is non-fatal
         print(f"[mudmut_core] test fixer generation failed: {exc}")
@@ -652,33 +652,41 @@ def improve_coverage(test_dir: Path | str, result: dict[str, Any], rounds: int =
         for name, gap in weak.items():
             path = test_dir / f"Test_{name}.cpp"
             code = path.read_text(encoding="utf-8", errors="ignore")
+            gm = re.search(r"TEST_GROUP\s*\(\s*(\w+)\s*\)", code)
+            if not gm:
+                continue
             prompt = (
-                f"The CppUTest file below tests {name}. Its tests leave part of the function unreached "
-                f"(line+branch coverage {gap['pct']:.0f}%). Lines marked '>>' in the source are not executed, "
-                "or have a branch no test takes. ADD new TEST(...) cases to the existing TEST_GROUP that "
-                "drive those lines/branches: choose inputs, stubbed return values and IRV/parameter values "
-                "from the source so each condition is really taken, and assert the result the source computes "
-                "(read the code - do not guess). Keep every existing test unchanged. Use only helpers and "
-                "stub variables already used in the file. Return ONLY the complete corrected file "
-                "(no markdown fences, no explanation).\n\n"
+                f"The CppUTest file below tests {name} (TEST_GROUP {gm.group(1)}). Its tests leave part of the function "
+                f"unreached (line+branch coverage {gap['pct']:.0f}%). Lines marked '>>' in the source are not executed, "
+                "or have a branch no test takes. Write NEW test cases that drive those lines/branches: choose inputs, "
+                "stubbed return values and IRV/parameter values from the source so each condition is really taken, "
+                "and assert the result the source computes (work it out from the code - do not guess). Use only "
+                "helpers and stub variables already used in the file. Return ONLY the new "
+                f"TEST({gm.group(1)}, <UniqueName>) {{ ... }} blocks - no includes, no TEST_GROUP, not the existing "
+                "tests, no markdown fences, no explanation. Use names that do not exist yet.\n\n"
                 f"SOURCE OF {name} ('>>' = not reached):\n```c\n{_numbered_source(test_dir, gap)}\n```\n\n"
-                f"FILE (Test_{name}.cpp):\n```cpp\n{code}\n```\n"
+                f"EXISTING FILE (Test_{name}.cpp):\n```cpp\n{code}\n```\n"
                 f"{_TEST_API_HINT}"
             )
-            fixed = _fixer_generate(prompt)
-            if not fixed:
-                continue
-            fixed = re.sub(r"\s*```$", "", re.sub(r"^```(?:cpp|c\+\+)?\s*", "", fixed.strip()))
-            if fixed and fixed != code and same_test_groups(code, fixed):
+            added = re.sub(r"\s*```$", "", re.sub(r"^```(?:cpp|c\+\+)?\s*", "", (_fixer_generate(prompt) or "").strip()))
+            existing = set(re.findall(r"^\s*TEST\s*\(\s*\w+\s*,\s*(\w+)\s*\)", code, re.M))
+            blocks = [b for b in re.split(r"(?m)^(?=\s*TEST\s*\()", added) if re.match(r"\s*TEST\s*\(", b)]
+            blocks = [b for b in blocks if re.match(r"\s*TEST\s*\(\s*\w+\s*,\s*(\w+)", b).group(1) not in existing]
+            if blocks and added.count("{") == added.count("}"):
                 originals[path.name] = code
-                path.write_text(fixed, encoding="utf-8")
+                path.write_text(code.rstrip() + "\n\n" + "\n".join(b.strip() + "\n" for b in blocks), encoding="utf-8")
         if not originals:
             print(f"[mudmut_core] coverage round {_round + 1}: no usable reply for {sorted(weak)}")
             break
         before_names = {f: {n for n, _m in items} for f, items in failing_tests(test_dir).items()}
         rebuilt = build_and_run(test_dir)
-        if rebuilt.get("status") == "build_failed":      # new tests that do not compile: let the compile fixer repair them
+        if rebuilt.get("status") == "build_failed":      # new tests that do not compile
+            errs = [l for l in ((rebuilt.get("build_error") or "") + (rebuilt.get("build_output") or "")).splitlines() if " error" in l]
+            print("[mudmut_core] coverage round first build errors:", " | ".join(errs[:5])[:900])
             rebuilt = fix_loop(test_dir, max_attempts=3, coverage_rounds=0)
+            if rebuilt.get("status") == "build_failed":
+                errs = [l for l in ((rebuilt.get("build_error") or "") + (rebuilt.get("build_output") or "")).splitlines() if "error" in l]
+                print("[mudmut_core] coverage round build errors:", " | ".join(errs[:4])[:600])
             if set(rebuilt.get("quarantined_tests", [])) & set(originals):
                 rebuilt = {"status": "build_failed"}      # a file we extended was given up: revert below
         if rebuilt.get("status") == "test_failed" and _failure_count(test_dir) > before_fail:
