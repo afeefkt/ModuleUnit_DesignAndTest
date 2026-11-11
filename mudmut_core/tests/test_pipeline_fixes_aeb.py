@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -385,3 +386,43 @@ def test_irv_read_in_status_and_value_form_both_read_the_variable(tmp_path):
                                         "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
                            capture_output=True, text=True)
     assert build.returncode == 0, (build.returncode, build.stderr + build.stdout)
+
+
+def _ramp_spec() -> str:
+    return (Path(__file__).parent / "data" / "mud_spec_rampressure.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(not _gcc_available(), reason="gcc not available")
+def test_else_if_chain_generates_c_that_ramps_and_writes_after_the_chain(tmp_path):
+    """Regression (run r16): the final 'else' of 'if a / else if b / else' also ran after the else-if branch,
+    and the writes after an 'if / else if' chain were emitted inside its last else."""
+    from types import SimpleNamespace
+    from mudmut_core import aio, design
+
+    reqs = SimpleNamespace(requirements=[])
+    activity = aio.run_sync(design.generate_activity(reqs, _ramp_spec(), "SWC_T", use_ai=False))
+    c = "\n\n".join(design.export(activity)["c"].values())
+    rep = compilable.make_compilable(c, "SWC_T", tmp_path, spec_md=_ramp_spec())
+    assert rep.compile_ok, rep.last_error
+    assert rep.stubbed_statements == 0, rep.stubbed_logic
+
+    def run(prev, target, apply_rate, release_rate):
+        test = tmp_path / "t.cpp"
+        test.write_text(
+            '#include "SWC_T.h"\n#include <cstdio>\n'
+            "int main(){ Rte_Stubs_Reset();"
+            f" IRV_PreviousRampedPressure = {prev}; IRV_TargetPressure = {target};"
+            f" Rte_Prm_RP_CalPrm_RampApplyRate = {apply_rate}; Rte_Prm_RP_CalPrm_RampReleaseRate = {release_rate};"
+            ' RE_RampPressure(); std::printf("%.4f", (double)IRV_RampedPressure); return 0; }\n')
+        import subprocess
+        out = subprocess.run(["sh", "-c", f"cd {tmp_path} && gcc -std=c99 -c -I. SWC_T.c Rte_Stubs.c && "
+                                          "g++ -I. t.cpp SWC_T.o Rte_Stubs.o -o t && ./t"],
+                             capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr + out.stdout
+        return float(out.stdout.strip())
+
+    assert run(20.0, 10.0, 100.0, 100.0) == pytest.approx(19.5)    # ramp down by release*0.005, not snapped to the target
+    assert run(10.0, 20.0, 100.0, 100.0) == pytest.approx(10.5)    # ramp up
+    assert run(10.0, 10.2, 100.0, 100.0) == pytest.approx(10.2)    # within one step: reach the target
+    assert run(5.0, 5.0, 100.0, 100.0) == pytest.approx(5.0)       # no change still reaches the write
+    assert run(-25.0, 0.0, 100.0, 100.0) == pytest.approx(0.0)     # a negative previous value is treated as 0

@@ -612,19 +612,13 @@ class _ActivityGraphBuilder:
                 pending=[(else_if_decision, elseif_true_guard)],
                 stop_kinds={"else_if", "else", "end_if"},
             )
+            # The false path of this else-if feeds only the NEXT link of the chain (another else-if or the
+            # final else). It used to be merged with this branch's true exits first, so the final else body
+            # also ran after the else-if branch and overwrote its result ("l_ramped = l_targetPressure"
+            # after the ramp-down).
             elseif_false_pending = [(else_if_decision, "[else]")]
-            remaining_chain = index < len(steps) and steps[index].depth == depth and steps[index].kind in {"else_if", "else"}
-            if remaining_chain:
-                merged_exits = _merge_branch_exits(
-                    elseif_exits + elseif_false_pending,
-                    merge_name="Else-if merge",
-                    merge_description="Else-if branch merge",
-                )
-                branch_exits.extend(merged_exits)
-                false_pending = merged_exits
-            else:
-                branch_exits.extend(elseif_exits)
-                false_pending = elseif_false_pending
+            branch_exits.extend(elseif_exits)
+            false_pending = elseif_false_pending
 
         if index < len(steps) and steps[index].depth == depth and steps[index].kind == "else":
             index += 1

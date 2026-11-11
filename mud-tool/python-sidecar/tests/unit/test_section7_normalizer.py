@@ -88,5 +88,28 @@ def test_normalized_section7_improves_activity_context_branching():
 
     assert context.has_structured_flow_source is True
     assert sum(1 for node in diagram.nodes if node.node_type == ActivityNodeType.DECISION) >= 2
-    assert sum(1 for node in diagram.nodes if node.node_type == ActivityNodeType.MERGE) >= 2
+    # if / else if / else reconverge at ONE merge; the old "Else-if merge" node made the final else body run
+    # after the else-if branch too.
+    assert sum(1 for node in diagram.nodes if node.node_type == ActivityNodeType.MERGE) >= 1
     assert any((node.rte_call or "") == "Rte_IWrite" for node in diagram.nodes)
+
+    def reachable(start):
+        seen, stack = set(), [start]
+        while stack:
+            n = stack.pop()
+            for e in diagram.edges:
+                if e.source == n and e.target not in seen:
+                    seen.add(e.target)
+                    stack.append(e.target)
+        return seen
+
+    by_status = {}
+    for node in diagram.nodes:
+        for status in ("3", "2", "1"):
+            if "PP_EPSStatus" in (node.name or "") and (node.name or "").rstrip(") ").endswith(status):
+                by_status[status] = node.id
+    assert set(by_status) == {"3", "2", "1"}
+    for a in by_status.values():
+        for b in by_status.values():
+            if a != b:
+                assert b not in reachable(a)        # the three branches never run one after another

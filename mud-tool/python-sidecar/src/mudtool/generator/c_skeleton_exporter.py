@@ -539,8 +539,11 @@ class CSkeletonExporter:
                     self._walk_node(t, node_map, outgoing, edge_guards, lines, indent + 1, visited, stop_at=join)
                     lines.append(f"{pad}}}")
                 # Continue after the reconvergence point (emitted once).
+                # When this decision's join is also the enclosing decision's join (an else-if chain), the
+                # continuation belongs to the outer level: keep stop_at so it is not emitted inside the
+                # inner else block (a write after "if a {..} else if b {..}" landed in the last else).
                 if join is not None:
-                    self._walk_node(join, node_map, outgoing, edge_guards, lines, indent, visited)
+                    self._walk_node(join, node_map, outgoing, edge_guards, lines, indent, visited, stop_at=stop_at)
                 return  # Don't continue with outgoing — already walked
             else:
                 # Single outgoing from decision (shouldn't happen but handle gracefully)
