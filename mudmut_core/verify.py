@@ -379,6 +379,10 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS, *, cove
     if result.get("status") == "test_failed" and not smoke:
         result, dem_corrected = fix_dem_expectations(test_dir, result)
 
+    expectations_repaired: list[str] = []
+    if coverage_rounds and result.get("status") == "test_failed" and not smoke:
+        result, expectations_repaired = fix_failing_expectations(test_dir, result)
+
     coverage_extended: list[str] = []
     if coverage_rounds and result.get("status") in ("passed", "test_failed") and not smoke:
         result, coverage_extended = improve_coverage(test_dir, result, rounds=coverage_rounds)
@@ -393,6 +397,7 @@ def fix_loop(test_dir: Path | str, max_attempts: int = MAX_FIX_ATTEMPTS, *, cove
     result["smoke_fallback"] = smoke
     result["dem_expectations_corrected"] = dem_corrected
     result["coverage_extended"] = coverage_extended
+    result["expectations_repaired"] = expectations_repaired
     return result
 
 
@@ -496,6 +501,51 @@ def fix_dem_expectations(test_dir: Path | str, result: dict[str, Any]) -> tuple[
     after = _failure_count(test_dir) if rebuilt.get("status") in ("test_failed", "passed") else None
     if after is None or after >= before:
         for fname, code in originals.items():       # no improvement: put the original tests back
+            (test_dir / fname).write_text(code, encoding="utf-8")
+        return build_and_run(test_dir), []
+    return rebuilt, sorted(originals)
+
+
+def fix_failing_expectations(test_dir: Path | str, result: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """One correction round for tests that still fail: the model re-derives each expectation from the C source.
+
+    Nothing is deleted or loosened. A file is replaced only when the rebuilt suite has fewer failing tests;
+    otherwise the original file is restored. Remaining failures stay visible (they may be real code defects).
+    """
+    test_dir = Path(test_dir)
+    if result.get("status") != "test_failed":
+        return result, []
+    failing = failing_tests(test_dir)
+    if not failing:
+        return result, []
+    before = _failure_count(test_dir)
+    originals: dict[str, str] = {}
+    for fname, items in failing.items():
+        path = test_dir / fname
+        code = path.read_text(encoding="utf-8", errors="ignore")
+        group = re.sub(r"^Test_|\.cpp$", "", fname)
+        listing = "\n".join(f"- {n}: {m}" for n, m in items[:12])
+        prompt = (
+            "These CppUTest tests fail. The C code under test is the reference for WHAT it computes: read its source, "
+            "work out by hand what it returns / writes / reports for each failing test's inputs, and correct the "
+            "expectation, or the inputs that do not reach the intended path. Keep every test and its name; do not "
+            "delete tests, do not weaken checks to constants, do not change tests that pass. Return ONLY the complete "
+            "corrected file (no markdown fences, no explanation).\n\n"
+            f"FAILING TESTS ({fname}):\n{listing}\n\n"
+            f"FUNCTION UNDER TEST:\n```c\n{function_source(test_dir, group)[:6000]}\n```\n\n"
+            f"FILE ({fname}):\n```cpp\n{code}\n```\n{_TEST_API_HINT}"
+        )
+        fixed = re.sub(r"\s*```$", "", re.sub(r"^```(?:cpp|c\+\+)?\s*", "", (_fixer_generate(prompt) or "").strip()))
+        if fixed and fixed != code and same_test_groups(code, fixed):
+            originals[fname] = code
+            path.write_text(fixed, encoding="utf-8")
+    if not originals:
+        return result, []
+    rebuilt = build_and_run(test_dir)
+    after = _failure_count(test_dir) if rebuilt.get("status") in ("test_failed", "passed") else None
+    print(f"[mudmut_core] expectation repair: failing {before} -> {after}")
+    if after is None or after >= before:
+        for fname, code in originals.items():
             (test_dir / fname).write_text(code, encoding="utf-8")
         return build_and_run(test_dir), []
     return rebuilt, sorted(originals)
