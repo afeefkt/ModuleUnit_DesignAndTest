@@ -315,3 +315,27 @@ def test_clean_spec_markdown_drops_the_repeated_language_tag_line():
     assert "```c\nint c;" in out                       # real code that starts with c… is untouched
     assert "```text\nc\nkeep" in out                   # other languages are not touched
     assert design.clean_spec_markdown(None) == ""
+
+
+@pytest.mark.skipif(not _gcc_available(), reason="gcc not available")
+def test_every_call_of_a_recorded_function_is_kept(tmp_path):
+    c = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_X.h"\n\n'
+        "void RE_X(void)\n{\n"
+        "    Dem_ReportErrorStatus(7, 1);\n"
+        "    Dem_ReportErrorStatus(10, 0);\n}\n"
+    )
+    rep = compilable.make_compilable(c, "SWC_X", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert "extern float64 Dem_ReportErrorStatus_hist_arg0[16];" in (tmp_path / "Rte_SWC_X.h").read_text()
+    test = tmp_path / "t.cpp"
+    test.write_text('#include "SWC_X.h"\nint main(){ Rte_Stubs_Reset(); RE_X();'
+                    " if (Dem_ReportErrorStatus_callCount != 2) return 1;"
+                    " if (Dem_ReportErrorStatus_arg0 != 10) return 2;"          # the last call, as before
+                    " if (Dem_ReportErrorStatus_hist_arg0[0] != 7 || Dem_ReportErrorStatus_hist_arg1[0] != 1) return 3;"
+                    " Rte_Stubs_Reset(); if (Dem_ReportErrorStatus_hist_arg0[0] != 0) return 4; return 0; }\n")
+    import subprocess
+    build = subprocess.run(["sh", "-c", f"cd {tmp_path} && gcc -std=c99 -c -I. SWC_X.c Rte_Stubs.c && "
+                                        "g++ -I. t.cpp SWC_X.o Rte_Stubs.o -o t && ./t"],
+                           capture_output=True, text=True)
+    assert build.returncode == 0, (build.returncode, build.stderr + build.stdout)

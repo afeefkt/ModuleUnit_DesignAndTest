@@ -35,7 +35,10 @@ CALL_RECORDER_HINT = (
     "   DEM_EVENT_STATUS_FAILED on the bad path AND DEM_EVENT_STATUS_PASSED on the healthy path (and may check\n"
     "   several events in one run). So never assert Dem_ReportErrorStatus_callCount == 0 for valid input unless the\n"
     "   source really has no report on that path; count the reports the path makes and CHECK the LAST call's\n"
-    "   arguments (arg1 is DEM_EVENT_STATUS_PASSED / DEM_EVENT_STATUS_FAILED).\n"
+    "   arguments (arg1 is DEM_EVENT_STATUS_PASSED / DEM_EVENT_STATUS_FAILED). When one run reports several events,\n"
+    "   every call is kept: <function>_hist_arg<N>[k] is argument N of the k-th call (k = 0 is the first), e.g.\n"
+    "   LONGS_EQUAL(SWC_DEM_E_X, (long)Dem_ReportErrorStatus_hist_arg0[0]);\n"
+    "   LONGS_EQUAL(DEM_EVENT_STATUS_FAILED, (long)Dem_ReportErrorStatus_hist_arg1[0]);\n"
     "   Never define your own mock or stub of these functions (no redefinition, no extern \"C\" body, no call counter\n"
     "   of your own): the code under test would call the real stub, not yours."
 )
