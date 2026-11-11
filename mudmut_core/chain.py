@@ -339,41 +339,49 @@ async def _run_full_chain(
         _check_cancel(cancel, "review")
         t0 = time.time()
         observe.set_stage("review")
-        reviewed_md, review = await design.review_and_improve(chosen, text, spec_md, max_rounds=1, progress=progress)
-        review_approved = bool(review.approved)
-        holder["review_approved"] = review_approved
-        review_empty = bool(getattr(review, "ai_review_empty", False))
-        holder["review_ai_empty"] = review_empty
-        run.save_json_in("mud", "review.json", review.to_dict())
-        # The review may rewrite the spec. Re-run the spec check on the rewrite and keep it only
-        # when it is not worse — a rewrite into prose steps used to reach the activity stage unchecked.
+        best_md, best_sc = spec_md, sc
+        review_approved = False
+        review_empty = False
+        review = None
         review_note = ""
-        if reviewed_md and reviewed_md != spec_md:
-            sc_rev = spec_check.check_spec(reviewed_md, chosen.swc_name)
-            truncated = spec_check.rewrite_problem(spec_md, reviewed_md)
-            worse = (not sc_rev["ok"]) or len(sc_rev["usable"]) < len(sc["usable"]) \
-                or spec_check.gap_count(sc_rev) > spec_check.gap_count(sc) or bool(truncated)
-            if worse:
-                run.save_in("mud", "mud_spec_review_rejected.md", reviewed_md)
-                review_note = "; review rewrite discarded (" + (truncated or "failed the spec check") + ")"
-                warnings.append("The review's rewritten spec was worse in the spec check"
-                                + (f" ({truncated})" if truncated else "")
-                                + " (saved as 01_mud/mud_spec_review_rejected.md); the checked spec was kept.")
-            else:
-                spec_md, sc = reviewed_md, sc_rev
-                run.save_json_in("mud", "spec_check.json", sc)
-                review_note = "; review rewrite kept"
+        for attempt in range(1, 3):          # retry once: the reviewer model sometimes answers empty
+            reviewed_md, review = await design.review_and_improve(
+                chosen, text, best_md, max_rounds=1, progress=progress)
+            review_empty = bool(getattr(review, "ai_review_empty", False))
+            review_approved = bool(review.approved)
+            if reviewed_md and reviewed_md != best_md:
+                sc_rev = spec_check.check_spec(reviewed_md, chosen.swc_name)
+                truncated = spec_check.rewrite_problem(best_md, reviewed_md)
+                worse = (not sc_rev["ok"]) or len(sc_rev["usable"]) < len(best_sc["usable"]) \
+                    or spec_check.gap_count(sc_rev) > spec_check.gap_count(best_sc) or bool(truncated)
+                if worse:
+                    run.save_in("mud", "mud_spec_review_rejected.md", reviewed_md)
+                    warnings.append("The review's rewritten spec was worse in the spec check"
+                                    + (f" ({truncated})" if truncated else "")
+                                    + " (saved as 01_mud/mud_spec_review_rejected.md); the checked spec was kept.")
+                else:
+                    best_md, best_sc = reviewed_md, sc_rev
+                    review_note = "; review rewrite kept"
+            if review_approved and not review_empty:
+                break
+            if attempt == 1:
+                _emit(progress, "review", "Review not approved (or empty answer) — retrying once")
+        spec_md, sc = best_md, best_sc
+        holder["review_approved"] = review_approved
+        holder["review_ai_empty"] = review_empty
+        run.save_json_in("mud", "review.json", review.to_dict() if review else {})
+        run.save_json_in("mud", "spec_check.json", sc)
         run.save_in("mud", "mud_spec.md", spec_md)
         timings["review"] = time.time() - t0
-        stage_notes["review"] = f"approved={review.approved} coverage={review.coverage_pct}%{review_note}"
+        stage_notes["review"] = f"approved={review_approved} coverage={getattr(review, 'coverage_pct', '?')}%{review_note}"
         if review_empty:
             stage_notes["review"] += "; ⚠️ the AI reviewer returned no answer — only the deterministic ID check ran"
             warnings.append("The AI spec reviewer returned an empty answer; the review verdict is the "
                             "deterministic requirement-ID check only.")
         _emit(
             progress, "review",
-            f"Review: approved={review.approved} coverage={review.coverage_pct}% "
-            f"errors={review.error_count} warnings={review.warning_count}",
+            f"Review: approved={review_approved} coverage={getattr(review, 'coverage_pct', '?')}% "
+            f"errors={getattr(review, 'error_count', '?')} warnings={getattr(review, 'warning_count', '?')}",
             done=True,
         )
 

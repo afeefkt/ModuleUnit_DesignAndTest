@@ -117,6 +117,34 @@ def test_failed_stage_skips_review_in_quick_mode():
     assert chain._failed_stage(None, quick=True) == "import"
 
 
+def test_review_retries_an_empty_answer(stubbed_chain, monkeypatch):
+    class Rev:
+        def __init__(self, approved, empty):
+            self.approved = approved
+            self.ai_review_empty = empty
+            self.coverage_pct = 90
+            self.error_count = 0
+            self.warning_count = 0
+
+        def to_dict(self):
+            return {"approved": self.approved, "ai_review_empty": self.ai_review_empty}
+
+    calls = {"review": 0}
+
+    async def fake_review(module, text, spec_md, max_rounds=1, progress=None):
+        calls["review"] += 1
+        if calls["review"] == 1:
+            return spec_md, Rev(False, True)      # empty reviewer answer first
+        return spec_md, Rev(True, False)          # approved on the retry
+
+    monkeypatch.setattr(design, "review_and_improve", fake_review)
+    summary = asyncio.run(chain.run_full_chain(
+        str(stubbed_chain["req_file"]), swc="SWC_Test", quick=False, root=stubbed_chain["root"]))
+    assert calls["review"] == 2
+    assert summary["review_approved"] is True
+    assert summary["review_ai_empty"] is False
+
+
 def test_apply_stages_to_env_ignores_blank_models(monkeypatch):
     stage = next(s for s in agents.STAGES if s.side == "mut")
     monkeypatch.setenv(stage.model_env, "qwen2.5:7b")
