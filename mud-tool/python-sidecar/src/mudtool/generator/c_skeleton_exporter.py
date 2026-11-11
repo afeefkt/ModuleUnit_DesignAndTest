@@ -123,6 +123,81 @@ def _helper_name(sub) -> str:
     return sub.function_name or sub.name.replace(" Code Flow", "")
 
 
+def _split_args(args: str) -> list[str]:
+    """Top-level comma-separated arguments of ``args`` (nested brackets and strings are not split)."""
+    parts, depth, quote, cur = [], 0, "", []
+    for ch in args:
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+            continue
+        cur.append(ch)
+    parts.append("".join(cur).strip())
+    return parts
+
+
+def _helper_signatures(diagrams) -> dict[str, list[str]]:
+    """``{helper: [parameter declaration, ...]}`` for helpers (sub-diagrams with a body) the design
+    always calls with the same number of arguments and never with a result (``x = f(a)``).
+
+    The helper is then generated with those parameters instead of ``void f(void)``, so the arguments
+    the design passes are not dropped. A parameter is ``float64`` unless some call passes the name of
+    a function (e.g. a runnable used as a watchdog checkpoint id): that one is a function pointer,
+    and a plain ``0`` is a valid null pointer there.
+    """
+    import re
+    seen: dict[str, list[list[str]]] = {}       # helper → the argument lists of its call sites
+    lhs_calls: set[str] = set()
+    bodies: set[str] = set()
+    functions: set[str] = set()
+
+    def walk(diagram) -> None:
+        if diagram.owner_runnable:
+            functions.add(diagram.owner_runnable)
+        if diagram.function_name:
+            functions.add(diagram.function_name)
+        for sub in diagram.sub_diagrams:
+            if not _is_empty_helper(sub):
+                bodies.add(_helper_name(sub))
+            walk(sub)
+        for node in diagram.nodes:
+            if node.node_type != ActivityNodeType.FUNCTION_CALL:
+                continue
+            callee = (node.callee or node.name or "").strip()
+            callee = callee[:-2] if callee.endswith("()") else callee
+            text = f"{node.code or ''} {node.name or ''} {node.description or ''}"
+            if node.code and "=" in node.code.split(callee, 1)[0]:
+                lhs_calls.add(callee)
+            args = _call_args(text, callee)
+            seen.setdefault(callee, []).append(_split_args(args) if args else [])
+
+    for diagram in diagrams:
+        walk(diagram)
+    out: dict[str, list[str]] = {}
+    for name, calls in seen.items():
+        counts = {len(c) for c in calls}
+        if name not in bodies or name in lhs_calls or len(counts) != 1 or 0 in counts:
+            continue
+        decls = []
+        for i in range(next(iter(counts))):
+            is_fn = any(re.fullmatch(r"[A-Za-z_]\w*", c[i]) and c[i] in functions for c in calls)
+            decls.append(f"void (*a{i})(void)" if is_fn else f"float64 a{i}")
+        out[name] = decls
+    return out
+
+
+def _params(decls: list[str] | None) -> str:
+    return ", ".join(decls) if decls else "void"
+
+
 def _is_empty_helper(sub) -> bool:
     """True when every working node of a helper sub-diagram only calls the helper itself."""
     import re
@@ -157,6 +232,9 @@ def _drop_unreachable_returns(body: list[str]) -> list[str]:
 class CSkeletonExporter:
     """Export ActivityDiagram JSON to C-code skeleton files."""
 
+    _helper_params: dict[str, list[str]] = {}    # replaced, never mutated (see _helper_signatures)
+    _helper_params_all = None
+
     def export_diagram(self, diagram: ActivityDiagram, *, as_helper: bool = False) -> str:
         """Generate C skeleton code for a single ActivityDiagram.
 
@@ -169,9 +247,11 @@ class CSkeletonExporter:
         # drop it, so the parent keeps the design's full call (arguments + result) as an external helper.
         real_subs = [s for s in diagram.sub_diagrams if not _is_empty_helper(s)]
         if not as_helper:
-            # Helpers that get a generated body (sub-diagrams) are called as void(void);
-            # any other helper keeps the design's call statement.
+            # Helpers that get a generated body (sub-diagrams) are called as void(void), or take the
+            # parameters the design passes; any other helper keeps the design's call statement.
             self._helper_bodies = {_helper_name(sub) for sub in real_subs}
+            if getattr(self, "_helper_params_all", None) is None:       # exported on its own, not via export_result
+                self._helper_params = _helper_signatures([diagram])
             # Header comment
             lines.append(f"/* Generated from: {diagram.name} */")
             if diagram.source_requirements:
@@ -191,7 +271,8 @@ class CSkeletonExporter:
             # Forward declare any helper functions from sub_diagrams
             # Helpers have external linkage so the unit tests can call (and link) them.
             for sub in real_subs:
-                lines.append(f"void {_helper_name(sub)}(void);  /* see sub-diagram */")
+                lines.append(f"void {_helper_name(sub)}({_params(self._helper_params.get(_helper_name(sub)))});"
+                             "  /* see sub-diagram */")
             if real_subs:
                 lines.append("")
 
@@ -208,7 +289,7 @@ class CSkeletonExporter:
             func_name = diagram.function_name or diagram.name.replace(" Code Flow", "")
         else:
             func_name = diagram.owner_runnable or diagram.name.replace(" Code Flow", "")
-        lines.append(f"void {func_name}(void)")
+        lines.append(f"void {func_name}({_params(self._helper_params.get(func_name) if as_helper else None)})")
         lines.append("{")
         body: list[str] = []
         outer_func = getattr(self, "_current_func", None)
@@ -249,11 +330,15 @@ class CSkeletonExporter:
                 name = diagram.name or "diagram"
                 top[name.replace(" ", "_").replace("/", "_")] = diagram
         self._emitted_helpers = set()
+        # One signature per helper across all runnables: a helper shared by two runnables is
+        # defined once, so both must agree on its parameters.
+        self._helper_params = self._helper_params_all = _helper_signatures(top.values())
         try:
             for safe_name, diagram in top.items():
                 output[safe_name] = self.export_diagram(diagram)
         finally:
             self._emitted_helpers = None
+            self._helper_params_all = None
         return output
 
     def _emit_body(self, diagram: ActivityDiagram, lines: list[str]) -> None:
@@ -398,6 +483,10 @@ class CSkeletonExporter:
             if callee and callee == getattr(self, "_current_func", None):
                 # The sub-diagram only "calls itself": the MUD never described the helper's body.
                 lines.append(f"{pad}{_empty_helper_note(callee)}")
+            elif callee in self._helper_params and _call_args(f"{node.code or ''} {node.name or ''} {node.description or ''}", callee):
+                # The helper takes the parameters the design passes: keep the call whole.
+                args = _call_args(f"{node.code or ''} {node.name or ''} {node.description or ''}", callee)
+                lines.append(f"{pad}{callee}({args});")
             elif node.code and callee not in getattr(self, "_helper_bodies", set()):
                 # No body is generated here for this helper: keep the design's statement whole
                 # (arguments and result), the helper is declared and stubbed as an external function.

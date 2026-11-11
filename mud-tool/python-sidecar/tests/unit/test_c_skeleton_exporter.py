@@ -157,6 +157,72 @@ def test_helper_shared_by_two_runnables_is_defined_once():
     assert code.count("void Helper(void);") == 2           # and both see a prototype
 
 
+def _helper_call(id_: str, callee: str, code: str) -> ActivityNode:
+    return ActivityNode(id=id_, name=f"{callee}(...)", node_type=ActivityNodeType.FUNCTION_CALL, callee=callee, code=code)
+
+
+def test_helper_with_a_body_keeps_the_arguments_the_design_passes():
+    """Run 20261111_005406: the design called ``WdgM_UpdateAliveCounter(0)`` / ``(RE_PressureMapping)`` and the
+    helper got a body, so it was emitted as void(void), the arguments were dropped (TODO(args)) and the
+    compile gate failed. With the same argument count at every call site the helper takes the parameters."""
+    def helper():
+        return ActivityDiagram(
+            name="WdgM_Update Code Flow", function_name="WdgM_Update",
+            nodes=[_node("s0", "Start", ActivityNodeType.INITIAL),
+                   _node("s1", "l_u8Z = 9", ActivityNodeType.ACTION),
+                   _node("s2", "End", ActivityNodeType.FINAL)],
+            edges=[_edge("s0", "s1"), _edge("s1", "s2")],
+        )
+
+    def runnable(name, arg):
+        return ActivityDiagram(
+            name=f"{name} Code Flow", owner_swc="SWC_Bms", owner_runnable=name,
+            nodes=[_node("n0", "Start", ActivityNodeType.INITIAL),
+                   _helper_call("n1", "WdgM_Update", f"WdgM_Update({arg})"),
+                   _node("n2", "End", ActivityNodeType.FINAL)],
+            edges=[_edge("n0", "n1"), _edge("n1", "n2")],
+            sub_diagrams=[helper()],
+        )
+
+    out = CSkeletonExporter().export_result(GenerationResult(diagrams=[runnable("RE_A", "0"), runnable("RE_B", "1.5F")]))
+    code = "\n\n".join(out.values())
+    assert "TODO(args)" not in code
+    assert "WdgM_Update(0);" in code and "WdgM_Update(1.5F);" in code      # the design's arguments are kept
+    assert code.count("\nvoid WdgM_Update(float64 a0)\n{") == 1             # defined once, with the parameter
+    assert code.count("void WdgM_Update(float64 a0);") == 2                 # prototypes match
+
+    # The design passes a runnable's name as the id (``WdgM_Update(RE_B)``): a value cannot hold a function,
+    # so that parameter is a function pointer (a plain ``0`` is a valid null pointer there).
+    out = CSkeletonExporter().export_result(GenerationResult(diagrams=[runnable("RE_A", "0"), runnable("RE_B", "RE_B")]))
+    code = "\n\n".join(out.values())
+    assert "TODO(args)" not in code
+    assert "WdgM_Update(0);" in code and "WdgM_Update(RE_B);" in code
+    assert code.count("\nvoid WdgM_Update(void (*a0)(void))\n{") == 1
+    assert code.count("void WdgM_Update(void (*a0)(void));") == 2
+
+
+def test_helper_with_inconsistent_argument_counts_stays_void_and_is_flagged():
+    def helper():
+        return ActivityDiagram(
+            name="H Code Flow", function_name="H",
+            nodes=[_node("s0", "Start", ActivityNodeType.INITIAL), _node("s1", "l_u8Z = 9", ActivityNodeType.ACTION),
+                   _node("s2", "End", ActivityNodeType.FINAL)],
+            edges=[_edge("s0", "s1"), _edge("s1", "s2")],
+        )
+
+    def runnable(name, code):
+        return ActivityDiagram(
+            name=f"{name} Code Flow", owner_runnable=name,
+            nodes=[_node("n0", "Start", ActivityNodeType.INITIAL), _helper_call("n1", "H", code),
+                   _node("n2", "End", ActivityNodeType.FINAL)],
+            edges=[_edge("n0", "n1"), _edge("n1", "n2")], sub_diagrams=[helper()],
+        )
+
+    out = CSkeletonExporter().export_result(GenerationResult(diagrams=[runnable("RE_A", "H(1)"), runnable("RE_B", "H(1, 2)")]))
+    code = "\n\n".join(out.values())
+    assert "\nvoid H(void)\n{" in code and "TODO(args)" in code     # no consistent signature: as before
+
+
 def test_helper_without_body_keeps_design_statement_and_titles_become_comments():
     d = ActivityDiagram(
         name="RE_Foo Code Flow", owner_runnable="RE_Foo",
