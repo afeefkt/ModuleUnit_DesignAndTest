@@ -160,6 +160,69 @@ def test_explicit_rte_accessors_are_test_variables(tmp_path):
     assert toolchain.run_c([str(tmp_path / "t")]).returncode == 0
 
 
+def test_generic_irv_read_write_are_controllable_by_tests(tmp_path):
+    """``Rte_IrvRead(IRV_X, &l)`` / ``Rte_IrvWrite(IRV_X, v)`` — the form DeepSeek writes — read and
+    write the IRV variable, so a test can set an input and check an output.
+
+    Run 20261111_005406: these were empty stub functions. A test that set ``IRV_FinalBrakePressureCommand
+    = 123.5`` never reached the code (the local stayed 0) and 28 of 45 test cases failed with
+    "expected <123.5> but was <0>" although the logic was right.
+    """
+    from mudmut_core import toolchain
+    code = (
+        '#include "Rte_Type.h"\n#include "Rte_SWC_T.h"\n\n'
+        "uint32 l_pressure;\nuint32 l_ready;\n\n"
+        "void RE_Cmd(void)\n{\n"
+        "    Rte_IrvRead(IRV_Pressure, &l_pressure);  /* in */\n"
+        "    Rte_IrvRead(IRV_Ready, &l_ready);  /* in */\n"
+        "    if (l_ready == 1U)\n    {\n"
+        "        Rte_IrvWrite(IRV_Out, l_pressure);  /* out */\n"
+        "    }\n"
+        "    Rte_IrvWrite(IRV_Status, 4);  /* out */\n"
+        "}\n"
+    )
+    rep = compilable.make_compilable(code, "SWC_T", tmp_path)
+    assert rep.compile_ok, rep.last_error
+    assert rep.stubbed_statements == 0 and rep.logic_stubbed == 0
+    hdr = (tmp_path / "Rte_SWC_T.h").read_text()
+    stubs = (tmp_path / "Rte_Stubs.c").read_text()
+    assert "#define Rte_IrvRead(var, dst)" in hdr and "#define Rte_IrvWrite(var, val)" in hdr
+    assert "Rte_IrvRead(MUDMUT_ANY_ARGS)" not in hdr      # no function declaration clashing with the macro
+    assert "Rte_IrvRead()" not in stubs and "Rte_IrvWrite()" not in stubs
+    for var in ("IRV_Pressure", "IRV_Ready", "IRV_Out", "IRV_Status"):
+        assert f"extern float64 {var};" in hdr, var
+    assert "void Rte_Stubs_Reset(void);" in hdr and "IRV_Out = 0;" in stubs
+    if not toolchain.check_toolchain().ok:
+        return
+    (tmp_path / "t.cpp").write_text(
+        '#include "SWC_T.h"\n'
+        "int main(){\n"
+        "  Rte_Stubs_Reset();\n"
+        "  IRV_Pressure = 123.5; IRV_Ready = 1;\n"
+        "  RE_Cmd();\n"
+        "  if (IRV_Out != 123) return 1;\n"            # float64 value stored through uint32 local
+        "  if (IRV_Status != 4) return 2;\n"
+        "  Rte_Stubs_Reset();\n"
+        "  return (IRV_Out == 0 && IRV_Status == 0) ? 0 : 3; }\n",
+        encoding="utf-8")
+    for src in ("SWC_T.c", "Rte_Stubs.c"):
+        r = toolchain.run_c(["gcc", "-std=c99", "-w", "-c", f"-I{tmp_path}", str(tmp_path / src),
+                             "-o", str(tmp_path / (src + ".o"))], cwd=str(tmp_path))
+        assert r.returncode == 0, r.stderr
+    r = toolchain.run_c(["g++", f"-I{tmp_path}", str(tmp_path / "t.cpp"), str(tmp_path / "SWC_T.c.o"),
+                         str(tmp_path / "Rte_Stubs.c.o"), "-o", str(tmp_path / "t")], cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert toolchain.run_c([str(tmp_path / "t")]).returncode == 0
+
+
+def test_irv_macros_only_when_used_in_the_two_argument_form():
+    assert compilable.irv_macros("Rte_IrvRead(IRV_A, &l_x); Rte_IrvWrite(IRV_B, 1);").keys() == {"Rte_IrvRead", "Rte_IrvWrite"}
+    assert compilable.irv_macros("/* Rte_IrvRead(IRV_A, &x) */ int y;") == {}               # only in a comment
+    assert compilable.irv_macros("Rte_IrvRead_RP_A_B(&x);") == {}                            # the suffixed form is an accessor
+    assert compilable.irv_macros("Rte_IrvRead(IRV_A);") == {}                                # shape the macro cannot serve
+    assert compilable.irv_macros("Rte_IrvWrite(IRV_A, 1); Rte_IrvWrite(IRV_B);") == {}       # inconsistent use: keep the function
+
+
 def test_declarations_are_not_prose():
     """``uint8 count;`` is two words like ``Restore defaults;`` but it is C and must be kept."""
     for decl in ("    uint8 count;", "    float32 l_f32Tmp;", "    static const uint16 limit;",
