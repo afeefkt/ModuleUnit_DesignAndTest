@@ -58,6 +58,15 @@ _IO_OUT = (
 )
 
 
+_DEM_REPORT_RE = re.compile(r"\bDem_ReportErrorStatus\s*\(\s*([^,()]+?)\s*,\s*([^()]+?)\s*\)")
+
+
+def dem_reports(source_code: str) -> list[str]:
+    """``["EVENT, STATUS", ...]`` of the Dem reports in the source, each distinct pair once, in order."""
+    code = _IO_COMMENT_RE.sub(" ", source_code or "")
+    return list(dict.fromkeys(f"{ev}, {st}" for ev, st in _DEM_REPORT_RE.findall(code)))
+
+
 def function_io(source_code: str, symbols: str = "") -> dict:
     """The exact variables a test must set / check for one function, read from its own source.
 
@@ -79,6 +88,7 @@ def function_io(source_code: str, symbols: str = "") -> dict:
         "set": collect(_IO_IN),
         "check": collect(_IO_OUT),
         "calls": [f for f in called if f"{f}_callCount" in (symbols or "")],
+        "dem": dem_reports(source_code) if "Dem_ReportErrorStatus_callCount" in (symbols or "") else [],
     }
 
 
@@ -91,6 +101,11 @@ def function_io_block(io: dict) -> str:
         lines.append("  check after the call: " + ", ".join(io["check"]))
     if io["calls"]:
         lines.append("  calls recorded (<fn>_callCount, <fn>_arg0 ...): " + ", ".join(io["calls"]))
+    if io.get("dem"):
+        lines.append("  Dem_ReportErrorStatus calls in its source (event, status): " + "; ".join(io["dem"]))
+        lines.append("  Both FAILED and PASSED reports exist for an event: the healthy path still reports PASSED, so "
+                     "Dem_ReportErrorStatus_callCount is NOT 0 there. Read the path you test, count the reports it "
+                     "makes, and check the k-th one with Dem_ReportErrorStatus_hist_arg0[k] / _hist_arg1[k].")
     if not lines:
         return ""
     return ("\nTHIS FUNCTION'S TEST INTERFACE (exact variable names, taken from its source; "

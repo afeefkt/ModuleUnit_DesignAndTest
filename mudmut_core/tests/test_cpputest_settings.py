@@ -156,3 +156,20 @@ def test_run_scripts_written_next_to_makefile(tmp_path):
     assert sh.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in sh
     assert b"make \"$@\"" in sh and b"clean all coverage" in sh
     assert b"\r\n" in bat and b"wsl.exe --cd \"%~dp0.\" -e bash ./build_and_run.sh %*" in bat
+
+
+def test_dem_reports_in_the_source_are_listed_for_the_test_writer():
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import function_io, function_io_block
+    src = ("void RE_X(void)\n{\n"
+           "    if (l_a < 0.0f)\n    {\n        Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_FAILED);\n        return;\n    }\n"
+           "    Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED);\n"
+           "    Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED);  /* duplicate pair */\n"
+           "    /* Dem_ReportErrorStatus(SWC_DEM_E_Hidden, DEM_EVENT_STATUS_FAILED); */\n}\n")
+    symbols = "uint32 Dem_ReportErrorStatus_callCount;"
+    io = function_io(src, symbols)
+    assert io["dem"] == ["SWC_DEM_E_A, DEM_EVENT_STATUS_FAILED", "SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED"]
+    block = function_io_block(io)
+    assert "healthy path still reports PASSED" in block and "hist_arg0[k]" in block
+    assert function_io(src, "")["dem"] == []            # no recorder for it: nothing to say
