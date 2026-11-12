@@ -345,11 +345,23 @@ def _call_hist_vars(calls: dict[str, int]) -> list[str]:
     return [f"{name}_hist_arg{i}" for name in sorted(calls) for i in range(calls[name])]
 
 
+# RTE APIs whose return value is a BOOLEAN (TRUE = updated), not a Std_ReturnType status: the stub returns a
+# variable a test can set (default TRUE). Returning E_OK (= 0 = FALSE) made "Rte_IsUpdated(..) == FALSE" always
+# true and the rest of the runnable unreachable.
+BOOLEAN_RTE_APIS = {"Rte_IsUpdated"}
+
+
+def _call_var_default(var: str) -> int:
+    return 1 if var.endswith("_return") else 0
+
+
 def _call_vars(calls: dict[str, int]) -> list[tuple[str, str]]:
     """``(c_type, variable)`` of every call recorder."""
     rows: list[tuple[str, str]] = []
     for name in sorted(calls):
         rows.append(("uint32", f"{name}_callCount"))
+        if name in BOOLEAN_RTE_APIS:
+            rows.append(("uint32", f"{name}_return"))
         rows += [("float64", f"{name}_arg{i}") for i in range(calls[name])]
     return rows
 
@@ -642,11 +654,13 @@ def generate_rte_stubs(
     if sig_rows:
         defs.append("\n".join(f"{ctype} {var} = {value};" for ctype, var, value in sig_rows))
     if calls:
-        defs.append("\n".join([f"{ctype} {var} = 0;" for ctype, var in _call_vars(calls)]
+        defs.append("\n".join([f"{ctype} {var} = {_call_var_default(var)};" for ctype, var in _call_vars(calls)]
                               + [f"float64 {var}[{CALL_HISTORY}] = {{0}};" for var in _call_hist_vars(calls)]))
     for name in sorted(rte_functions):
         ret_type = types.get(name, "Std_ReturnType")
         ret = "E_OK" if ret_type == "Std_ReturnType" else "0"
+        if name in BOOLEAN_RTE_APIS:
+            ret = f"({ret_type}){name}_return"
         if name in calls:
             params = ", ".join(f"float64 a{i}" for i in range(calls[name])) or "void"
             history = "".join(f"    if ({name}_callCount < {CALL_HISTORY}) {name}_hist_arg{i}[{name}_callCount] = a{i};\n"
@@ -665,7 +679,7 @@ def generate_rte_stubs(
         # test (e.g. a deviation timer) does not leak into the next.
         resets = "\n".join([f"    {var} = {value};" for _ctype, var, value in sig_rows]
                            + [f"    {name} = 0;" for name in sorted(variables or ())]
-                           + [f"    {var} = 0;" for _ctype, var in _call_vars(calls)]
+                           + [f"    {var} = {_call_var_default(var)};" for _ctype, var in _call_vars(calls)]
                            + [f"    for (unsigned k = 0; k < {CALL_HISTORY}; k++) {var}[k] = 0;"
                               for var in _call_hist_vars(calls)])
         defs.append(f"void Rte_Stubs_Reset(void)\n{{\n{resets}\n}}")

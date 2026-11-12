@@ -230,7 +230,7 @@ _TEST_API_HINT = (
     "same way: assign or compare them, never call them from a test. IRVs (Rte_IrvRead/Rte_IrvWrite(IRV_X, ..)) are "
     "the variables IRV_X. Calls to other functions (Dem_*, WdgM_*, Rte_Call_* ...) are recorded: check "
     "<function>_callCount and <function>_arg0, <function>_arg1 ...; never define your own mock of them. "
-    "Use only constants that exist in the headers; for \"a value different from X\" write (X + 1).\n"
+    "Rte_IsUpdated(port) returns Rte_IsUpdated_return (default 1 = updated; set it to 0 for the not-updated path). Use only constants that exist in the headers; for \"a value different from X\" write (X + 1).\n"
 )
 
 

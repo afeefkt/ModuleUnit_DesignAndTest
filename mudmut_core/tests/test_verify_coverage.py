@@ -64,3 +64,11 @@ def test_stray_comment_fragments_are_a_spec_gap():
     assert spec_check.stray_comments("x = 1; /* ok */\nprose fragment */ if (a) {") == ["prose fragment */ if (a) {"]
     check = {"stray_comments": {"RE_Init": ["/* open"]}}
     assert spec_check.gap_count(check) == 1 and "RE_Init" in design.spec_check_issues(check)[0][1]
+
+
+def test_rte_is_updated_stub_is_a_controllable_boolean():
+    from mudmut_core import compilable
+    stubs = compilable.generate_rte_stubs("SWC_X", {"Rte_IsUpdated"}, calls={"Rte_IsUpdated": 1})
+    assert "uint32 Rte_IsUpdated_return = 1;" in stubs
+    assert "return (Std_ReturnType)Rte_IsUpdated_return;" in stubs
+    assert "Rte_IsUpdated_return = 1;" in stubs.split("Rte_Stubs_Reset(void)")[1]
