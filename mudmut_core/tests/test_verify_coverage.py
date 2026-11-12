@@ -57,3 +57,10 @@ def test_struct_locals_detected_in_section7():
     assert spec_check.struct_locals(bad) == ["DT_Cmd l_cmd", "l_cmd.pressure ="]
     assert spec_check.struct_locals("l_p = Rte_IRead(x);\nl_s = l_p + 1; // l_c.d = 1\n") == []
     assert spec_check.gap_count({"struct_locals": {"RE_X": ["a", "b"]}}) == 2
+
+
+def test_stray_comment_fragments_are_a_spec_gap():
+    from mudmut_core import spec_check, design
+    assert spec_check.stray_comments("x = 1; /* ok */\nprose fragment */ if (a) {") == ["prose fragment */ if (a) {"]
+    check = {"stray_comments": {"RE_Init": ["/* open"]}}
+    assert spec_check.gap_count(check) == 1 and "RE_Init" in design.spec_check_issues(check)[0][1]

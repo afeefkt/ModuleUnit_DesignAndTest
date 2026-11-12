@@ -189,6 +189,10 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, items in (check.get("stray_comments") or {}).items():
+        issues.append(("error", f"{runnable} has broken comment markers ({'; '.join(items[:3])}). Every /* needs its */ "
+                                "on the same line, and a step must be either a C statement or a comment, never a "
+                                "comment fragment glued to code."))
     for runnable, items in (check.get("struct_locals") or {}).items():
         issues.append(("error", f"{runnable} uses struct-typed locals or member access on locals "
                                 f"({'; '.join(items[:4])}). Replace each with one scalar local per element "

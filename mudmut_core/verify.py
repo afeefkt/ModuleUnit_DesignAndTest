@@ -252,7 +252,7 @@ def errors_for_file(stderr: str, filename: str, limit: int = 3000) -> str:
 
 
 MAX_FIX_ATTEMPTS = 8      # rebuild-and-ask rounds (each round asks for every file that still fails)
-COVERAGE_ROUNDS = 2       # coverage-gap rounds after the suite is green (0 = off)
+COVERAGE_ROUNDS = 3       # coverage-gap rounds after the suite is green (0 = off)
 MAX_FIX_STALLS = 2        # a file whose compiler error did not change this many answers in a row is given up
 
 
@@ -713,7 +713,9 @@ def improve_coverage(test_dir: Path | str, result: dict[str, Any], rounds: int =
                 "and assert the result the source computes (work it out from the code - do not guess). Use only "
                 "helpers and stub variables already used in the file. Return ONLY the new "
                 f"TEST({gm.group(1)}, <UniqueName>) {{ ... }} blocks - no includes, no TEST_GROUP, not the existing "
-                "tests, no markdown fences, no explanation. Use names that do not exist yet.\n\n"
+                "tests, no markdown fences, no explanation. Use names that do not exist yet. Rte reads/writes of ports and "
+                "IRVs always succeed in the stubs and RTE_E_NOT_OK / Rte_*_return / Rte_*_Status variables do not exist: "
+                "never write a test that forces an Rte read/write to fail - skip the lines that only such a failure could reach.\n\n"
                 f"SOURCE OF {name} ('>>' = not reached):\n```c\n{_numbered_source(test_dir, gap)}\n```\n\n"
                 f"EXISTING FILE (Test_{name}.cpp):\n```cpp\n{code}\n```\n"
                 f"{_TEST_API_HINT}"

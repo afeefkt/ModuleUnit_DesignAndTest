@@ -407,6 +407,20 @@ class CSkeletonExporter:
             if node_map.get(n) and node_map[n].node_type in (ActivityNodeType.MERGE, ActivityNodeType.JOIN)
         ]
         if joins:
+            # The NEAREST common merge, not the alphabetically first id: with ids up to N_104, "N_100" sorts
+            # before "N_24", which put everything between the two merges inside the first if-body.
+            from collections import deque
+            wanted = set(joins)
+            seen: set[str] = set()
+            queue = deque(targets)
+            while queue:
+                n = queue.popleft()
+                if n in seen:
+                    continue
+                seen.add(n)
+                if n in wanted:
+                    return n
+                queue.extend(outgoing.get(n, []))
             return sorted(joins)[0]
         return None
 

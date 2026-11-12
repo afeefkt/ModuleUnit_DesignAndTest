@@ -39,11 +39,15 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     missing_planned = [n for n in (planned or []) if n not in have]
     never_set: dict[str, list[str]] = {}
     struct_loc: dict[str, list[str]] = {}
+    stray: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        sc_ = stray_comments(r.functional_description)
+        if sc_:
+            stray[r.name] = sc_
         sl = struct_locals(r.functional_description)
         if sl:
             struct_loc[r.name] = sl
@@ -62,6 +66,7 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "undescribed_helpers": undescribed,
         "missing_planned": missing_planned,
         "struct_locals": struct_loc,
+        "stray_comments": stray,
         "problems": problems,
     }
 
@@ -103,7 +108,8 @@ def gap_count(result: dict[str, Any]) -> int:
             + sum(len(v) for v in (result.get("undescribed_helpers") or {}).values())
             + len(result.get("placeholder") or []) + len(result.get("empty") or [])
             + len(result.get("missing_planned") or [])
-            + sum(len(v) for v in (result.get("struct_locals") or {}).values()))
+            + sum(len(v) for v in (result.get("struct_locals") or {}).values())
+            + sum(len(v) for v in (result.get("stray_comments") or {}).values()))
 
 
 _LOCAL_RE = re.compile(r"\bl_[A-Za-z0-9_]+\b")
@@ -137,6 +143,19 @@ def struct_locals(text: str) -> list[str]:
     code = re.sub(r"//[^\n]*", "", text or "")
     return list(dict.fromkeys(m.group(0).strip() for m in _STRUCT_LOCAL_RE.finditer(code)))
 
+
+
+def stray_comments(text: str) -> list[str]:
+    """Lines of a runnable's Section 7 with a comment end ``*/`` but no start, or a start without an end.
+
+    Such a fragment ('... prose */ if (x) ...') is turned into one broken C statement by the code generator."""
+    out: list[str] = []
+    for line in (text or "").splitlines():
+        s = line.strip()
+        opens, closes = s.count("/*"), s.count("*/")
+        if opens != closes:
+            out.append(s[:80])
+    return out
 
 
 def undescribed_helpers(text: str, runnables: set[str]) -> list[str]:
