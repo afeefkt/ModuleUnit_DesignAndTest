@@ -141,6 +141,16 @@ async def review_and_improve(
     from mudtool.ai.mud_spec_generator import MudSpecGenerator, build_unresolved_review, compare_review_results
     gen = MudSpecGenerator(_orchestrator())
 
+    from mudmut_core import spec_check
+
+    def _broken(prev: str, new: str) -> str:
+        """Why a regeneration must not replace ``prev`` ('' when it may). An empty or cut-off rewrite was
+        reviewed as 'specification body is empty' (r34: coverage 0 %, 5 errors) and became the verdict."""
+        new_clean = clean_spec_markdown(new or "")
+        if len(new_clean.strip()) < max(200, len(prev.strip()) // 2):
+            return f"rewrite has {len(new_clean.strip())} chars (previous {len(prev.strip())})"
+        return spec_check.rewrite_problem(prev, new_clean)
+
     review = await review_spec(module, requirements_text_, mud_spec_markdown, iteration=1)
     improved = mud_spec_markdown
 
@@ -150,7 +160,7 @@ async def review_and_improve(
         if progress:
             progress({"stage": "mud_review", "round": round_no + 1,
                       "errors": review.error_count, "warnings": review.warning_count})
-        improved = await gen.regenerate_spec(
+        candidate = await gen.regenerate_spec(
             swc_name=module.swc_name,
             asil=module.asil,
             requirements_text=requirements_text_,
@@ -159,12 +169,18 @@ async def review_and_improve(
             temperature=min(0.1, round_no * 0.05),
             progress_callback=progress,
         )
+        problem = _broken(improved, candidate)
+        if problem:
+            if progress:
+                progress({"stage": "mud_review", "message": f"regeneration discarded: {problem}"})
+            break                                   # keep the previous spec AND the review that belongs to it
+        improved = candidate
         post = await review_spec(module, requirements_text_, improved, iteration=round_no + 2)
         comparison = compare_review_results(review, post)
         review = post
         if comparison.get("repeated_issue_count", 0) > 0:
             unresolved = build_unresolved_review(comparison, post)
-            improved = await gen.regenerate_spec(
+            candidate = await gen.regenerate_spec(
                 swc_name=module.swc_name,
                 asil=module.asil,
                 requirements_text=requirements_text_,
@@ -174,6 +190,12 @@ async def review_and_improve(
                 progress_callback=progress,
                 repair_attempt=True,
             )
+            problem = _broken(improved, candidate)
+            if problem:
+                if progress:
+                    progress({"stage": "mud_review", "message": f"repair regeneration discarded: {problem}"})
+                break
+            improved = candidate
             review = await review_spec(module, requirements_text_, improved, iteration=round_no + 3)
 
     return improved, review

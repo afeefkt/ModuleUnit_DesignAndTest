@@ -72,3 +72,32 @@ def test_rte_is_updated_stub_is_a_controllable_boolean():
     assert "uint32 Rte_IsUpdated_return = 1;" in stubs
     assert "return (Std_ReturnType)Rte_IsUpdated_return;" in stubs
     assert "Rte_IsUpdated_return = 1;" in stubs.split("Rte_Stubs_Reset(void)")[1]
+
+
+def test_review_loop_never_reviews_an_empty_regeneration(monkeypatch):
+    """r34: a regeneration came back empty, was reviewed as 'specification body is empty' and became the verdict."""
+    import asyncio
+    from types import SimpleNamespace
+    from mudmut_core import design
+    import mudtool.ai.mud_spec_generator as gen_mod
+
+    spec = "# SWC_X\n\n## 7. Functional Description\n\n### RE_Init\n```c\nl_a = 1;\n```\n" + "x" * 400
+    reviewed: list[str] = []
+
+    async def fake_review(module, text, md, *, iteration=1):
+        reviewed.append(md)
+        return SimpleNamespace(approved=False, error_count=1, warning_count=0, issues=[])
+
+    class FakeGen:
+        def __init__(self, *_a, **_k):
+            pass
+
+        async def regenerate_spec(self, **_k):
+            return ""
+
+    monkeypatch.setattr(design, "review_spec", fake_review)
+    monkeypatch.setattr(design, "_orchestrator", lambda: None)
+    monkeypatch.setattr(gen_mod, "MudSpecGenerator", FakeGen)
+    module = SimpleNamespace(swc_name="SWC_X", asil="QM", req_ids=[])
+    md, review = asyncio.run(design.review_and_improve(module, "", spec, max_rounds=2))
+    assert md == spec and reviewed == [spec] and review.error_count == 1
