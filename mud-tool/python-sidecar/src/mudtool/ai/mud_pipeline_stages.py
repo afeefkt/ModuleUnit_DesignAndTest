@@ -641,7 +641,48 @@ def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
             f"DEM event IDs must start with 'SWC_DEM_E_'. Wrong: {names}."
         )
 
+    # Rule 5: single writer — an IRV or P-port is produced by ONE runnable (RE_Init may also initialise it).
+    # Two producers in one cycle make the published value last-writer-wins; the reviewer rejected 4 of 4
+    # such specs (AEB r34, r35, r37, r38).
+    producers: dict[str, list[str]] = {}
+    for r in skeleton.get("runnables") or []:
+        name = str(r.get("name", ""))
+        if name == "RE_Init":
+            continue
+        for item in list(r.get("irvs_produced") or []) + list(r.get("writes") or []):
+            producers.setdefault(str(item), []).append(name)
+    multi = {k: v for k, v in producers.items() if len(set(v)) > 1}
+    if multi:
+        listing = "; ".join(f"{k}: {', '.join(sorted(set(v)))}" for k, v in list(multi.items())[:6])
+        problems.append(
+            "Each IRV and each provided port must have exactly ONE producer runnable (RE_Init may "
+            f"initialise it). Several producers: {listing}. Give each one owner; the other runnables "
+            "consume it (irvs_consumed) instead of writing it."
+        )
+
     return problems
+
+
+_WRITE_RE = re.compile(
+    r"\b(?:Rte_IrvWrite\s*\(\s*(IRV_\w+)|Rte_I?Write\s*\(\s*(PP_\w+)|Rte_I?Write_(PP_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*?)_\w+\s*\()"
+)
+
+
+def _foreign_writes(s7: dict, runnable: dict, declared_ports: set[str]) -> list[str]:
+    """IRVs / P-ports this runnable's steps write although its metadata does not list them as its own output."""
+    if runnable.get("name") == "RE_Init":
+        return []
+    own = set(runnable.get("writes") or []) | set(runnable.get("irvs_produced") or [])
+    code = "\n".join(str(s.get("code", "")) for s in (s7.get("steps") or []))
+    code = re.sub(r"//[^\n]*", "", code)
+    out: list[str] = []
+    for m in _WRITE_RE.finditer(code):
+        name = next(g for g in m.groups() if g)
+        if name.startswith("PP_") and name not in declared_ports:
+            name = next((p for p in declared_ports if name.startswith(p)), name)
+        if name not in own and name not in out:
+            out.append(name)
+    return out
 
 
 # Top-level keys of a skeleton document (at least one must be present).
@@ -1083,6 +1124,33 @@ class MudSpecPipeline:
                         "[Pipeline/Stage3] Retry failed for %s: %s — keeping original",
                         rname, retry_exc,
                     )
+
+            # ── Single-writer gate: no writes of outputs another runnable owns ───────
+            declared_ports = {p.get("name", "") for p in skeleton.get("ports", []) if p.get("direction") == "provided"}
+            foreign = _foreign_writes(s7, runnable, declared_ports)
+            if foreign:
+                logger.warning("[Pipeline/Stage3] %s writes outputs it does not own: %s — retrying once",
+                               rname, ", ".join(foreign))
+                retry_user = (
+                    f"PREVIOUS ATTEMPT REJECTED: {rname} writes {', '.join(foreign)}, which it does not produce "
+                    f"(its own outputs are only: {', '.join(list(runnable.get('writes') or []) + list(runnable.get('irvs_produced') or [])) or 'none'}). "
+                    "Another runnable owns those. Do not write them on any path - on a guard or fault path "
+                    "write only this runnable's own outputs (or nothing) and return.\n\n" + user_prompt
+                )
+                try:
+                    retry_resp = await self._backend.generate(
+                        system_prompt=system_prompt, user_prompt=retry_user,
+                        temperature=min(temperature + 0.05, 0.3), max_tokens=2048, response_format="json",
+                    )
+                    retry_s7 = _extract_json(retry_resp.content)
+                    if retry_s7 and retry_s7.get("steps"):
+                        for key in ("reads", "writes", "irvs_consumed", "irvs_produced", "calparms_used", "steps"):
+                            retry_s7.setdefault(key, [])
+                        retry_s7.setdefault("runnable_name", rname)
+                        if len(_foreign_writes(retry_s7, runnable, declared_ports)) < len(foreign):
+                            s7 = retry_s7
+                except Exception as retry_exc:  # noqa: BLE001 - keep the first answer
+                    logger.warning("[Pipeline/Stage3] single-writer retry failed for %s: %s", rname, retry_exc)
 
             return s7
 
