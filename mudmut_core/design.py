@@ -323,6 +323,13 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, names in (check.get("lost_state_locals") or {}).items():
+        issues.append(("error", f"{runnable} keeps cross-cycle state in local(s) {', '.join(names)} (incremented each "
+                                "call but never stored): a cyclic runnable starts with a fresh local, so the timer / "
+                                "counter never advances. Read it from its IRV at the start and Rte_IrvWrite it back."))
+    for item, writers in (check.get("multi_writers") or {}).items():
+        issues.append(("error", f"{item} is written by several runnables ({', '.join(writers)}). Keep exactly one "
+                                "writer (its producer); the others read it."))
     for runnable, names in (check.get("undeclared_irvs") or {}).items():
         issues.append(("error", f"{runnable} uses IRV(s) {', '.join(names)} that the Section 4 IRV table does not "
                                 "declare. Add a row for each (type, producer, consumer) or use a declared IRV."))

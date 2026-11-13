@@ -45,12 +45,16 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     stray: dict[str, list[str]] = {}
     overwrites: dict[str, list[str]] = {}
     undecl: dict[str, list[str]] = {}
+    lost: dict[str, list[str]] = {}
     out_reads: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        ls = [] if r.name == "RE_Init" else lost_state_locals(r.functional_description)
+        if ls:
+            lost[r.name] = ls
         ui = undeclared_irvs(spec_md, r.functional_description)
         if ui:
             undecl[r.name] = ui
@@ -84,6 +88,8 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "stray_comments": stray,
         "status_overwrites": overwrites,
         "undeclared_irvs": undecl,
+        "lost_state_locals": lost,
+        "multi_writers": multi_writers(ctx.runnables),
         "output_reads": out_reads,
         "problems": problems,
     }
@@ -130,6 +136,8 @@ def gap_count(result: dict[str, Any]) -> int:
             + sum(len(v) for v in (result.get("stray_comments") or {}).values())
             + sum(len(v) for v in (result.get("status_overwrites") or {}).values())
             + sum(len(v) for v in (result.get("undeclared_irvs") or {}).values())
+            + sum(len(v) for v in (result.get("lost_state_locals") or {}).values())
+            + len(result.get("multi_writers") or {})
             + sum(len(v) for v in (result.get("output_reads") or {}).values()))
 
 
@@ -207,6 +215,32 @@ def undeclared_irvs(spec_md: str, runnable_text: str) -> list[str]:
     code = re.sub(r"//[^\n]*", "", runnable_text or "")
     used = re.findall(r"\bRte_Irv(?:Read|Write)\s*\(\s*(IRV_\w+)", code)
     return [n for n in dict.fromkeys(used) if n not in declared]
+
+
+_WRITER_RE = re.compile(r"\b(?:Rte_IrvWrite\s*\(\s*(IRV_\w+)|Rte_I?Write\s*\(\s*(PP_\w+))")
+
+
+def multi_writers(runnables) -> dict[str, list[str]]:
+    """IRV / P-port -> the runnables (other than RE_Init) writing it, where more than one writes it."""
+    writers: dict[str, set[str]] = {}
+    for r in runnables:
+        if r.name == "RE_Init":
+            continue
+        code = re.sub(r"//[^\n]*", "", r.functional_description or "")
+        for m in _WRITER_RE.finditer(code):
+            writers.setdefault(next(g for g in m.groups() if g), set()).add(r.name)
+    return {k: sorted(v) for k, v in writers.items() if len(v) > 1}
+
+
+def lost_state_locals(text: str) -> list[str]:
+    """Locals a runnable accumulates (l_x++, l_x += .., l_x = l_x + ..) but never stores in an IRV: a cyclic
+    runnable starts every call with a fresh local, so a timer / debounce counter kept there never advances."""
+    code = re.sub(r"//[^\n]*", "", text or "")
+    acc = re.findall(r"\b(l_\w+)\s*(?:\+\+|--|[+\-]=)|\b(l_\w+)\s*=\s*\2\s*[+\-]", code)
+    names = list(dict.fromkeys(a or b for a, b in acc))
+    return [n for n in names
+            if not re.search(rf"\bRte_IrvWrite\s*\(\s*IRV_\w+\s*,\s*{re.escape(n)}\b", code)
+            and not re.search(rf"\b(?:for|while)\s*\([^)]*\b{re.escape(n)}\b", code)]
 
 
 def undescribed_helpers(text: str, runnables: set[str]) -> list[str]:

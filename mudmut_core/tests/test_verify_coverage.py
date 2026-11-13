@@ -170,3 +170,15 @@ def test_undeclared_irv_is_a_spec_gap():
     spec = "## 4. IRVs\n| IRV_A | x |\n\n## 7. Functional Description\n"
     assert spec_check.undeclared_irvs(spec, "Rte_IrvWrite(IRV_A, 1);\nl_s = Rte_IrvRead(IRV_B, &l_b);") == ["IRV_B"]
     assert spec_check.undeclared_irvs("## 7. x\n", "Rte_IrvWrite(IRV_B, 1);") == []
+
+
+def test_lost_state_local_and_multi_writer_are_spec_gaps():
+    from types import SimpleNamespace
+    from mudmut_core import spec_check
+    assert spec_check.lost_state_locals("l_deb = 0;\nl_deb = l_deb + 5;\n") == ["l_deb"]
+    assert spec_check.lost_state_locals("l_s = Rte_IrvRead(IRV_T, &l_t);\nl_t += 5;\nRte_IrvWrite(IRV_T, l_t);") == []
+    assert spec_check.lost_state_locals("for (l_i = 0; l_i < 3; l_i++) {}") == []
+    rs = [SimpleNamespace(name="RE_Init", functional_description="Rte_IrvWrite(IRV_A, 0);"),
+          SimpleNamespace(name="RE_X", functional_description="Rte_IrvWrite(IRV_A, 1);"),
+          SimpleNamespace(name="RE_Y", functional_description="Rte_IWrite(PP_O, 1);\nRte_IrvWrite(IRV_A, 2);")]
+    assert spec_check.multi_writers(rs) == {"IRV_A": ["RE_X", "RE_Y"]}
