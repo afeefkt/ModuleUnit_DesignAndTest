@@ -950,6 +950,9 @@ class CompilabilityReport:
         )
 
 
+_WDGM_RUNNABLE_ARG_RE = re.compile(r"\b(WdgM_\w+\s*\(\s*)(RE_\w+)(\s*[,)])")
+
+
 def make_compilable(
     c_code: str,
     swc: str,
@@ -984,6 +987,9 @@ def make_compilable(
     # (one "undefined reference" quarantined every AI test file of a run).
     current = _STATIC_FUNC_RE.sub(r"\1", current)
     current, removed_bsw = strip_bsw_definitions(current)
+    # WdgM_*(RE_X): the design names the supervised entity by its runnable; a function name cannot be passed
+    # as the entity id (the call was stubbed). Use a named entity-id constant (declared as a placeholder).
+    current = _WDGM_RUNNABLE_ARG_RE.sub(lambda m: f"{m.group(1)}WDGM_SE_{m.group(2).upper()}{m.group(3)}", current)
     current = apply_spec_local_types(current, spec_local_types(spec_md))   # the design's declaration first
     current = apply_float_locals(current)                                  # then usage, for what it leaves at uint32
 

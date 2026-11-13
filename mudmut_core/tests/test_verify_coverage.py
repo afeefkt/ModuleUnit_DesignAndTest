@@ -101,3 +101,18 @@ def test_review_loop_never_reviews_an_empty_regeneration(monkeypatch):
     module = SimpleNamespace(swc_name="SWC_X", asil="QM", req_ids=[])
     md, review = asyncio.run(design.review_and_improve(module, "", spec, max_rounds=2))
     assert md == spec and reviewed == [spec] and review.error_count == 1
+
+
+def test_wdgm_runnable_argument_becomes_entity_constant():
+    from mudmut_core import compilable as c
+    out = c._WDGM_RUNNABLE_ARG_RE.sub(lambda m: f"{m.group(1)}WDGM_SE_{m.group(2).upper()}{m.group(3)}",
+                                      "WdgM_UpdateAliveCounter(RE_Init);")
+    assert out == "WdgM_UpdateAliveCounter(WDGM_SE_RE_INIT);"
+
+
+def test_multiline_comments_are_dropped_from_section7_steps():
+    from mudtool.ai.mud_activity_context import build_mud_activity_context
+    md = ("# SWC_X\n\n## 7. Functional Description\n\n### RE_A\n```c\n/* note that\n uses > comparison. */\n"
+          "if (l_t > 5u) { l_x = 1; } /* keep */\n```\n")
+    body = build_mud_activity_context(md, "SWC_X").runnables[0].functional_description
+    assert "*/ if" not in body and "comparison" not in body and "/* keep */" in body

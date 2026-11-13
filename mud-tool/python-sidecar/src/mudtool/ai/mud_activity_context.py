@@ -181,6 +181,9 @@ def build_mud_activity_context(markdown: str, module_context: str | None = None)
         # the entire pseudo-code into one giant unreadable string and the
         # activity-diagram AI would return nodes:[] → repair fallback produces
         # the placeholder Start → Action → End.
+        # A comment spread over several lines carries no logic but its pieces were read as statements
+        # ('use same > comparison. */ if (...)' became broken C). Single-line comments are kept.
+        body = re.sub(r"/\*.*?\*/", lambda m: "" if "\n" in m.group(0) else m.group(0), body, flags=re.S)
         runnable.functional_description = body.strip()
 
     # Last-resort: if structured parsing yielded nothing, extract RE_/Init_/Cyclic_ names
