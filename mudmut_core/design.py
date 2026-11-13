@@ -213,6 +213,7 @@ def repair_runnables_from_review(module, requirements_text_: str, spec_md: str, 
         answer = _spec_model_chat(prompt)
         answer = re.sub(r"^```(?:markdown|md)?\s*\n|\n```\s*$", "", (answer or "").strip())
         if not re.match(rf"###\s+{re.escape(name)}\b", answer):
+            print(f"[mudmut_core] runnable repair for {name}: answer is not the subsection ({answer[:60]!r})")
             continue
         candidate = current[:span[0]] + answer.rstrip() + "\n\n" + current[span[1]:]
         before = spec_check.check_spec(current, module.swc_name, getattr(module, "runnables", None))
@@ -221,6 +222,10 @@ def repair_runnables_from_review(module, requirements_text_: str, spec_md: str, 
                 and spec_check.gap_count(after) <= spec_check.gap_count(before)):
             current = candidate
             repaired.append(name)
+            print(f"[mudmut_core] runnable repair kept for {name} ({len(issues)} finding(s))")
+        else:
+            print(f"[mudmut_core] runnable repair rejected for {name}: gaps {spec_check.gap_count(before)} -> "
+                  f"{spec_check.gap_count(after)}, usable {name in after['usable']}")
     return current, repaired
 
 
@@ -318,6 +323,9 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, names in (check.get("undeclared_irvs") or {}).items():
+        issues.append(("error", f"{runnable} uses IRV(s) {', '.join(names)} that the Section 4 IRV table does not "
+                                "declare. Add a row for each (type, producer, consumer) or use a declared IRV."))
     for runnable, names in (check.get("status_overwrites") or {}).items():
         issues.append(("error", f"{runnable} assigns the return STATUS of a read to the value it reads "
                                 f"({', '.join(n + ' = Rte_...Read(..., &' + n + ')' for n in names)}): the status 0 "

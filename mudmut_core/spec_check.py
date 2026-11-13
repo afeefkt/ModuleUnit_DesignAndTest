@@ -44,12 +44,16 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     struct_loc: dict[str, list[str]] = {}
     stray: dict[str, list[str]] = {}
     overwrites: dict[str, list[str]] = {}
+    undecl: dict[str, list[str]] = {}
     out_reads: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        ui = undeclared_irvs(spec_md, r.functional_description)
+        if ui:
+            undecl[r.name] = ui
         so = status_overwrites(r.functional_description)
         if so:
             overwrites[r.name] = so
@@ -79,6 +83,7 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "struct_locals": struct_loc,
         "stray_comments": stray,
         "status_overwrites": overwrites,
+        "undeclared_irvs": undecl,
         "output_reads": out_reads,
         "problems": problems,
     }
@@ -124,6 +129,7 @@ def gap_count(result: dict[str, Any]) -> int:
             + sum(len(v) for v in (result.get("struct_locals") or {}).values())
             + sum(len(v) for v in (result.get("stray_comments") or {}).values())
             + sum(len(v) for v in (result.get("status_overwrites") or {}).values())
+            + sum(len(v) for v in (result.get("undeclared_irvs") or {}).values())
             + sum(len(v) for v in (result.get("output_reads") or {}).values()))
 
 
@@ -187,6 +193,20 @@ def output_reads(text: str) -> list[str]:
     """Provided (output) ports a runnable reads back with Rte_Read/Rte_IRead."""
     code = re.sub(r"//[^\n]*", "", text or "")
     return list(dict.fromkeys(next(g for g in m.groups() if g) for m in _OUTPUT_READ_RE.finditer(code)))
+
+
+_SEC4_RE = re.compile(r"^##\s*4\b.*?(?=^##\s*\d|\Z)", re.M | re.S)
+
+
+def undeclared_irvs(spec_md: str, runnable_text: str) -> list[str]:
+    """IRV_* names a runnable's Section 7 reads/writes that the Section 4 IRV table does not declare."""
+    m = _SEC4_RE.search(spec_md or "")
+    declared = set(re.findall(r"\bIRV_\w+", m.group(0))) if m else set()
+    if not declared:
+        return []          # no IRV table at all: other checks / the review report that
+    code = re.sub(r"//[^\n]*", "", runnable_text or "")
+    used = re.findall(r"\bRte_Irv(?:Read|Write)\s*\(\s*(IRV_\w+)", code)
+    return [n for n in dict.fromkeys(used) if n not in declared]
 
 
 def undescribed_helpers(text: str, runnables: set[str]) -> list[str]:

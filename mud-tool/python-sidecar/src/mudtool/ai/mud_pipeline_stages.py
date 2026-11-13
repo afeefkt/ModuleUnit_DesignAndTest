@@ -221,6 +221,10 @@ PSEUDO-CODE RULES:
     "l_x = Rte_IrvRead(IRV_X, &l_x);" (the status 0 overwrites the value).
 12. Never read a provided (PP_) port - it is this SWC's own output. Keep the value in an IRV and read that.
 13. Write only this runnable's own outputs ("Writes" and "IRVs produced"); another runnable's IRV/port is read, not written.
+14. A value that must survive from one cycle to the next (timer, counter, debounce, previous value, latched
+    fault) is NEVER a plain local: read it from its IRV at the start and write it back to the IRV at the end.
+15. WdgM_UpdateAliveCounter() takes this runnable's supervised-entity id WDGM_SE_<RUNNABLE_NAME_UPPER>,
+    never 0 and never the runnable's function name.
 
 MANDATORY — every step.code MUST contain at least ONE of the following, or it will be REJECTED:
   · C assignment operator:                l_var = expr;

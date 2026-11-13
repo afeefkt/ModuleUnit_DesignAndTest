@@ -163,3 +163,10 @@ def test_repair_runnables_replaces_only_the_named_subsection(monkeypatch):
     monkeypatch.setattr(design, "_spec_model_chat", lambda prompt, **_k: "sorry, cannot")
     out, fixed = design.repair_runnables_from_review(module, "", _SPEC2, review)
     assert fixed == [] and out == _SPEC2
+
+
+def test_undeclared_irv_is_a_spec_gap():
+    from mudmut_core import spec_check
+    spec = "## 4. IRVs\n| IRV_A | x |\n\n## 7. Functional Description\n"
+    assert spec_check.undeclared_irvs(spec, "Rte_IrvWrite(IRV_A, 1);\nl_s = Rte_IrvRead(IRV_B, &l_b);") == ["IRV_B"]
+    assert spec_check.undeclared_irvs("## 7. x\n", "Rte_IrvWrite(IRV_B, 1);") == []
