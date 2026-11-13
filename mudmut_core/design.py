@@ -322,9 +322,9 @@ async def review_and_improve(
             if progress:
                 progress({"stage": "mud_review", "message": f"runnable repair: {', '.join(fixed_names)}"})
             improved = patched
-            # Re-review only what changed; untouched runnables keep their verdict (no moving target).
-            review = await review_delta(module, requirements_text_, improved, review, fixed_names,
-                                        iteration=round_no + 2)
+            # The review always covers the whole spec; only the UPDATE is limited to the affected runnables.
+            # (review_delta exists for a cheaper re-review but is not used: a whole-spec verdict is required.)
+            review = await review_spec(module, requirements_text_, improved, iteration=round_no + 2)
             continue
         candidate = await gen.regenerate_spec(
             swc_name=module.swc_name,
