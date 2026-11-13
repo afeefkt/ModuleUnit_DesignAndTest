@@ -668,6 +668,19 @@ def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
             "consume it (irvs_consumed) instead of writing it."
         )
 
+    # Rule 6: ports carry scalar data elements. A struct-typed port (pressure + status in one element) was
+    # written as a plain float in Section 7, which the reviewer rejected (AEB spec-only rounds 4-5).
+    struct_types = {str(d.get("name", "")) for d in (skeleton.get("data_types") or [])
+                    if str(d.get("base_type", "")).strip().lower() in ("struct", "record", "structure")}
+    struct_ports = [str(p.get("name", "")) for p in (skeleton.get("ports") or [])
+                    if p.get("direction") in ("provided", "required") and str(p.get("data_type", "")) in struct_types]
+    if struct_ports:
+        problems.append(
+            "Ports must carry ONE scalar data element. Struct-typed port(s): " + ", ".join(struct_ports[:6]) +
+            ". Split each into one port per element (e.g. PP_BrakePressure float32 and PP_BrakeActuationStatus "
+            "uint8) and give each a scalar data type."
+        )
+
     return problems
 
 
