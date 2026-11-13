@@ -132,6 +132,9 @@ RULES:
 - Port names: PP_ for provided, RP_ for required, RP_CalPrm_ for calibration parameters
 - Interface names: IF_SR_ for sender/receiver, IF_CS_ for client/server, IF_Prm_ for calibration
 - Data element names always start with DE_
+- A port that a requirement says CONTAINS several values (e.g. "PP_BrakePressure containing the pressure and a
+  status flag") keeps that one port: list it once per data element - same name, direction and interface,
+  a different data_element (DE_BrakePressure, DE_ActuationStatus) each with its own scalar data_type.
 - Every ASIL-C/D runnable must have at least one DEM event
 - Include ALL ports, runnables, IRVs, and CalPrm you can derive from the requirements
 - Do NOT include Section 7 pseudo-code — that comes later
@@ -223,7 +226,9 @@ PSEUDO-CODE RULES:
 13. Write only this runnable's own outputs ("Writes" and "IRVs produced"); another runnable's IRV/port is read, not written.
 14. A value that must survive from one cycle to the next (timer, counter, debounce, previous value, latched
     fault) is NEVER a plain local: read it from its IRV at the start and write it back to the IRV at the end.
-15. WdgM_UpdateAliveCounter() takes this runnable's supervised-entity id WDGM_SE_<RUNNABLE_NAME_UPPER>,
+15. A port with several data elements is written element by element: Rte_IWrite_<Port>_<DataElement>(value),
+    e.g. Rte_IWrite_PP_BrakePressure_DE_BrakePressure(l_p); never Rte_IWrite(<Port>, value) for such a port.
+16. WdgM_UpdateAliveCounter() takes this runnable's supervised-entity id WDGM_SE_<RUNNABLE_NAME_UPPER>,
     never 0 and never the runnable's function name.
 
 MANDATORY — every step.code MUST contain at least ONE of the following, or it will be REJECTED:
@@ -677,19 +682,6 @@ def _skeleton_problems(skeleton: dict, asil: str, planned: list[str] | None = No
             "Every planned runnable must appear in runnables[] as its own entry (not as a sub-function). "
             f"Missing: {', '.join(missing[:10])}. Add each with its trigger, period, reads, writes, "
             "irvs_consumed and irvs_produced."
-        )
-
-    # Rule 6: ports carry scalar data elements. A struct-typed port (pressure + status in one element) was
-    # written as a plain float in Section 7, which the reviewer rejected (AEB spec-only rounds 4-5).
-    struct_types = {str(d.get("name", "")) for d in (skeleton.get("data_types") or [])
-                    if str(d.get("base_type", "")).strip().lower() in ("struct", "record", "structure")}
-    struct_ports = [str(p.get("name", "")) for p in (skeleton.get("ports") or [])
-                    if p.get("direction") in ("provided", "required") and str(p.get("data_type", "")) in struct_types]
-    if struct_ports:
-        problems.append(
-            "Ports must carry ONE scalar data element. Struct-typed port(s): " + ", ".join(struct_ports[:6]) +
-            ". Split each into one port per element (e.g. PP_BrakePressure float32 and PP_BrakeActuationStatus "
-            "uint8) and give each a scalar data type."
         )
 
     return problems

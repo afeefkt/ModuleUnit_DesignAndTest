@@ -47,12 +47,17 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     undecl: dict[str, list[str]] = {}
     lost: dict[str, list[str]] = {}
     unwritten: dict[str, list[str]] = {}
+    whole: dict[str, list[str]] = {}
+    composite = multi_element_ports(spec_md)
     out_reads: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        wp = whole_port_writes(r.functional_description, composite)
+        if wp:
+            whole[r.name] = wp
         uw = unwritten_outputs(r.functional_description)
         if uw:
             unwritten[r.name] = uw
@@ -94,6 +99,7 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "undeclared_irvs": undecl,
         "lost_state_locals": lost,
         "unwritten_outputs": unwritten,
+        "whole_port_writes": whole,
         "multi_writers": multi_writers(ctx.runnables),
         "output_reads": out_reads,
         "problems": problems,
@@ -126,7 +132,7 @@ def rewrite_problem(old_md: str, new_md: str) -> str:
         return f"the rewrite lost the Section 7 section of {', '.join(lost)} (cut off at the output limit?)"
     if new_md.count("```") % 2 and not old_md.count("```") % 2:
         return "the rewrite ends inside a code block (cut off at the output limit?)"
-    if len(new_md) < 0.8 * len(old_md):
+    if len(new_md) < 0.6 * len(old_md):   # 0.8 also rejected per-runnable repairs that only tightened code
         return f"the rewrite is {100 - round(100 * len(new_md) / len(old_md))} % shorter than the spec it replaces"
     return ""
 
@@ -143,6 +149,7 @@ def gap_count(result: dict[str, Any]) -> int:
             + sum(len(v) for v in (result.get("undeclared_irvs") or {}).values())
             + sum(len(v) for v in (result.get("lost_state_locals") or {}).values())
             + sum(len(v) for v in (result.get("unwritten_outputs") or {}).values())
+            + sum(len(v) for v in (result.get("whole_port_writes") or {}).values())
             + len(result.get("multi_writers") or {})
             + sum(len(v) for v in (result.get("output_reads") or {}).values()))
 
@@ -247,6 +254,23 @@ def lost_state_locals(text: str) -> list[str]:
     return [n for n in names
             if not re.search(rf"\bRte_IrvWrite\s*\(\s*IRV_\w+\s*,\s*{re.escape(n)}\b", code)
             and not re.search(rf"\b(?:for|while)\s*\([^)]*\b{re.escape(n)}\b", code)]
+
+
+_PORT_ROW_RE = re.compile(r"^\|\s*(PP_\w+)\s*\|[^|\n]*\|\s*([^|\n]*)\|", re.M)
+
+
+def multi_element_ports(spec_md: str) -> set[str]:
+    """Provided ports the Section 2.1 table gives more than one data element (several rows or several DE_)."""
+    des: dict[str, set[str]] = {}
+    for port, de_cell in _PORT_ROW_RE.findall(spec_md or ""):
+        des.setdefault(port, set()).update(re.findall(r"\bDE_\w+", de_cell))
+    return {p for p, d in des.items() if len(d) > 1}
+
+
+def whole_port_writes(text: str, ports: set[str]) -> list[str]:
+    """Multi-element ports a runnable writes as a whole (Rte_IWrite(PP_X, v)) instead of per data element."""
+    code = re.sub(r"//[^\n]*", "", text or "")
+    return [p for p in dict.fromkeys(re.findall(r"\bRte_I?Write\s*\(\s*(PP_\w+)", code)) if p in ports]
 
 
 def unwritten_outputs(text: str) -> list[str]:

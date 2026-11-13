@@ -329,6 +329,9 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, ports in (check.get("whole_port_writes") or {}).items():
+        issues.append(("error", f"{runnable} writes {', '.join(ports)} as a whole although Section 2.1 gives "
+                                "it several data elements. Write each element: Rte_IWrite_<Port>_<DataElement>(value)."))
     for runnable, names in (check.get("unwritten_outputs") or {}).items():
         issues.append(("error", f"{runnable} declares {', '.join(names)} as its output(s) but no step writes them. "
                                 "Write each one (Rte_IrvWrite / Rte_IWrite) on every path, or remove it from the header."))

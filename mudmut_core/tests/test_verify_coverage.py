@@ -211,3 +211,15 @@ def test_spec_check_repair_goes_per_runnable_first(monkeypatch):
     assert check["unwritten_outputs"] == {"RE_A": ["IRV_A"]}
     out = asyncio.run(design.repair_spec_from_check(module, "", spec, check))
     assert "Rte_IrvWrite(IRV_A, l_a);" in out and "l_b = 2;" in out
+
+
+def test_multi_element_port_written_whole_is_a_spec_gap():
+    from mudmut_core import spec_check
+    spec = ("### 2.1 Provided Ports\n| Port Name | Interface | Data Element | Type |\n"
+            "| PP_P | IF_SR_P | DE_Pressure | float32 |\n| PP_P | IF_SR_P | DE_Status | uint8 |\n"
+            "| PP_F | IF_SR_F | DE_Fault | boolean |\n")
+    ports = spec_check.multi_element_ports(spec)
+    assert ports == {"PP_P"}
+    assert spec_check.whole_port_writes("Rte_IWrite(PP_P, l_p);\nRte_IWrite(PP_F, 1);", ports) == ["PP_P"]
+    assert spec_check.whole_port_writes("Rte_IWrite_PP_P_DE_Pressure(l_p);", ports) == []
+    assert spec_check.unwritten_outputs("// Writes: PP_P\nRte_IWrite_PP_P_DE_Pressure(l_p);\n") == []
