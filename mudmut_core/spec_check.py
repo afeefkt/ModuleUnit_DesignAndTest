@@ -25,7 +25,10 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     placeholder: list[str] = []
     empty: list[str] = []
     for r in ctx.runnables:   # the same strict rule the AI activity step enforces
-        {"logic": usable, "placeholder": placeholder, "empty": empty}[runnable_flow_quality(r)].append(r.name)
+        quality = runnable_flow_quality(r)
+        if "Section 7 generation failed" in (r.functional_description or ""):
+            quality = "empty"     # the generator's TODO stub is no logic (it was counted as usable)
+        {"logic": usable, "placeholder": placeholder, "empty": empty}[quality].append(r.name)
     problems: list[str] = []
     if not ctx.runnables:
         problems.append("Section 7 describes no runnables.")

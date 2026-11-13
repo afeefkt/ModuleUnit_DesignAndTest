@@ -1053,12 +1053,23 @@ class MudSpecPipeline:
                 response_format="json",
             )
             s7 = _extract_json(response.content)
-            if not s7:
-                logger.warning(
-                    "[Pipeline/Stage3] Failed to extract JSON for %s: %s…",
-                    rname, response.content[:300],
+            if not s7 or not s7.get("steps"):
+                # No usable steps (unparseable, or a JSON without "steps" - seen for a large RE_CommandBrake, which
+                # then became a silent "// TODO: Section 7 generation failed" stub). Retry once with more room.
+                logger.warning("[Pipeline/Stage3] No steps for %s — retrying once with a larger budget: %s…",
+                               rname, (response.content or "")[:200])
+                response = await self._backend.generate(
+                    system_prompt=system_prompt,
+                    user_prompt="Your previous answer had no \"steps\" array. Return the COMPLETE JSON object with "
+                                "every step.\n\n" + user_prompt,
+                    temperature=min(temperature + 0.05, 0.3),
+                    max_tokens=4096,
+                    response_format="json",
                 )
-                return None
+                s7 = _extract_json(response.content)
+                if not s7 or not s7.get("steps"):
+                    logger.warning("[Pipeline/Stage3] Still no steps for %s after retry", rname)
+                    return None
 
             # Ensure required keys
             for key in ("reads", "writes", "irvs_consumed", "irvs_produced", "calparms_used", "steps"):

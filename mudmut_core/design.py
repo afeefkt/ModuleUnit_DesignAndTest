@@ -125,6 +125,105 @@ async def review_spec(
     )
 
 
+# ── per-runnable review repair ───────────────────────────────────────────────
+# A review finding is fixed in the runnable it names, by rewriting only that runnable's "### RE_X" subsection.
+# Rewriting the whole 25-38k-char spec in one answer hit the model's output cap and was discarded, so the
+# findings stayed open (AEB r34-r38); a subsection is a few k chars, which also suits small models.
+_SECTION7_HEAD_RE = re.compile(r"^##\s*7\b", re.M)
+_NEXT_TOP_RE = re.compile(r"^##\s*\d", re.M)
+
+
+def runnable_subsection(spec_md: str, name: str) -> tuple[int, int] | None:
+    """(start, end) of the "### <name>" subsection inside Section 7, or None."""
+    m7 = _SECTION7_HEAD_RE.search(spec_md or "")
+    if not m7:
+        return None
+    nxt = _NEXT_TOP_RE.search(spec_md, m7.end())
+    s7_end = nxt.start() if nxt else len(spec_md)
+    m = re.search(rf"^###\s+{re.escape(name)}\b[^\n]*\n", spec_md[m7.end():s7_end], re.M)
+    if not m:
+        return None
+    start = m7.end() + m.start()
+    rest = spec_md[m7.end() + m.end():s7_end]
+    m_next = re.search(r"^###\s+", rest, re.M)
+    end = m7.end() + m.end() + (m_next.start() if m_next else len(rest))
+    return start, end
+
+
+def review_issues_by_runnable(review, names: list[str]) -> dict[str, list[str]]:
+    """Errors and warnings of a review grouped by the Section 7 runnable they name (first mention wins)."""
+    out: dict[str, list[str]] = {}
+    for issue in getattr(review, "issues", []) or []:
+        if getattr(issue, "severity", "") not in ("error", "warning"):
+            continue
+        text = f"{getattr(issue, 'section', '')} {getattr(issue, 'message', '')}"
+        hit = next((n for n in names if re.search(rf"\b{re.escape(n)}\b", text)), None)
+        if hit:
+            out.setdefault(hit, []).append(f"[{issue.severity}] {issue.message}")
+    return out
+
+
+def _spec_model_chat(prompt: str, *, max_tokens: int = 6000) -> str:
+    env.ensure_environment()
+    from mudmut_core import agents
+    from mudmut_core.llm import chat_blocking, get_providers
+    st = agents.get_stages().get("mud_spec_generator", {})
+    provider = get_providers().get(st.get("provider") or "ollama")
+    if provider is None or not st.get("model"):
+        return ""
+    try:
+        return chat_blocking(provider, st["model"], [{"role": "user", "content": prompt}],
+                             max_tokens=max_tokens, temperature=0.1, timeout=300)
+    except Exception as exc:  # noqa: BLE001 - a failed repair keeps the spec unchanged
+        print(f"[mudmut_core] runnable repair call failed: {exc}")
+        return ""
+
+
+def repair_runnables_from_review(module, requirements_text_: str, spec_md: str, review,
+                                 *, max_runnables: int = 4) -> tuple[str, list[str]]:
+    """Rewrite only the Section 7 subsections the review's findings name. Returns (spec, repaired names).
+
+    A subsection is replaced only when the answer is that runnable's subsection, the runnable keeps
+    implementable logic and the deterministic spec check does not get worse."""
+    from mudmut_core import spec_check
+    names = [n for n in re.findall(r"^###\s+(RE_\w+)", spec_md or "", re.M)]
+    grouped = review_issues_by_runnable(review, names)
+    if not grouped:
+        return spec_md, []
+    m7 = _SECTION7_HEAD_RE.search(spec_md)
+    context = spec_md[:m7.start()] if m7 else ""
+    current, repaired = spec_md, []
+    for name, issues in list(grouped.items())[:max_runnables]:
+        span = runnable_subsection(current, name)
+        if not span:
+            continue
+        old = current[span[0]:span[1]]
+        prompt = (
+            f"You maintain the MUD specification of {module.swc_name}. A reviewer found these problems in "
+            f"runnable {name}:\n" + "\n".join(f"- {i}" for i in issues[:10]) +
+            "\n\nRewrite ONLY the Section 7 subsection of " + name + " so every problem is fixed. Keep its format "
+            "exactly: the '### " + name + "' heading, the // Reads / Writes / IRVs / CalPrm header comments, and "
+            "numbered **N. Label** steps with ```c code blocks, one C statement per line, scalar locals only, "
+            "status and value of a read kept apart (l_st = Rte_IrvRead(IRV_X, &l_x)), no reads of PP_ output ports, "
+            "and only this runnable's own outputs written. Use only the ports, IRVs, CalPrm and DEM events "
+            "declared in Sections 1-6. Return ONLY the subsection, starting with '### " + name + "'.\n\n"
+            f"REQUIREMENTS:\n{requirements_text_[:12000]}\n\nSECTIONS 1-6 (declarations):\n{context[:20000]}\n\n"
+            f"CURRENT SUBSECTION:\n{old}"
+        )
+        answer = _spec_model_chat(prompt)
+        answer = re.sub(r"^```(?:markdown|md)?\s*\n|\n```\s*$", "", (answer or "").strip())
+        if not re.match(rf"###\s+{re.escape(name)}\b", answer):
+            continue
+        candidate = current[:span[0]] + answer.rstrip() + "\n\n" + current[span[1]:]
+        before = spec_check.check_spec(current, module.swc_name, getattr(module, "runnables", None))
+        after = spec_check.check_spec(candidate, module.swc_name, getattr(module, "runnables", None))
+        if (name in after["usable"] and len(after["usable"]) >= len(before["usable"])
+                and spec_check.gap_count(after) <= spec_check.gap_count(before)):
+            current = candidate
+            repaired.append(name)
+    return current, repaired
+
+
 async def review_and_improve(
     module,
     requirements_text_: str,
@@ -160,6 +259,14 @@ async def review_and_improve(
         if progress:
             progress({"stage": "mud_review", "round": round_no + 1,
                       "errors": review.error_count, "warnings": review.warning_count})
+        # First fix what the findings name, runnable by runnable (small answers, never cut off).
+        patched, fixed_names = repair_runnables_from_review(module, requirements_text_, improved, review)
+        if fixed_names:
+            if progress:
+                progress({"stage": "mud_review", "message": f"runnable repair: {', '.join(fixed_names)}"})
+            improved = patched
+            review = await review_spec(module, requirements_text_, improved, iteration=round_no + 2)
+            continue
         candidate = await gen.regenerate_spec(
             swc_name=module.swc_name,
             asil=module.asil,

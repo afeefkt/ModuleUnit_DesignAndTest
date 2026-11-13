@@ -124,3 +124,42 @@ def test_status_overwrite_and_output_read_are_spec_gaps():
     assert spec_check.output_reads("if (Rte_IRead(PP_S) == 3) {}\nl_a = Rte_IRead(RP_In);") == ["PP_S"]
     check = {"status_overwrites": {"RE_A": ["l_x"]}, "output_reads": {"RE_Init": ["PP_S"]}}
     assert spec_check.gap_count(check) == 2 and len(design.spec_check_issues(check)) == 2
+
+
+def test_generation_failed_stub_is_an_empty_runnable():
+    from mudmut_core import spec_check
+    md = ("# SWC_X\n\n## 7. Functional Description\n\n### RE_A\n**1. Guard**\n```c\nl_a = 1;\n```\n\n"
+          "### RE_B\n// Reads:  none\n1. // TODO: Section 7 generation failed for RE_B\n")
+    sc = spec_check.check_spec(md, "SWC_X")
+    assert "RE_B" in sc["empty"] and "RE_B" not in sc["usable"]
+
+
+_SPEC2 = ("# SWC_X\n\n## 4. IRVs\n| IRV_A | x |\n\n## 7. Functional Description\n\n"
+          "### RE_A\n// Reads:  none\n**1. Compute**\n```c\nl_a = 1;\nRte_IrvWrite(IRV_A, l_a);\n```\n\n"
+          "### RE_B\n// Reads:  none\n**1. Compute**\n```c\nl_b = 2;\n```\n\n## 8. Notes\nend\n")
+
+
+def test_runnable_subsection_and_issue_grouping():
+    from types import SimpleNamespace
+    from mudmut_core import design
+    s, e = design.runnable_subsection(_SPEC2, "RE_A")
+    assert _SPEC2[s:e].startswith("### RE_A") and "RE_B" not in _SPEC2[s:e]
+    s, e = design.runnable_subsection(_SPEC2, "RE_B")
+    assert _SPEC2[s:e].startswith("### RE_B") and "## 8" not in _SPEC2[s:e]
+    review = SimpleNamespace(issues=[SimpleNamespace(severity="error", section="7 RE_B step 1", message="bad"),
+                                     SimpleNamespace(severity="info", section="7 RE_A", message="style")])
+    assert design.review_issues_by_runnable(review, ["RE_A", "RE_B"]) == {"RE_B": ["[error] bad"]}
+
+
+def test_repair_runnables_replaces_only_the_named_subsection(monkeypatch):
+    from types import SimpleNamespace
+    from mudmut_core import design
+    new_b = "### RE_B\n// Reads:  none\n**1. Compute**\n```c\nl_b = 3;\n```"
+    monkeypatch.setattr(design, "_spec_model_chat", lambda prompt, **_k: new_b)
+    review = SimpleNamespace(issues=[SimpleNamespace(severity="error", section="7 RE_B", message="l_b must be 3")])
+    module = SimpleNamespace(swc_name="SWC_X", runnables=["RE_A", "RE_B"])
+    out, fixed = design.repair_runnables_from_review(module, "", _SPEC2, review)
+    assert fixed == ["RE_B"] and "l_b = 3;" in out and "l_a = 1;" in out and "## 8. Notes" in out
+    monkeypatch.setattr(design, "_spec_model_chat", lambda prompt, **_k: "sorry, cannot")
+    out, fixed = design.repair_runnables_from_review(module, "", _SPEC2, review)
+    assert fixed == [] and out == _SPEC2
