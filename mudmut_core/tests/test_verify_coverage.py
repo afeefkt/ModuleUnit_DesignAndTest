@@ -190,3 +190,24 @@ def test_coverage_gap_naming_a_runnable_goes_to_its_repair():
     review = SimpleNamespace(issues=[], coverage_gaps=["REQ-1 (zeroing): RE_B lacks the 1 bar zeroing step"])
     assert design.review_issues_by_runnable(review, ["RE_A", "RE_B"]) == {
         "RE_B": ["[uncovered requirement] REQ-1 (zeroing): RE_B lacks the 1 bar zeroing step"]}
+
+
+def test_unwritten_output_is_a_spec_gap():
+    from mudmut_core import spec_check
+    text = "// Writes: PP_A, PP_B\n// IRVs produced: IRV_X\nRte_IWrite(PP_A, 1);\nRte_IWrite_PP_B_Status(2);\n"
+    assert spec_check.unwritten_outputs(text) == ["IRV_X"]
+
+
+def test_spec_check_repair_goes_per_runnable_first(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from mudmut_core import design, spec_check
+    spec = ("# SWC_X\n\n## 7. Functional Description\n\n### RE_A\n// IRVs produced: IRV_A\n**1. Compute**\n```c\n"
+            "l_a = 1;\n```\n\n### RE_B\n**1. Compute**\n```c\nl_b = 2;\n```\n" + "\n" * 3)
+    fixed_a = "### RE_A\n// IRVs produced: IRV_A\n**1. Compute**\n```c\nl_a = 1;\nRte_IrvWrite(IRV_A, l_a);\n```"
+    monkeypatch.setattr(design, "_spec_model_chat", lambda prompt, **_k: fixed_a)
+    module = SimpleNamespace(swc_name="SWC_X", asil="QM", runnables=["RE_A", "RE_B"])
+    check = spec_check.check_spec(spec, "SWC_X", module.runnables)
+    assert check["unwritten_outputs"] == {"RE_A": ["IRV_A"]}
+    out = asyncio.run(design.repair_spec_from_check(module, "", spec, check))
+    assert "Rte_IrvWrite(IRV_A, l_a);" in out and "l_b = 2;" in out

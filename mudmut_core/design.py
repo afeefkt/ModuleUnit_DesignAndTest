@@ -329,6 +329,9 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, names in (check.get("unwritten_outputs") or {}).items():
+        issues.append(("error", f"{runnable} declares {', '.join(names)} as its output(s) but no step writes them. "
+                                "Write each one (Rte_IrvWrite / Rte_IWrite) on every path, or remove it from the header."))
     for runnable, names in (check.get("lost_state_locals") or {}).items():
         issues.append(("error", f"{runnable} keeps cross-cycle state in local(s) {', '.join(names)} (incremented each "
                                 "call but never stored): a cyclic runnable starts with a fresh local, so the timer / "
@@ -381,6 +384,18 @@ async def repair_spec_from_check(
     issues = spec_check_issues(check)
     if not issues:
         return mud_spec_markdown
+    # Per runnable first: every spec-check message names its runnable, and a subsection rewrite is never cut
+    # off. The whole-spec rewrite below was discarded in 2 of 3 spec-only samples (gaps 7 -> 21, 5 -> 5).
+    from mudmut_core import spec_check as _sc
+    findings = SimpleNamespace(issues=[SimpleNamespace(severity=s, section="7", message=m) for s, m in issues],
+                               coverage_gaps=[])
+    patched, fixed = repair_runnables_from_review(module, requirements_text_, mud_spec_markdown, findings,
+                                                  max_runnables=7)
+    if fixed:
+        sc_patched = _sc.check_spec(patched, module.swc_name, getattr(module, "runnables", None))
+        if not _sc.gap_count(sc_patched):
+            return patched
+        mud_spec_markdown, issues = patched, spec_check_issues(sc_patched)
     env.ensure_environment()
     from mudtool.ai.mud_spec_generator import MudSpecGenerator, ReviewIssue, SpecReviewResult
     gen = MudSpecGenerator(_orchestrator())

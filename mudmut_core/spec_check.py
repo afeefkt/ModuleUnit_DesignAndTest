@@ -46,12 +46,16 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     overwrites: dict[str, list[str]] = {}
     undecl: dict[str, list[str]] = {}
     lost: dict[str, list[str]] = {}
+    unwritten: dict[str, list[str]] = {}
     out_reads: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        uw = unwritten_outputs(r.functional_description)
+        if uw:
+            unwritten[r.name] = uw
         ls = [] if r.name == "RE_Init" else lost_state_locals(r.functional_description)
         if ls:
             lost[r.name] = ls
@@ -89,6 +93,7 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "status_overwrites": overwrites,
         "undeclared_irvs": undecl,
         "lost_state_locals": lost,
+        "unwritten_outputs": unwritten,
         "multi_writers": multi_writers(ctx.runnables),
         "output_reads": out_reads,
         "problems": problems,
@@ -137,6 +142,7 @@ def gap_count(result: dict[str, Any]) -> int:
             + sum(len(v) for v in (result.get("status_overwrites") or {}).values())
             + sum(len(v) for v in (result.get("undeclared_irvs") or {}).values())
             + sum(len(v) for v in (result.get("lost_state_locals") or {}).values())
+            + sum(len(v) for v in (result.get("unwritten_outputs") or {}).values())
             + len(result.get("multi_writers") or {})
             + sum(len(v) for v in (result.get("output_reads") or {}).values()))
 
@@ -241,6 +247,18 @@ def lost_state_locals(text: str) -> list[str]:
     return [n for n in names
             if not re.search(rf"\bRte_IrvWrite\s*\(\s*IRV_\w+\s*,\s*{re.escape(n)}\b", code)
             and not re.search(rf"\b(?:for|while)\s*\([^)]*\b{re.escape(n)}\b", code)]
+
+
+def unwritten_outputs(text: str) -> list[str]:
+    """Outputs a runnable's header declares ("// Writes:", "// IRVs produced:") that none of its steps writes."""
+    declared: list[str] = []
+    for m in re.finditer(r"^\s*//\s*(?:Writes|IRVs produced)\s*:\s*(.+)$", text or "", re.M):
+        declared += re.findall(r"\b(?:IRV_|PP_)\w+", m.group(1))
+    code = re.sub(r"//[^\n]*", "", text or "")
+    written = {next(g for g in m.groups() if g) for m in _WRITER_RE.finditer(code)}
+    written |= set(re.findall(r"\bRte_I?Write_(PP_\w+?)_\w+\s*\(", code))
+    return [d for d in dict.fromkeys(declared)
+            if d not in written and not any(w.startswith(d + "_") for w in written)]
 
 
 def undescribed_helpers(text: str, runnables: set[str]) -> list[str]:

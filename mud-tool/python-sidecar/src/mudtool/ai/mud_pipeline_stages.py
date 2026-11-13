@@ -593,7 +593,7 @@ def _format_hints_block(hints: dict) -> str:
 
 # ── Skeleton-quality checks (deterministic, used to trigger one retry) ────────
 
-def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
+def _skeleton_problems(skeleton: dict, asil: str, planned: list[str] | None = None) -> list[str]:
     """Return a list of human-readable problems with the skeleton.
     Empty list = skeleton is acceptable."""
     problems: list[str] = []
@@ -666,6 +666,17 @@ def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
             "Each IRV and each provided port must have exactly ONE producer runnable (RE_Init may "
             f"initialise it). Several producers: {listing}. Give each one owner; the other runnables "
             "consume it (irvs_consumed) instead of writing it."
+        )
+
+    # Rule 7: every planned runnable is a runnable of its own - the skeleton folded 5 of 7 planned runnables
+    # into "sub-functions" of one runnable in 2 of 18 spec-only samples, and no repair could bring them back.
+    have = {str(r.get("name", "")) for r in (skeleton.get("runnables") or [])}
+    missing = [n for n in (planned or []) if n and n not in have]
+    if missing:
+        problems.append(
+            "Every planned runnable must appear in runnables[] as its own entry (not as a sub-function). "
+            f"Missing: {', '.join(missing[:10])}. Add each with its trigger, period, reads, writes, "
+            "irvs_consumed and irvs_produced."
         )
 
     # Rule 6: ports carry scalar data elements. A struct-typed port (pressure + status in one element) was
@@ -903,7 +914,7 @@ class MudSpecPipeline:
             return None
 
         # ── Quality check + one retry on missing fields ────────────────────
-        problems = _skeleton_problems(skeleton, asil)
+        problems = _skeleton_problems(skeleton, asil, runnables)
         if problems:
             logger.warning(
                 "[Pipeline/Stage1] First skeleton has %d problem(s) — retrying once. Problems:\n  %s",
@@ -928,7 +939,7 @@ class MudSpecPipeline:
                 backend, system_prompt, retry_user_prompt, max(temperature, 0.0)
             )
             if retried:
-                still_bad = _skeleton_problems(retried, asil)
+                still_bad = _skeleton_problems(retried, asil, runnables)
                 if len(still_bad) < len(problems):
                     logger.info(
                         "[Pipeline/Stage1] Retry improved skeleton: %d → %d problems",

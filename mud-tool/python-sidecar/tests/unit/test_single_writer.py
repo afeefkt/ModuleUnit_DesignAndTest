@@ -24,3 +24,11 @@ def test_struct_typed_port_is_a_skeleton_problem():
           "data_types": [{"name": "T_Out", "base_type": "struct"}, {"name": "DT_In", "base_type": "float32"}]}
     problems = [p for p in m._skeleton_problems(sk, "QM") if "scalar data element" in p]
     assert problems and "PP_Out" in problems[0] and "RP_In" not in problems[0]
+
+
+def test_skeleton_missing_planned_runnable_is_a_problem():
+    sk = {"runnables": [{"name": "RE_Init"}, {"name": "RE_CommandBrake"}]}
+    problems = [p for p in m._skeleton_problems(sk, "QM", ["RE_Init", "RE_CommandBrake", "RE_RampPressure"])
+                if "planned runnable" in p]
+    assert problems and "RE_RampPressure" in problems[0]
+    assert not [p for p in m._skeleton_problems(sk, "QM", ["RE_Init"]) if "planned runnable" in p]
