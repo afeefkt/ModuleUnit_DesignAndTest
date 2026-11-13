@@ -88,7 +88,9 @@ def main(argv: list[str]) -> None:
             errs = [x.message[:140] for x in rv.issues if x.severity == "error"]
             sc_i = spec_check.check_spec(spec, swc, module.runnables)
             line += (f" | improved: approved={rv.approved} coverage={rv.coverage_pct}% errors={rv.error_count} "
-                     f"warnings={rv.warning_count} gaps={spec_check.gap_count(sc_i)} usable={len(sc_i['usable'])}")
+                     f"warnings={rv.warning_count} gaps={spec_check.gap_count(sc_i)} usable={len(sc_i['usable'])} "
+                     f"uncovered={list(rv.uncovered_req_ids)}")
+            line += "".join(f"\n      gap: {str(g)[:160]}" for g in (rv.coverage_gaps or [])[:2])
             line += "".join(f"\n      error: {e}" for e in errs[:3])
         elif do_review:
             rv = aio.run_sync(design.review_spec(module, text, spec))

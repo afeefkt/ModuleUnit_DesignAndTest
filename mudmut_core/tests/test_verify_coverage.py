@@ -182,3 +182,11 @@ def test_lost_state_local_and_multi_writer_are_spec_gaps():
           SimpleNamespace(name="RE_X", functional_description="Rte_IrvWrite(IRV_A, 1);"),
           SimpleNamespace(name="RE_Y", functional_description="Rte_IWrite(PP_O, 1);\nRte_IrvWrite(IRV_A, 2);")]
     assert spec_check.multi_writers(rs) == {"IRV_A": ["RE_X", "RE_Y"]}
+
+
+def test_coverage_gap_naming_a_runnable_goes_to_its_repair():
+    from types import SimpleNamespace
+    from mudmut_core import design
+    review = SimpleNamespace(issues=[], coverage_gaps=["REQ-1 (zeroing): RE_B lacks the 1 bar zeroing step"])
+    assert design.review_issues_by_runnable(review, ["RE_A", "RE_B"]) == {
+        "RE_B": ["[uncovered requirement] REQ-1 (zeroing): RE_B lacks the 1 bar zeroing step"]}

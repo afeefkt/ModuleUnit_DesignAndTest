@@ -160,6 +160,12 @@ def review_issues_by_runnable(review, names: list[str]) -> dict[str, list[str]]:
         hit = next((n for n in names if re.search(rf"\b{re.escape(n)}\b", text)), None)
         if hit:
             out.setdefault(hit, []).append(f"[{issue.severity}] {issue.message}")
+    # An uncovered requirement blocks approval on its own (deterministic rule); the reviewer's gap text
+    # usually names the runnable that should implement it.
+    for gap in getattr(review, "coverage_gaps", []) or []:
+        hit = next((n for n in names if re.search(rf"\b{re.escape(n)}\b", str(gap))), None)
+        if hit:
+            out.setdefault(hit, []).append(f"[uncovered requirement] {gap}")
     return out
 
 
