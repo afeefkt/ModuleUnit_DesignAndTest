@@ -110,16 +110,27 @@ async def review_spec(
     mud_spec_markdown: str,
     *,
     iteration: int = 1,
+    prior=None,
 ):
+    """Whole-spec review. ``prior`` (the previous review) is shown after the spec so the reviewer re-checks
+    those findings first and reports each again only if still present - fewer brand-new findings per round."""
     env.ensure_environment()
     from mudtool.ai.mud_spec_generator import MudSpecGenerator
     gen = MudSpecGenerator(_orchestrator())
+    reviewed = mud_spec_markdown
+    if prior is not None and (getattr(prior, "issues", None) or getattr(prior, "uncovered_req_ids", None)):
+        lines = [f"- [{i.severity}] {i.section}: {i.message}" for i in prior.issues
+                 if getattr(i, "severity", "") in ("error", "warning")]
+        lines += [f"- [uncovered] {g}" for g in (getattr(prior, "coverage_gaps", None) or [])]
+        reviewed = (mud_spec_markdown.rstrip() + "\n\n---\nPREVIOUS REVIEW FINDINGS (not part of the spec - the spec "
+                    "above was updated to fix them). Re-check each one first and report it again only if it is still "
+                    "present; then add only NEW errors you are sure of:\n" + "\n".join(lines[:30]) + "\n")
     return await gen.review_spec(
         swc_name=module.swc_name,
         asil=module.asil,
         req_ids=module.req_ids,
         requirements_text=requirements_text_,
-        mud_spec_markdown=mud_spec_markdown,
+        mud_spec_markdown=reviewed,
         temperature=0.0,
         iteration=iteration,
     )
@@ -186,14 +197,14 @@ def _spec_model_chat(prompt: str, *, max_tokens: int = 6000) -> str:
 
 
 def repair_runnables_from_review(module, requirements_text_: str, spec_md: str, review,
-                                 *, max_runnables: int = 4) -> tuple[str, list[str]]:
+                                 *, max_runnables: int = 4, skip=()) -> tuple[str, list[str]]:
     """Rewrite only the Section 7 subsections the review's findings name. Returns (spec, repaired names).
 
     A subsection is replaced only when the answer is that runnable's subsection, the runnable keeps
     implementable logic and the deterministic spec check does not get worse."""
     from mudmut_core import spec_check
     names = [n for n in re.findall(r"^###\s+(RE_\w+)", spec_md or "", re.M)]
-    grouped = review_issues_by_runnable(review, names)
+    grouped = {n: v for n, v in review_issues_by_runnable(review, names).items() if n not in set(skip)}
     if not grouped:
         return spec_md, []
     m7 = _SECTION7_HEAD_RE.search(spec_md)
@@ -281,6 +292,12 @@ async def review_delta(module, requirements_text_: str, spec_md: str, prior, rep
     return MudSpecGenerator._enforce_approval_rules(result)
 
 
+def _review_key(review) -> tuple:
+    """Order of review results, best first: approved, then fewer errors, uncovered requirements, warnings."""
+    return (0 if getattr(review, "approved", False) else 1, getattr(review, "error_count", 0),
+            len(getattr(review, "uncovered_req_ids", []) or []), getattr(review, "warning_count", 0))
+
+
 async def review_and_improve(
     module,
     requirements_text_: str,
@@ -289,12 +306,19 @@ async def review_and_improve(
     max_rounds: int = 1,
     progress: Optional[Callable[[dict], None]] = None,
 ):
-    """Review the spec and, if not clean, regenerate + re-review up to ``max_rounds``.
+    """Whole-spec review, then repair ONLY the affected runnables, then whole-spec review again - with a ratchet.
 
-    Returns ``(improved_markdown, review_result)``.
+    Convergence rules (the review/regeneration pair oscillated before: a fix brought new findings, a whole-spec
+    rewrite was cut off, and the last verdict was kept whatever it was):
+    * every review is a review of the whole spec, told the previous findings so it re-checks those first;
+    * an update rewrites only the runnables the findings name (whole-spec rewrite only when none is named);
+    * the updated spec is kept only when its whole-spec review is better than the best so far
+      (approved > fewer errors > fewer uncovered requirements > fewer warnings); otherwise it is undone;
+    * a runnable is repaired at most twice, and the loop stops after two rounds without improvement.
+    So the kept verdict can only get better from round to round. Returns ``(best_markdown, best_review)``.
     """
     env.ensure_environment()
-    from mudtool.ai.mud_spec_generator import MudSpecGenerator, build_unresolved_review, compare_review_results
+    from mudtool.ai.mud_spec_generator import MudSpecGenerator
     gen = MudSpecGenerator(_orchestrator())
 
     from mudmut_core import spec_check
@@ -307,64 +331,49 @@ async def review_and_improve(
             return f"rewrite has {len(new_clean.strip())} chars (previous {len(prev.strip())})"
         return spec_check.rewrite_problem(prev, new_clean)
 
-    review = await review_spec(module, requirements_text_, mud_spec_markdown, iteration=1)
-    improved = mud_spec_markdown
-
-    for round_no in range(max_rounds):
-        if review.approved and review.error_count == 0 and review.warning_count == 0:
-            break
+    def _note(msg: str) -> None:
+        print(f"[mudmut_core] review loop: {msg}")
         if progress:
-            progress({"stage": "mud_review", "round": round_no + 1,
-                      "errors": review.error_count, "warnings": review.warning_count})
-        # First fix what the findings name, runnable by runnable (small answers, never cut off).
-        patched, fixed_names = repair_runnables_from_review(module, requirements_text_, improved, review)
-        if fixed_names:
-            if progress:
-                progress({"stage": "mud_review", "message": f"runnable repair: {', '.join(fixed_names)}"})
-            improved = patched
-            # The review always covers the whole spec; only the UPDATE is limited to the affected runnables.
-            # (review_delta exists for a cheaper re-review but is not used: a whole-spec verdict is required.)
-            review = await review_spec(module, requirements_text_, improved, iteration=round_no + 2)
-            continue
-        candidate = await gen.regenerate_spec(
-            swc_name=module.swc_name,
-            asil=module.asil,
-            requirements_text=requirements_text_,
-            current_spec_markdown=improved,
-            review=review,
-            temperature=min(0.1, round_no * 0.05),
-            progress_callback=progress,
-        )
-        problem = _broken(improved, candidate)
-        if problem:
-            if progress:
-                progress({"stage": "mud_review", "message": f"regeneration discarded: {problem}"})
-            break                                   # keep the previous spec AND the review that belongs to it
-        improved = candidate
-        post = await review_spec(module, requirements_text_, improved, iteration=round_no + 2)
-        comparison = compare_review_results(review, post)
-        review = post
-        if comparison.get("repeated_issue_count", 0) > 0:
-            unresolved = build_unresolved_review(comparison, post)
-            candidate = await gen.regenerate_spec(
-                swc_name=module.swc_name,
-                asil=module.asil,
-                requirements_text=requirements_text_,
-                current_spec_markdown=improved,
-                review=unresolved,
-                temperature=0.15,
-                progress_callback=progress,
-                repair_attempt=True,
-            )
-            problem = _broken(improved, candidate)
-            if problem:
-                if progress:
-                    progress({"stage": "mud_review", "message": f"repair regeneration discarded: {problem}"})
-                break
-            improved = candidate
-            review = await review_spec(module, requirements_text_, improved, iteration=round_no + 3)
+            progress({"stage": "mud_review", "message": msg})
 
-    return improved, review
+    best_md = mud_spec_markdown
+    best = await review_spec(module, requirements_text_, best_md, iteration=1)
+    attempts: dict[str, int] = {}
+    stale = 0
+    for round_no in range(max_rounds):
+        if best.approved and best.error_count == 0:
+            break
+        exhausted = {n for n, c in attempts.items() if c >= 2}
+        patched, fixed = repair_runnables_from_review(module, requirements_text_, best_md, best, skip=exhausted)
+        if fixed:
+            for n in fixed:
+                attempts[n] = attempts.get(n, 0) + 1
+            candidate, how = patched, f"runnable update {', '.join(fixed)}"
+        else:
+            candidate = await gen.regenerate_spec(
+                swc_name=module.swc_name, asil=module.asil, requirements_text=requirements_text_,
+                current_spec_markdown=best_md, review=best, temperature=min(0.1, round_no * 0.05),
+                progress_callback=progress,
+            )
+            problem = _broken(best_md, candidate)
+            if problem:
+                _note(f"round {round_no + 1}: whole-spec regeneration discarded ({problem}); stopping")
+                break
+            candidate, how = clean_spec_markdown(candidate), "whole-spec regeneration"
+        post = await review_spec(module, requirements_text_, candidate, iteration=round_no + 2, prior=best)
+        if _review_key(post) < _review_key(best):
+            _note(f"round {round_no + 1}: {how} kept - errors {best.error_count} -> {post.error_count}, "
+                  f"uncovered {len(best.uncovered_req_ids or [])} -> {len(post.uncovered_req_ids or [])}, "
+                  f"approved={post.approved}")
+            best_md, best, stale = candidate, post, 0
+        else:
+            stale += 1
+            _note(f"round {round_no + 1}: {how} undone - review not better (errors {best.error_count} -> "
+                  f"{post.error_count}, uncovered {len(best.uncovered_req_ids or [])} -> "
+                  f"{len(post.uncovered_req_ids or [])})")
+            if stale >= 2:
+                break
+    return best_md, best
 
 
 def spec_check_issues(check: dict) -> list[tuple[str, str]]:

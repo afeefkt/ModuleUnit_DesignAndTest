@@ -84,7 +84,7 @@ def test_review_loop_never_reviews_an_empty_regeneration(monkeypatch):
     spec = "# SWC_X\n\n## 7. Functional Description\n\n### RE_Init\n```c\nl_a = 1;\n```\n" + "x" * 400
     reviewed: list[str] = []
 
-    async def fake_review(module, text, md, *, iteration=1):
+    async def fake_review(module, text, md, *, iteration=1, prior=None):
         reviewed.append(md)
         return SimpleNamespace(approved=False, error_count=1, warning_count=0, issues=[])
 
@@ -253,3 +253,46 @@ def test_delta_review_rechecks_only_repaired_runnables(monkeypatch):
     assert seen["req_ids"] == ["REQ-1"]
     assert [i.message for i in merged.issues] == ["RE_A bad"]       # untouched runnable keeps its finding
     assert merged.uncovered_req_ids == [] and merged.coverage_pct == 100 and merged.approved is False
+
+
+def _ratchet_setup(monkeypatch, answer_b: str, errors_for):
+    from types import SimpleNamespace
+    from mudmut_core import design
+    import mudtool.ai.mud_spec_generator as gen_mod
+    from mudtool.ai.mud_spec_generator import ReviewIssue, SpecReviewResult
+
+    class FakeGen:
+        def __init__(self, *_a, **_k):
+            pass
+
+        async def regenerate_spec(self, **_k):
+            return ""
+
+    async def fake_review(module, text, md, *, iteration=1, prior=None):
+        n = errors_for(md)
+        return SpecReviewResult(approved=n == 0, coverage_pct=100,
+                                issues=[ReviewIssue("error", "7 RE_B", f"RE_B wrong {k}") for k in range(n)])
+
+    monkeypatch.setattr(gen_mod, "MudSpecGenerator", FakeGen)
+    monkeypatch.setattr(design, "_orchestrator", lambda: None)
+    monkeypatch.setattr(design, "review_spec", fake_review)
+    monkeypatch.setattr(design, "_spec_model_chat", lambda prompt, **_k: answer_b)
+    return SimpleNamespace(swc_name="SWC_X", asil="QM", req_ids=[], runnables=["RE_A", "RE_B"])
+
+
+def test_review_loop_undoes_an_update_that_makes_the_review_worse(monkeypatch):
+    import asyncio
+    from mudmut_core import design
+    worse_b = "### RE_B\n// Reads:  none\n**1. Compute**\n```c\nl_b = 9;\n```"
+    module = _ratchet_setup(monkeypatch, worse_b, lambda md: 3 if "l_b = 9;" in md else 1)
+    md, review = asyncio.run(design.review_and_improve(module, "", _SPEC2, max_rounds=3))
+    assert md == _SPEC2 and review.error_count == 1          # the worse update was undone, best kept
+
+
+def test_review_loop_keeps_an_update_that_makes_the_review_better(monkeypatch):
+    import asyncio
+    from mudmut_core import design
+    good_b = "### RE_B\n// Reads:  none\n**1. Compute**\n```c\nl_b = 3;\n```"
+    module = _ratchet_setup(monkeypatch, good_b, lambda md: 0 if "l_b = 3;" in md else 2)
+    md, review = asyncio.run(design.review_and_improve(module, "", _SPEC2, max_rounds=3))
+    assert "l_b = 3;" in md and review.approved and review.error_count == 0
