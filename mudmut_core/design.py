@@ -235,6 +235,52 @@ def repair_runnables_from_review(module, requirements_text_: str, spec_md: str, 
     return current, repaired
 
 
+def _mentions(text: str, names: list[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(n)}\b", text or "") for n in names)
+
+
+async def review_delta(module, requirements_text_: str, spec_md: str, prior, repaired: list[str], *,
+                       iteration: int = 2):
+    """Re-review ONLY the repaired runnables and merge with the previous verdict for everything else.
+
+    A full re-review of a 25k-char spec after each repair costs a reasoner call over the whole document and
+    returns new findings about parts nobody changed (a moving target). Here the reviewer sees Sections 1-6
+    (declarations) plus the repaired subsections; findings on untouched runnables are carried over, findings
+    and uncovered requirements attributed to the repaired runnables are replaced by the new verdict, and the
+    usual approval rule (coverage >= 80, no error, nothing uncovered) is applied to the merged result.
+    """
+    env.ensure_environment()
+    from mudtool.ai.mud_spec_generator import MudSpecGenerator, SpecReviewResult
+    m7 = _SECTION7_HEAD_RE.search(spec_md or "")
+    spans = [runnable_subsection(spec_md, n) for n in repaired]
+    if not m7 or not all(spans):
+        return await review_spec(module, requirements_text_, spec_md, iteration=iteration)
+    gaps = list(getattr(prior, "coverage_gaps", []) or [])
+    uncovered = list(getattr(prior, "uncovered_req_ids", []) or [])
+    recheck = [u for u in uncovered if any(u in g and _mentions(g, repaired) for g in gaps)]
+    partial = (spec_md[:m7.start()] + "## 7. Functional Description\n\n"
+               f"> Re-review: only {', '.join(repaired)} changed and are under review here. The other runnables "
+               "of Section 7 exist unchanged and were already reviewed - do not report them as missing.\n\n"
+               + "\n\n".join(spec_md[s:e].strip() for s, e in spans) + "\n")
+    gen = MudSpecGenerator(_orchestrator())
+    delta = await gen.review_spec(swc_name=module.swc_name, asil=module.asil, req_ids=recheck,
+                                  requirements_text=requirements_text_, mud_spec_markdown=partial,
+                                  temperature=0.0, iteration=iteration)
+    others = [n for n in re.findall(r"^###\s+(RE_\w+)", spec_md, re.M) if n not in repaired]
+    kept = [i for i in prior.issues if not _mentions(f"{i.section} {i.message}", repaired)]
+    new = [i for i in delta.issues if not (_mentions(f"{i.section} {i.message}", others)
+                                           and not _mentions(f"{i.section} {i.message}", repaired))]
+    still = [u for u in uncovered if u not in recheck] + [u for u in delta.uncovered_req_ids if u in recheck]
+    still_gaps = [g for g in gaps if any(u in g for u in still)]
+    total = max(1, len(getattr(module, "req_ids", []) or []))
+    result = SpecReviewResult(approved=False, coverage_pct=round(100 * (total - len(still)) / total),
+                              issues=kept + new, suggestions=list(delta.suggestions or []),
+                              uncovered_req_ids=still, coverage_gaps=still_gaps,
+                              raw_response=f"[delta review of {', '.join(repaired)}]\n{delta.raw_response}",
+                              iteration=iteration)
+    return MudSpecGenerator._enforce_approval_rules(result)
+
+
 async def review_and_improve(
     module,
     requirements_text_: str,
@@ -276,7 +322,9 @@ async def review_and_improve(
             if progress:
                 progress({"stage": "mud_review", "message": f"runnable repair: {', '.join(fixed_names)}"})
             improved = patched
-            review = await review_spec(module, requirements_text_, improved, iteration=round_no + 2)
+            # Re-review only what changed; untouched runnables keep their verdict (no moving target).
+            review = await review_delta(module, requirements_text_, improved, review, fixed_names,
+                                        iteration=round_no + 2)
             continue
         candidate = await gen.regenerate_spec(
             swc_name=module.swc_name,

@@ -223,3 +223,33 @@ def test_multi_element_port_written_whole_is_a_spec_gap():
     assert spec_check.whole_port_writes("Rte_IWrite(PP_P, l_p);\nRte_IWrite(PP_F, 1);", ports) == ["PP_P"]
     assert spec_check.whole_port_writes("Rte_IWrite_PP_P_DE_Pressure(l_p);", ports) == []
     assert spec_check.unwritten_outputs("// Writes: PP_P\nRte_IWrite_PP_P_DE_Pressure(l_p);\n") == []
+
+
+def test_delta_review_rechecks_only_repaired_runnables(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from mudmut_core import design
+    import mudtool.ai.mud_spec_generator as gen_mod
+    from mudtool.ai.mud_spec_generator import ReviewIssue, SpecReviewResult
+
+    seen = {}
+
+    class FakeGen(gen_mod.MudSpecGenerator):
+        def __init__(self, *_a, **_k):
+            pass
+
+        async def review_spec(self, **k):
+            seen.update(k)
+            return SpecReviewResult(approved=True, coverage_pct=100, issues=[], uncovered_req_ids=[])
+
+    monkeypatch.setattr(gen_mod, "MudSpecGenerator", FakeGen)
+    monkeypatch.setattr(design, "_orchestrator", lambda: None)
+    prior = SpecReviewResult(approved=False, coverage_pct=50, issues=[
+        ReviewIssue("error", "7 RE_A", "RE_A bad"), ReviewIssue("error", "7 RE_B", "RE_B bad")],
+        uncovered_req_ids=["REQ-1"], coverage_gaps=["REQ-1: RE_B lacks zeroing"])
+    module = SimpleNamespace(swc_name="SWC_X", asil="QM", req_ids=["REQ-1", "REQ-2"])
+    merged = asyncio.run(design.review_delta(module, "", _SPEC2, prior, ["RE_B"]))
+    assert "### RE_B" in seen["mud_spec_markdown"] and "### RE_A" not in seen["mud_spec_markdown"]
+    assert seen["req_ids"] == ["REQ-1"]
+    assert [i.message for i in merged.issues] == ["RE_A bad"]       # untouched runnable keeps its finding
+    assert merged.uncovered_req_ids == [] and merged.coverage_pct == 100 and merged.approved is False
