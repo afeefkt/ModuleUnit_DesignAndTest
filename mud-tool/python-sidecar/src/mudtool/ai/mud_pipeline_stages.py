@@ -217,6 +217,10 @@ PSEUDO-CODE RULES:
    - "Write outputs"
 9. The code field must be compact pseudo-code, not narrative text.
 10. On early-exit paths, emit an explicit "return;" line.
+11. A status-returning read keeps status and value apart: "l_st = Rte_IrvRead(IRV_X, &l_x);" - never
+    "l_x = Rte_IrvRead(IRV_X, &l_x);" (the status 0 overwrites the value).
+12. Never read a provided (PP_) port - it is this SWC's own output. Keep the value in an IRV and read that.
+13. Write only this runnable's own outputs ("Writes" and "IRVs produced"); another runnable's IRV/port is read, not written.
 
 MANDATORY — every step.code MUST contain at least ONE of the following, or it will be REJECTED:
   · C assignment operator:                l_var = expr;

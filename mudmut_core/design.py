@@ -211,6 +211,13 @@ def spec_check_issues(check: dict) -> list[tuple[str, str]]:
         issues.append(("error", f"{runnable} calls {', '.join(n + '()' for n in names)} but the logic of these "
                                 "functions is written nowhere. Replace each call with the C statements it "
                                 "performs, inline in the step."))
+    for runnable, names in (check.get("status_overwrites") or {}).items():
+        issues.append(("error", f"{runnable} assigns the return STATUS of a read to the value it reads "
+                                f"({', '.join(n + ' = Rte_...Read(..., &' + n + ')' for n in names)}): the status 0 "
+                                "overwrites the value. Use a separate status local: l_st = Rte_IrvRead(IRV_X, &l_x);"))
+    for runnable, ports in (check.get("output_reads") or {}).items():
+        issues.append(("error", f"{runnable} reads its own provided output port(s) {', '.join(ports)}. An output "
+                                "must not be read back: keep the value in an IRV and read the IRV instead."))
     for runnable, items in (check.get("stray_comments") or {}).items():
         issues.append(("error", f"{runnable} has broken comment markers ({'; '.join(items[:3])}). Every /* needs its */ "
                                 "on the same line, and a step must be either a C statement or a comment, never a "

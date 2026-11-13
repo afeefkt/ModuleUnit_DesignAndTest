@@ -40,11 +40,19 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
     never_set: dict[str, list[str]] = {}
     struct_loc: dict[str, list[str]] = {}
     stray: dict[str, list[str]] = {}
+    overwrites: dict[str, list[str]] = {}
+    out_reads: dict[str, list[str]] = {}
     undescribed: dict[str, list[str]] = {}
     for r in ctx.runnables:
         missing = read_but_never_set(r.functional_description)
         if missing:
             never_set[r.name] = missing
+        so = status_overwrites(r.functional_description)
+        if so:
+            overwrites[r.name] = so
+        orr = output_reads(r.functional_description)
+        if orr:
+            out_reads[r.name] = orr
         sc_ = stray_comments(r.functional_description)
         if sc_:
             stray[r.name] = sc_
@@ -67,6 +75,8 @@ def check_spec(spec_md: str, swc: str, planned: "list[str] | None" = None) -> di
         "missing_planned": missing_planned,
         "struct_locals": struct_loc,
         "stray_comments": stray,
+        "status_overwrites": overwrites,
+        "output_reads": out_reads,
         "problems": problems,
     }
 
@@ -109,7 +119,9 @@ def gap_count(result: dict[str, Any]) -> int:
             + len(result.get("placeholder") or []) + len(result.get("empty") or [])
             + len(result.get("missing_planned") or [])
             + sum(len(v) for v in (result.get("struct_locals") or {}).values())
-            + sum(len(v) for v in (result.get("stray_comments") or {}).values()))
+            + sum(len(v) for v in (result.get("stray_comments") or {}).values())
+            + sum(len(v) for v in (result.get("status_overwrites") or {}).values())
+            + sum(len(v) for v in (result.get("output_reads") or {}).values()))
 
 
 _LOCAL_RE = re.compile(r"\bl_[A-Za-z0-9_]+\b")
@@ -156,6 +168,22 @@ def stray_comments(text: str) -> list[str]:
         if opens != closes:
             out.append(s[:80])
     return out
+
+
+_STATUS_OVERWRITE_RE = re.compile(r"\b(l_\w+)\s*=\s*Rte_\w*Read\w*\s*\([^;]*&\s*\1\b")
+_OUTPUT_READ_RE = re.compile(r"\bRte_I?Read\w*\s*\(\s*(PP_\w+)|\bRte_I?Read_(PP_\w+)")
+
+
+def status_overwrites(text: str) -> list[str]:
+    """Locals assigned the RETURN STATUS of a read whose value they also receive (`l_x = Rte_IrvRead(IRV, &l_x)`)."""
+    code = re.sub(r"//[^\n]*", "", text or "")
+    return list(dict.fromkeys(m.group(1) for m in _STATUS_OVERWRITE_RE.finditer(code)))
+
+
+def output_reads(text: str) -> list[str]:
+    """Provided (output) ports a runnable reads back with Rte_Read/Rte_IRead."""
+    code = re.sub(r"//[^\n]*", "", text or "")
+    return list(dict.fromkeys(next(g for g in m.groups() if g) for m in _OUTPUT_READ_RE.finditer(code)))
 
 
 def undescribed_helpers(text: str, runnables: set[str]) -> list[str]:

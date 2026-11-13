@@ -116,3 +116,11 @@ def test_multiline_comments_are_dropped_from_section7_steps():
           "if (l_t > 5u) { l_x = 1; } /* keep */\n```\n")
     body = build_mud_activity_context(md, "SWC_X").runnables[0].functional_description
     assert "*/ if" not in body and "comparison" not in body and "/* keep */" in body
+
+
+def test_status_overwrite_and_output_read_are_spec_gaps():
+    from mudmut_core import spec_check, design
+    assert spec_check.status_overwrites("l_x = Rte_IrvRead(IRV_A, &l_x);\nl_st = Rte_IrvRead(IRV_B, &l_y);") == ["l_x"]
+    assert spec_check.output_reads("if (Rte_IRead(PP_S) == 3) {}\nl_a = Rte_IRead(RP_In);") == ["PP_S"]
+    check = {"status_overwrites": {"RE_A": ["l_x"]}, "output_reads": {"RE_Init": ["PP_S"]}}
+    assert spec_check.gap_count(check) == 2 and len(design.spec_check_issues(check)) == 2
