@@ -109,9 +109,29 @@ def write_makefile(test_dir: Path | str) -> toolchain.CppUTestInfo:
     return info
 
 
+# Typographic characters a model writes into code ("l_x \u2014 1", \u201cquotes\u201d) are not valid C++ outside a
+# comment or string: g++ "extended character is not valid in an identifier" failed a whole coverage round.
+_ASCII_MAP = {"\u2014": "-", "\u2013": "-", "\u2212": "-", "\u2018": "'", "\u2019": "'", "\u201c": '"',
+              "\u201d": '"', "\u00a0": " ", "\u2026": "...", "\u00d7": "*", "\u2264": "<=", "\u2265": ">=",
+              "\u2260": "!=", "\u2192": "->"}
+
+
+def ascii_test_sources(test_dir: Path | str) -> list[str]:
+    """Replace typographic characters in the AI-written ``Test_*.cpp`` files with ASCII; returns the files changed."""
+    changed = []
+    for f in sorted(Path(test_dir).glob("Test_*.cpp")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        fixed = "".join(_ASCII_MAP.get(ch, ch) for ch in text)
+        if fixed != text:
+            f.write_text(fixed, encoding="utf-8")
+            changed.append(f.name)
+    return changed
+
+
 def build_and_run(test_dir: Path | str) -> dict[str, Any]:
     """Build (``make clean all``) then run with coverage (``make coverage``)."""
     test_dir = Path(test_dir)
+    ascii_test_sources(test_dir)
 
     cpputest = write_makefile(test_dir)
     cpputest_info = {
@@ -230,7 +250,11 @@ _TEST_API_HINT = (
     "same way: assign or compare them, never call them from a test. IRVs (Rte_IrvRead/Rte_IrvWrite(IRV_X, ..)) are "
     "the variables IRV_X. Calls to other functions (Dem_*, WdgM_*, Rte_Call_* ...) are recorded: check "
     "<function>_callCount and <function>_arg0, <function>_arg1 ...; never define your own mock of them. "
-    "Rte_IsUpdated(port) returns Rte_IsUpdated_return (default 1 = updated; set it to 0 for the not-updated path). Use only constants that exist in the headers; for \"a value different from X\" write (X + 1).\n"
+    "Rte_IsUpdated(port) returns Rte_IsUpdated_return (default 1 = updated; set it to 0 for the not-updated path). "
+    "A status-returning read - Rte_IrvRead(IRV_X, &x), Rte_Read(RP_X, &x), Rte_Read_<port>_<elem>(&x) - returns the "
+    "variable IRV_X_status / Rte_Read_RP_X_status / Rte_Read_<port>_<elem>_status (0 = RTE_E_OK by default, reset by "
+    "Rte_Stubs_Reset()); set it to RTE_E_NO_DATA (or any non-zero value) to make that read fail. Only those "
+    "*_status variables exist for reads - never invent RTE_E_NOT_OK or *_return variables for them. Use only constants that exist in the headers; for \"a value different from X\" write (X + 1).\n"
 )
 
 
@@ -272,8 +296,9 @@ def _undeclared_hint(errors: str, test_dir: Path) -> str:
         return ""
     return (
         "\nThese names do not exist: " + ", ".join(missing) + ". Do NOT invent them. The variables a test can use are: "
-        + available_stub_symbols(test_dir) + ". If a scenario cannot be expressed with them (for example forcing a "
-        "read of an IRV or port to fail - those reads always succeed), DELETE that TEST instead of inventing symbols.\n"
+        + available_stub_symbols(test_dir) + ". To make a read fail set its *_status variable (e.g. IRV_X_status = "
+        "RTE_E_NO_DATA;). If a scenario cannot be expressed with these variables, DELETE that TEST instead of "
+        "inventing symbols.\n"
     )
 
 
@@ -713,9 +738,10 @@ def improve_coverage(test_dir: Path | str, result: dict[str, Any], rounds: int =
                 "and assert the result the source computes (work it out from the code - do not guess). Use only "
                 "helpers and stub variables already used in the file. Return ONLY the new "
                 f"TEST({gm.group(1)}, <UniqueName>) {{ ... }} blocks - no includes, no TEST_GROUP, not the existing "
-                "tests, no markdown fences, no explanation. Use names that do not exist yet. Rte reads/writes of ports and "
-                "IRVs always succeed in the stubs and RTE_E_NOT_OK / Rte_*_return / Rte_*_Status variables do not exist: "
-                "never write a test that forces an Rte read/write to fail - skip the lines that only such a failure could reach.\n\n"
+                "tests, no markdown fences, no explanation. Use names that do not exist yet. To reach a read-failure "
+                "branch set the read's status variable before the call (IRV_X_status = RTE_E_NO_DATA; or "
+                "Rte_Read_RP_X_status = RTE_E_NO_DATA;) - only these *_status variables exist; RTE_E_NOT_OK and "
+                "*_return variables do not.\n\n"
                 f"SOURCE OF {name} ('>>' = not reached):\n```c\n{_numbered_source(test_dir, gap)}\n```\n\n"
                 f"EXISTING FILE (Test_{name}.cpp):\n```cpp\n{code}\n```\n"
                 f"{_TEST_API_HINT}"

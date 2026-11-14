@@ -26,6 +26,14 @@ def main(argv):
     (dst / "03_mut").mkdir()
     agents.apply_preset_with_report("deepseek")
     code_dir, mut_dir = dst / "02_code", dst / "03_mut"
+    # Regenerate headers + stubs with the CURRENT compilable.py (the copied ones are from the source run's
+    # version, so a stub/test-interface change would otherwise never reach the new tests).
+    from mudmut_core import compilable
+    swc = next(p.stem for p in code_dir.glob("SWC_*.c"))
+    spec = dst / "01_mud" / "mud_spec.md"
+    rep = compilable.make_compilable((code_dir / f"{swc}.c").read_text(encoding="utf-8"), swc, code_dir,
+                                     spec_md=spec.read_text(encoding="utf-8") if spec.exists() else None)
+    print(f"stubs regenerated: compile_ok={rep.compile_ok} kept={rep.kept_statements} stubbed={rep.stubbed_statements}")
     gen = aio.run_sync(verify.generate_tests(code_dir, output_dir=mut_dir))
     (mut_dir / "generation.json").write_text(json.dumps(gen, indent=2, default=str), encoding="utf-8")
     result = verify.fix_loop(mut_dir, max_attempts=verify.MAX_FIX_ATTEMPTS)

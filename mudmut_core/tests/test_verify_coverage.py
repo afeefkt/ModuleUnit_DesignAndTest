@@ -326,3 +326,53 @@ def test_spec_check_repair_keeps_per_runnable_gains_when_whole_rewrite_is_cut(mo
     check = spec_check.check_spec(spec, "SWC_X", module.runnables)
     out = asyncio.run(design.repair_spec_from_check(module, "", spec, check))
     assert "Rte_IrvWrite(IRV_A, l_a);" in out and "### RE_B" in out
+
+
+def test_status_returning_reads_get_a_settable_status_variable():
+    from mudmut_core import compilable as c
+    code = ("void RE_A(void)\n{\n    float64 l_x = 0;\n    float64 l_y = 0;\n"
+            "    if (Rte_IrvRead(IRV_X, &l_x) != RTE_E_OK)\n    {\n        return;\n    }\n"
+            "    (void)Rte_Read(RP_In, &l_y);\n}\n")
+    irv = c.irv_macros(code)
+    assert "var##_status" in irv["Rte_IrvRead"]
+    names = c.read_status_vars(code, c.rte_signals(code), c.rte_accessors(code), irv)
+    assert names == ["IRV_X_status", "Rte_Read_RP_In_status"]
+    stubs = c.generate_rte_stubs("SWC_X", set(), irv=irv, signals=c.rte_signals(code), status_vars=names)
+    assert "Std_ReturnType IRV_X_status = 0;" in stubs
+    assert "IRV_X_status = 0;" in stubs.split("Rte_Stubs_Reset(void)")[1]
+
+
+def test_read_failure_branch_compiles_through_make_compilable(tmp_path):
+    import shutil
+    import pytest
+    from mudmut_core import compilable as c
+    if not shutil.which("gcc"):
+        pytest.skip("gcc not available")
+    code = ("#include \"Rte_SWC_X.h\"\nvoid RE_A(void)\n{\n    float64 l_x = 0;\n"
+            "    if (Rte_IrvRead(IRV_X, &l_x) != RTE_E_OK)\n    {\n        Rte_IrvWrite(IRV_Y, 1);\n        return;\n    }\n"
+            "    Rte_IrvWrite(IRV_Y, l_x);\n}\n")
+    rep = c.make_compilable(code, "SWC_X", tmp_path)
+    assert rep.compile_ok and rep.stubbed_statements == 0
+    assert "IRV_X_status" in (tmp_path / "Rte_SWC_X.h").read_text()
+
+
+def test_rte_name_used_as_value_becomes_a_settable_variable(tmp_path):
+    import shutil
+    import pytest
+    from mudmut_core import compilable as c
+    if not shutil.which("gcc"):
+        pytest.skip("gcc not available")
+    code = ("#include \"Rte_SWC_X.h\"\nvoid RE_A(void)\n{\n    if (Rte_Mode_PP_Out != RTE_MODE_PP_Out_INIT)\n    {\n"
+            "        Rte_IrvWrite(IRV_Y, 1);\n        return;\n    }\n    Rte_IrvWrite(IRV_Y, 2);\n}\n")
+    rep = c.make_compilable(code, "SWC_X", tmp_path)
+    header = (tmp_path / "Rte_SWC_X.h").read_text()
+    assert rep.compile_ok and "extern float64 Rte_Mode_PP_Out;" in header
+    assert "Rte_Mode_PP_Out(" not in header
+
+
+def test_typographic_characters_in_test_sources_become_ascii(tmp_path):
+    from mudmut_core import verify
+    (tmp_path / "Test_RE_A.cpp").write_text("LONGS_EQUAL(1, l_a — 0); // “note”\n", encoding="utf-8")
+    (tmp_path / "Test_RE_B.cpp").write_text("CHECK(true);\n", encoding="utf-8")
+    assert verify.ascii_test_sources(tmp_path) == ["Test_RE_A.cpp"]
+    assert (tmp_path / "Test_RE_A.cpp").read_text(encoding="utf-8") == 'LONGS_EQUAL(1, l_a - 0); // "note"\n'
