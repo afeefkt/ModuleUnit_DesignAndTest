@@ -1,0 +1,5 @@
+{
+  "root_parent": "ARCH-REQ-000",
+  "child_prefix": "ARCH-REQ",
+  "description": "PMSM FOC architecture pilot: a placeholder system parent is injected because the source CSV has no hierarchy."
+}

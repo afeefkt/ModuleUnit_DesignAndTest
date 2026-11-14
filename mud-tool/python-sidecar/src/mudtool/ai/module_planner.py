@@ -71,6 +71,11 @@ DECOMPOSITION RULES — read carefully before responding:
    - asil:          QM | ASIL-A | ASIL-B | ASIL-C | ASIL-D  (default QM)
    - runnables:     list of RE_ names — include ALL sub-functions as runnables
                     (e.g. ["RE_Init","RE_OvercurrentProtection","RE_FaultReport"])
+                    DENSITY: one RE_Init plus about one runnable per 3 requirements
+                    of the SWC (14 requirements -> about 6 runnables). Give each
+                    distinct behaviour (mapping, limiting, ramping, monitoring,
+                    commanding, reporting) its own runnable; never collapse a
+                    SWC with many requirements into only RE_Init + one runnable.
    - req_ids:       list of requirement IDs that belong to this SWC
    - port_count:    estimated number of ports
    - calprm_count:  estimated number of calibration parameters
@@ -236,7 +241,7 @@ class ModulePlanner:
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=8192,   # 120-requirement sets need room: 4096 truncated the JSON plan
                 response_format="json",   # module plan is always structured JSON
             )
         except Exception as exc:
@@ -268,7 +273,7 @@ class ModulePlanner:
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=retry_prompt,
                 temperature=min(temperature, 0.1),
-                max_tokens=2048,
+                max_tokens=8192,
                 response_format="json",
             )
         except Exception as exc:
@@ -539,16 +544,21 @@ def _derive_modules_from_free_text(requirements_text: str) -> dict[str, ModuleIn
     calprm_names = set(_CALPRM_RE.findall(requirements_text or ""))
     if "calibration parameter" in (requirements_text or "").lower():
         calprm_names.add("calibration_parameter")
+    # Free text does not say which runnable or requirement belongs to which SWC. With one SWC
+    # everything is its own; with several, handing every SWC everything put other components'
+    # runnables and all requirement IDs into each module, so those stay empty here and come
+    # from the model's plan (and from the requirement file's allocation column in the chain).
+    single = len(swc_names) == 1
     for swc_name in swc_names:
         modules[swc_name] = ModuleInfo(
             swc_name=swc_name,
             short_name=_short_name_from_swc(swc_name),
             description=_default_module_description(swc_name, req_ids),
             asil=asil,
-            runnables=all_runnables,
-            req_ids=req_ids,
-            port_count=port_count,
-            calprm_count=len(calprm_names),
+            runnables=all_runnables if single else [],
+            req_ids=req_ids if single else [],
+            port_count=port_count if single else 0,
+            calprm_count=len(calprm_names) if single else 0,
             complexity=_derive_complexity(len(req_ids), len(all_runnables), port_count, len(calprm_names)),
         )
     return modules
@@ -669,8 +679,15 @@ def _consolidate_sub_swcs(modules: list[ModuleInfo]) -> list[ModuleInfo]:
     # Build prefix groups: strip SWC_ then take the first PascalCase word
     def _parent_prefix(swc_name: str) -> str:
         base = re.sub(r"^SWC_", "", swc_name)
-        # Split on PascalCase boundary: SWC_MtrMonOvercurrent → ["Mtr", "Mon", "Overcurrent"]
-        parts = re.findall(r"[A-Z][a-z0-9]*", base)
+        # Underscore-separated names (SWC_AEB_SensorFusion, SWC_AEB_Controller) are an explicit
+        # architecture — distinct SWCs of one feature, often named that way by the requirements
+        # themselves. Never merge them. (Splitting "AEB" letter by letter used to turn all seven
+        # AEB SWCs into one fake "SWC_AE" holding every requirement.)
+        if "_" in base:
+            return swc_name
+        # Split on PascalCase boundaries, keeping acronyms whole:
+        # SWC_MtrMonOvercurrent → ["Mtr", "Mon", "Overcurrent"]; SWC_ABSValve → ["ABS", "Valve"]
+        parts = re.findall(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z][a-z0-9]*|[a-z0-9]+", base)
         # Use first 1–2 parts as the canonical parent prefix
         return "SWC_" + "".join(parts[:2]) if len(parts) >= 2 else swc_name
 

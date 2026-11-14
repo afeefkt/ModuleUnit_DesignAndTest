@@ -14,8 +14,141 @@ from app.services.rag_engine import retrieve_similar_examples
 logger = logging.getLogger(__name__)
 
 
+import re
+
+_SYM_DEFINE_RE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)[ \t]+([^\n/]*)", re.MULTILINE)
+_SYM_EXTERN_RE = re.compile(r"^[ \t]*extern[ \t]+([\w \t\*]+?)[ \t]+(\w+)[ \t]*;", re.MULTILINE)
+_SYM_SKIP = ("_H", "MUDMUT_ANY_ARGS", "TRUE", "FALSE", "E_OK", "E_NOT_OK", "NULL")
+
+
+# Calls to other functions (Dem_*, NvM_*, WdgM_*, Rte_Call_*) are recorded by the generated stubs
+# (mudmut_core.compilable). A mock the model writes itself is a C++ symbol the C code never calls,
+# so a test that checks it fails ("expected <1> but was <0>") even when the code is right.
+CALL_RECORDER_HINT = (
+    "   Calls to other functions (Dem_*, NvM_*, WdgM_*, Rte_Call_*, helpers) are recorded for you. After the call\n"
+    "   CHECK <function>_callCount (calls since Rte_Stubs_Reset) and <function>_arg0, <function>_arg1 ...\n"
+    "   (the arguments of the LAST call), e.g.\n"
+    "   LONGS_EQUAL(1, Dem_ReportErrorStatus_callCount);\n"
+    "   LONGS_EQUAL(SWC_DEM_E_ActuatorFault, (long)Dem_ReportErrorStatus_arg0);\n"
+    "   Use only the <function>_callCount / <function>_arg<N> names listed in AVAILABLE SYMBOLS.\n"
+    "   Read the function source for what each path calls: a monitor usually reports a fault with\n"
+    "   DEM_EVENT_STATUS_FAILED on the bad path AND DEM_EVENT_STATUS_PASSED on the healthy path (and may check\n"
+    "   several events in one run). So never assert Dem_ReportErrorStatus_callCount == 0 for valid input unless the\n"
+    "   source really has no report on that path; count the reports the path makes and CHECK the LAST call's\n"
+    "   arguments (arg1 is DEM_EVENT_STATUS_PASSED / DEM_EVENT_STATUS_FAILED). When one run reports several events,\n"
+    "   every call is kept: <function>_hist_arg<N>[k] is argument N of the k-th call (k = 0 is the first), e.g.\n"
+    "   LONGS_EQUAL(SWC_DEM_E_X, (long)Dem_ReportErrorStatus_hist_arg0[0]);\n"
+    "   LONGS_EQUAL(DEM_EVENT_STATUS_FAILED, (long)Dem_ReportErrorStatus_hist_arg1[0]);\n"
+    "   Never define your own mock or stub of these functions (no redefinition, no extern \"C\" body, no call counter\n"
+    "   of your own): the code under test would call the real stub, not yours."
+)
+
+
+_IO_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+_IO_IN = (
+    (re.compile(r"\bRte_Irv(?:I?Read)\s*\(\s*(\w+)\s*,"), "{0}"),
+    (re.compile(r"\bRte_Read\s*\(\s*(\w+)\s*,"), "Rte_Read_{0}"),
+    (re.compile(r"\bRte_Prm\s*\(\s*(\w+)\s*\)"), "Rte_Prm_{0}"),
+    (re.compile(r"\b(Rte_I?Read_\w+)\s*\("), "{0}"),
+)
+_IO_OUT = (
+    (re.compile(r"\bRte_Irv(?:I?Write)\s*\(\s*(\w+)\s*,"), "{0}"),
+    (re.compile(r"\bRte_Write\s*\(\s*(\w+)\s*,"), "Rte_Write_{0}"),
+    (re.compile(r"\b(Rte_I?Write_\w+)\s*\("), "{0}"),
+)
+
+
+_DEM_REPORT_RE = re.compile(r"\bDem_ReportErrorStatus\s*\(\s*([^,()]+?)\s*,\s*([^()]+?)\s*\)")
+
+
+def dem_reports(source_code: str) -> list[str]:
+    """``["EVENT, STATUS", ...]`` of the Dem reports in the source, each distinct pair once, in order."""
+    code = _IO_COMMENT_RE.sub(" ", source_code or "")
+    return list(dict.fromkeys(f"{ev}, {st}" for ev, st in _DEM_REPORT_RE.findall(code)))
+
+
+def function_io(source_code: str, symbols: str = "") -> dict:
+    """The exact variables a test must set / check for one function, read from its own source.
+
+    ``set``: variables the function reads (inputs, calibration, IRVs); ``check``: variables it writes;
+    ``calls``: functions it calls that have a call recorder (``<fn>_callCount`` in ``symbols``).
+    The model otherwise picks a plausible but different accessor name and the test never reaches the
+    path it is about.
+    """
+    code = _IO_COMMENT_RE.sub(" ", source_code or "")
+
+    def collect(rules) -> list[str]:
+        found: list[tuple[int, str]] = []
+        for rx, fmt in rules:
+            found += [(m.start(), fmt.format(m.group(1))) for m in rx.finditer(code)]
+        return list(dict.fromkeys(name for _pos, name in sorted(found)))
+
+    called = list(dict.fromkeys(m.group(1) for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", code)))
+    return {
+        "set": collect(_IO_IN),
+        "check": collect(_IO_OUT),
+        "calls": [f for f in called if f"{f}_callCount" in (symbols or "")],
+        "dem": dem_reports(source_code) if "Dem_ReportErrorStatus_callCount" in (symbols or "") else [],
+    }
+
+
+def function_io_block(io: dict) -> str:
+    """Prompt text for :func:`function_io` ("" when the function uses none of them)."""
+    lines = []
+    if io["set"]:
+        lines.append("  set before the call:  " + ", ".join(io["set"]))
+    if io["check"]:
+        lines.append("  check after the call: " + ", ".join(io["check"]))
+    if io["calls"]:
+        lines.append("  calls recorded (<fn>_callCount, <fn>_arg0 ...): " + ", ".join(io["calls"]))
+    if io.get("dem"):
+        lines.append("  Dem_ReportErrorStatus calls in its source (event, status): " + "; ".join(io["dem"]))
+        lines.append("  Both FAILED and PASSED reports exist for an event: the healthy path still reports PASSED, so "
+                     "Dem_ReportErrorStatus_callCount is NOT 0 there. Read the path you test, count the reports it "
+                     "makes, and check the k-th one with Dem_ReportErrorStatus_hist_arg0[k] / _hist_arg1[k].")
+    if not lines:
+        return ""
+    return ("\nTHIS FUNCTION'S TEST INTERFACE (exact variable names, taken from its source; "
+            "set / check these and no other variable for the same signal):\n" + "\n".join(lines) + "\n")
+
+
+def available_symbols(source_file: Path, limit: int = 120) -> str:
+    """Constants (with values) and variables a test of ``source_file`` can use.
+
+    Read from the C file and the generated headers next to it. The model only sees one function;
+    without this list it invents names such as STATUS_NOT_READY next to STATUS_READY, and the
+    test file does not compile.
+    """
+    source_file = Path(source_file)
+    constants: dict[str, str] = {}
+    variables: dict[str, str] = {}
+    files = [source_file] + sorted(source_file.parent.glob("*.h"))
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for name, value in _SYM_DEFINE_RE.findall(text):
+            value = value.strip()
+            if value and not name.endswith("_H") and name not in _SYM_SKIP and "(" not in name:
+                constants.setdefault(name, value)
+        if f.suffix == ".h":
+            for ctype, name in _SYM_EXTERN_RE.findall(text):
+                variables.setdefault(name, " ".join(ctype.split()))
+    lines = [f"  #define {n} {v}" for n, v in constants.items()][:limit]
+    lines += [f"  {t} {n};" for n, t in variables.items()][:limit]
+    return "\n".join(lines)
+
+
 async def generate_cpputest(function_info: FunctionInfo, examples: List[Dict]) -> str:
     """Generate CppUTest case using CodeLlama"""
+    symbols = available_symbols(Path(function_info.file_path)) if getattr(function_info, "file_path", None) else ""
+    symbols_block = (
+        "\nAVAILABLE SYMBOLS (already declared — the only constants and variables that exist):\n"
+        f"{symbols}\n"
+        "For \"a value different from X\" write (X + 1); never make up a new constant name.\n"
+    ) if symbols else ""
+    symbols_block += function_io_block(function_io(function_info.source_code, symbols))
 
     # Build context from examples
     examples_context = "\n\n".join([
@@ -40,7 +173,7 @@ Function Details:
 - Return Type: {function_info.return_type}
 - Parameters: {params_str}
 - Complexity Score: {function_info.complexity_score}
-
+{symbols_block}
 REFERENCE TEST EXAMPLES:
 {examples_context}
 
@@ -53,13 +186,26 @@ REQUIREMENTS:
    - Error conditions (if applicable)
    - Boundary values
 4. Use appropriate CppUTest macros (CHECK, CHECK_EQUAL, LONGS_EQUAL, STRCMP_EQUAL, etc.)
-5. Dependencies (Rte_*, Dem_*, NvM_* and helper calls) are already plain stub functions that
-   return E_OK. Do NOT mock them, do NOT count calls (no .call_count(), no mock objects).
+5. RTE signals are plain variables (declared for you):
+   - inputs:      set  Rte_Read_<port>   before the call, e.g. Rte_Read_RP_BrakeDemand = 4.0;
+                  (the code's Rte_IRead(<port>) reads the variable Rte_IRead_<port>: set that one instead)
+   - calibration: set  Rte_Prm_<port>    (starts at the MUD default), e.g. Rte_Prm_RP_CalPrm_PMax = 250.0F;
+   - outputs:     CHECK Rte_Write_<port> after the call, e.g. DOUBLES_EQUAL(0.0, Rte_Write_PP_BrakePressure, 1e-6);
+                  (Rte_IWrite(<port>, v) stores into Rte_IWrite_<port>: check that variable)
+   - call Rte_Stubs_Reset(); in setup() so every test starts from the defaults.
+   The same for accessors with an element name: when the function calls Rte_Read_<port>_<elem>(&x),
+   x = Rte_IRead_<port>_<elem>() or Rte_Write_<port>_<elem>(v), then Rte_Read_<port>_<elem>,
+   Rte_IRead_<port>_<elem> and Rte_Write_<port>_<elem> are variables you set / check in the same way,
+   e.g. Rte_Read_RP_Speed_Speed = 10.0; ... DOUBLES_EQUAL(20.0, Rte_Write_PP_Out_Value, 1e-6);
+   Never call these accessors from the test and never compare them with a function call.
+{CALL_RECORDER_HINT}
    Test through inputs and outputs: set the variables the function reads, call it, then CHECK
    the variables it writes
 6. Add comments explaining what each test validates
 7. Follow the style and structure of the reference examples
-8. Use ONLY identifiers that appear in the function source above (or standard C/CppUTest names).
+8. Use ONLY identifiers that appear in the function source above, the signal variables of rule 5
+   (Rte_Read_<port> / Rte_Prm_<port> / Rte_Write_<port> for ports the function uses, Rte_Stubs_Reset),
+   or standard C/CppUTest names.
    Never invent constants, variables, structs or functions. The function under test and the
    variables it uses are already declared for you; do not redeclare them or add #include lines.
 
@@ -333,7 +479,7 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "CXXFLAGS += -I$(CPPUTEST_INC)",
         "CFLAGS += -Wall -Wextra -g -std=c99 --coverage -fprofile-arcs -ftest-coverage -MMD -MP -I.",
         "CFLAGS += -I$(CPPUTEST_INC)",
-        f"LDFLAGS += -L$(CPPUTEST_LIB) -Wl,-rpath,$(CPPUTEST_LIB) -lCppUTest{ext} --coverage",
+        f"LDFLAGS += -L$(CPPUTEST_LIB) -Wl,-rpath,$(CPPUTEST_LIB) -lCppUTest{ext} -lm --coverage",
     ] + ([f"CXXFLAGS += {extra_cflags}", f"CFLAGS += {extra_cflags}"] if extra_cflags.strip() else []) + [
         "",
         "# Source files",
@@ -368,6 +514,7 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "",
         "# Run tests with JUnit XML output; record the real exit code (re-raised by coverage).",
         "test: $(TEST_TARGET)",
+        tab + "@rm -f cpputest_cpputest_*.xml",
         tab + "-./$(TEST_TARGET) -ojunit -k cpputest; echo $$? > .test_exit_code",
         tab + '@echo "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?><testsuites>" > test-results.xml',
         tab + '@for f in cpputest_cpputest_*.xml; do \\',
@@ -382,7 +529,9 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "coverage: test",
         tab + '@echo "Generating coverage reports..."',
         tab + '-lcov --capture --directory . --output-file $(COVERAGE_INFO) $(LCOV_OPTS) 2>&1 | grep -v "ignoring data for external file" || true',
-        tab + "-lcov --remove $(COVERAGE_INFO) '/usr/*' '*/CppUTest/*' --output-file $(COVERAGE_INFO) $(LCOV_OPTS) 2>&1 | grep -v \"ignoring data for external file\" || true",
+        # Coverage of the code under test only: test files, the runner and the Rte stubs
+        # would otherwise inflate the numbers.
+        tab + "-lcov --remove $(COVERAGE_INFO) '/usr/*' '*/CppUTest/*' '*/Test_*' '*/AllTests.cpp' '*/Rte_Stubs.c' --output-file $(COVERAGE_INFO) $(LCOV_OPTS) 2>&1 | grep -v \"ignoring data for external file\" || true",
         tab + '-genhtml $(COVERAGE_INFO) --output-directory $(COVERAGE_HTML_DIR) --branch-coverage --legend --title "CppUTest Coverage Report" 2>&1 | tail -5 || true',
         tab + '@if [ -f $(COVERAGE_INFO) ]; then echo "Coverage reports generated successfully"; fi',
         tab + '@echo "HTML coverage: $(COVERAGE_HTML_DIR)/index.html"',
@@ -398,7 +547,7 @@ def create_makefile(output_dir: Path, cpputest: Optional[dict] = None, extra_cfl
         "clean:",
         tab + "rm -f $(ALL_OBJS) $(DEPS) $(TEST_TARGET) $(GCOV_FILES) $(COVERAGE_INFO) .test_exit_code",
         tab + "rm -rf $(COVERAGE_HTML_DIR)",
-        tab + "rm -f test-results.xml",
+        tab + "rm -f test-results.xml cpputest_cpputest_*.xml",
         "",
         ".PHONY: all clean test coverage",
     ]

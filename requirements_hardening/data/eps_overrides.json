@@ -1,0 +1,136 @@
+{
+  "set": "eps",
+  "description": "Curated EPS hardening overrides. Generic derivation fills the rest.",
+  "requirements": {
+    "REQ-EPS-001": {
+      "rationale": "EPS software architecture allocation. The source bundles architecture, runnables, ports, modes and a fail-safe reaction in one requirement; the hardening pass splits it into atomic parts.",
+      "open_issues": [
+        "Placeholder system parent REQ-EPS-000; confirm the stakeholder/system requirement and ASIL allocation with the EPS owner."
+      ]
+    },
+    "REQ-EPS-010": {
+      "statement": "The system shall compute a torque assist force proportional to the measured driver steering torque from TorqueSensorPrimary using the calibrated base gain.",
+      "design_notes": "Assist = driver_torque * base_gain; base_gain is a calibration parameter."
+    },
+    "REQ-EPS-014": {
+      "statement": "The system shall add a friction compensation offset to the assist torque based on the rate of change of steering angle using the calibrated friction gain.",
+      "design_notes": "Compensation = k_friction * d(angle)/dt; k_friction is a calibration parameter."
+    },
+    "REQ-EPS-017": {
+      "statement": "The system shall apply an active damping torque opposing the rate of change of motor speed using the calibrated damping gain.",
+      "design_notes": "Damping = k_damp * d(motor_speed)/dt; k_damp is a calibration parameter."
+    },
+    "REQ-EPS-018": {
+      "implementation_constraint": true,
+      "constraint_rationale": "The 5 s adaptation filter is retained as a calibration/implementation constraint for road-camber compensation.",
+      "design_notes": "Slow-adapting offset cancellation filter with time constant 5 s."
+    },
+    "REQ-EPS-019": {
+      "statement": "The system shall convert the computed assist torque demand to a motor current setpoint using the calibrated motor torque constant.",
+      "design_notes": "I_motor = torque_demand / Kt; Kt is a calibration parameter."
+    },
+    "REQ-EPS-020": {
+      "rationale": "Torque-demand rate limit for smooth steering response. This is duplicated by REQ-EPS-040; keep one after review.",
+      "open_issues": [
+        "Duplicate 500 Nm/s limit with REQ-EPS-040; consolidate into one requirement and delete the duplicate."
+      ]
+    },
+    "REQ-EPS-021": {
+      "open_issues": [
+        "QM requirement adds 1.5x assist below 10 km/h; confirm the ASIL/QM classification because it changes steering torque."
+      ]
+    },
+    "REQ-EPS-022": {
+      "open_issues": [
+        "QM requirement adds a lane-keeping correction torque above 100 km/h; confirm the ASIL/QM classification and the yaw-rate reference."
+      ]
+    },
+    "REQ-EPS-023": {
+      "open_issues": [
+        "ASIL-B rate limit of 720 deg/s; confirm the mechanical limit and the ASIL allocation."
+      ]
+    },
+    "REQ-EPS-024": {
+      "statement": "The driver torque sensor signal from RP_TorqueSensorPrimary shall be low-pass filtered with the specified filter order and cutoff frequency before use in assist computation.",
+      "design_notes": "2nd-order Butterworth low-pass filter, 50 Hz cutoff.",
+      "implementation_constraint": true,
+      "constraint_rationale": "The filter order and cutoff are retained as a deterministic signal-processing constraint; confirm with the steering-feel calibration."
+    },
+    "REQ-EPS-033": {
+      "rationale": "FAIL_SAFE triggers: sensor plausibility, overcurrent, overtemperature, undervoltage, watchdog timeout, CAN timeout. The source uses a single OR condition; it is retained as one reaction requirement.",
+      "open_issues": [
+        "Confirm each FAIL_SAFE trigger and its debounce/reaction time; the source groups six conditions without individual timing."
+      ]
+    },
+    "REQ-EPS-036": {
+      "rationale": "FAIL_SAFE limp-home: 20% of rated assist, 14 A current limit (20% of 70 A)."
+    },
+    "REQ-EPS-040": {
+      "rationale": "Rate limit of 500 Nm/s enforced every RE_ControlTorque execution, independent of mode.",
+      "open_issues": [
+        "Duplicate 500 Nm/s limit with REQ-EPS-020; consolidate into one requirement and delete the duplicate."
+      ]
+    },
+    "REQ-EPS-042": {
+      "rationale": "Software current limit 70 A; hardware overcurrent protection at 80 A. The 10 A margin is the protection hierarchy.",
+      "open_issues": [
+        "Confirm the 70 A software / 80 A hardware coordination and the >100 ms DTC debounce."
+      ]
+    },
+    "REQ-EPS-043": {
+      "rationale": "Thermal protection: linear derating above 80 C (5% per degree) and disable above 100 C. The source classifies this as ASIL-B while REQ-EPS-033 lists >80 C as a FAIL_SAFE trigger; reconcile.",
+      "open_issues": [
+        "Reconcile the ASIL-B thermal requirement with the ASIL-D FAIL_SAFE trigger at >80 C; define the derating-to-disable transition."
+      ]
+    },
+    "REQ-EPS-044": {
+      "rationale": "Undervoltage protection below 9.0 V for 5 cycles; automatic recovery above 10.5 V."
+    },
+    "REQ-EPS-045": {
+      "rationale": "Hardware watchdog trigger every 5 ms in RE_ControlTorque; reset cause is checked on startup."
+    },
+    "REQ-EPS-046": {
+      "rationale": "E2E Profile 2 protection on safety-relevant CAN inputs; counter mismatch triggers a CAN-timeout DTC after 2 consecutive failures.",
+      "open_issues": [
+        "Reconcile the 2-failure E2E reaction with REQ-EPS-054 (50 ms / 5 cycles) and define the debounce."
+      ]
+    },
+    "REQ-EPS-047": {
+      "rationale": "Startup RAM/ROM self-test; a failure drives permanent FAIL_SAFE until service."
+    },
+    "REQ-EPS-049": {
+      "rationale": "CPU-load monitoring; warning DTC at 80% average over 100 cycles and NVM profiling data."
+    },
+    "REQ-EPS-055": {
+      "rationale": "DTC persistence in the same RE_DiagnosticUpdate cycle; confirm whether NvM write can complete in the diagnostic event window."
+    },
+    "REQ-EPS-060": {
+      "rationale": "Vehicle-speed CAN input, 0-250 km/h, 0.01 km/h, 10 ms; loss >50 ms triggers CAN timeout."
+    },
+    "REQ-EPS-061": {
+      "rationale": "Ignition-status CAN input, boolean, 20 ms, E2E Profile 2."
+    },
+    "REQ-EPS-062": {
+      "rationale": "Yaw-rate CAN input, -100 to +100 deg/s, 0.01 deg/s, 10 ms; supports the high-speed stability function."
+    },
+    "REQ-EPS-063": {
+      "rationale": "Primary torque sensor: direct SPI, -25 to +25 Nm, 0.01 Nm, 1 ms; filtered before use."
+    },
+    "REQ-EPS-064": {
+      "rationale": "Secondary torque sensor: redundant measurement, identical range/resolution, independent SPI bus and physical element."
+    },
+    "REQ-EPS-065": {
+      "rationale": "Motor-current demand output, 0-70 A, 0.1 A, 5 ms."
+    },
+    "REQ-EPS-066": {
+      "rationale": "EPS status output every 10 ms with mode, DTC count, assist level and health."
+    },
+    "REQ-EPS-013": {
+      "statement": "The system shall provide the calibrated maximum assist torque at vehicle speeds of 5 km/h or below to support parking manoeuvres.",
+      "rationale": "Low-speed parking assist: provide the calibrated maximum assist capacity at <=5 km/h.",
+      "open_issues": [
+        "Confirm the calibrated maximum assist torque and the 5 km/h boundary with the steering-feel calibration."
+      ]
+    }
+  }
+}

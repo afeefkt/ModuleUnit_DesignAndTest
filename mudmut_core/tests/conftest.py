@@ -12,6 +12,14 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _no_model_for_compile_fixes(monkeypatch):
+    """The chain asks a model to fix compile errors; unit tests must never reach one."""
+    from mudmut_core import compilable
+    monkeypatch.setattr(compilable, "llm_code_fixer", lambda *a, **k: (lambda *x, **y: ""))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_user_config(tmp_path, monkeypatch):
     """Tests must never write the user's real config/ or outputs/ (timings, probe cache, LLM log)."""
     from mudmut_core import progress

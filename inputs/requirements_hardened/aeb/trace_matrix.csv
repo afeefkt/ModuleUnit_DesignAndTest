@@ -1,0 +1,121 @@
+Req_ID,Parent_IDs,Allocated_To,Design_Links,Test_IDs,Split_From,Split_Into,Standards,Status,ASIL,Verification
+REQ-AEB-001,,System,System,TD-REQ-AEB-001,,,"AUTOSAR, UNECE R152",review,ASIL-D,review
+REQ-AEB-002,,System,System,TD-REQ-AEB-002,,"REQ-AEB-1001, REQ-AEB-1002",UNECE R152,review,ASIL-D,test
+REQ-AEB-003,,System,System,TD-REQ-AEB-003,,,UNECE R152,review,ASIL-D,test
+REQ-AEB-004,,System,System,TD-REQ-AEB-004,,REQ-AEB-1003,UNECE R152,review,ASIL-D,test
+REQ-AEB-005,,System,System,TD-REQ-AEB-005,,REQ-AEB-1004,,review,ASIL-C,test
+REQ-AEB-006,,System,System,TD-REQ-AEB-006,,,,review,ASIL-D,review
+REQ-AEB-007,,System,System,TD-REQ-AEB-007,,,,review,ASIL-D,test
+REQ-AEB-008,,System,System,TD-REQ-AEB-008,,REQ-AEB-1005,AUTOSAR,review,ASIL-B,review
+REQ-AEB-009,REQ-AEB-001,System,System,TD-REQ-AEB-009,,,"ISO 26262, UNECE R152",review,ASIL-D,test
+REQ-AEB-101,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-101,,,,review,ASIL-D,analysis
+REQ-AEB-102,REQ-AEB-001,SWC_AEB_SensorFusion,SWC_AEB_SensorFusion,TD-REQ-AEB-102,,"REQ-AEB-1006, REQ-AEB-1007",,review,ASIL-D,review
+REQ-AEB-103,REQ-AEB-001,SWC_AEB_SensorFusion,SWC_AEB_SensorFusion,TD-REQ-AEB-103,,REQ-AEB-1008,,review,ASIL-D,review
+REQ-AEB-104,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-104,,REQ-AEB-1009,,review,ASIL-D,test
+REQ-AEB-105,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_TrackAssociate, SWC_AEB_SensorFusion",TD-REQ-AEB-105,,,,review,ASIL-D,test
+REQ-AEB-106,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-106,,REQ-AEB-1010,,review,ASIL-B,test
+REQ-AEB-107,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-107,,REQ-AEB-1011,,review,ASIL-D,test
+REQ-AEB-108,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-108,,REQ-AEB-1012,,review,ASIL-D,test
+REQ-AEB-109,REQ-AEB-001,SWC_AEB_SensorFusion,SWC_AEB_SensorFusion,TD-REQ-AEB-109,,,,review,ASIL-B,review
+REQ-AEB-110,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-110,,REQ-AEB-1013,,review,ASIL-B,review
+REQ-AEB-201,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-201,,,,review,ASIL-D,analysis
+REQ-AEB-202,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-202,,REQ-AEB-1014,,review,ASIL-D,test
+REQ-AEB-203,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-203,,,,review,ASIL-D,test
+REQ-AEB-204,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-204,,REQ-AEB-1015,,review,ASIL-D,test
+REQ-AEB-205,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-205,,REQ-AEB-1016,,review,ASIL-D,test
+REQ-AEB-206,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-206,,REQ-AEB-1017,,review,ASIL-D,test
+REQ-AEB-207,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-207,,,,review,ASIL-C,test
+REQ-AEB-208,REQ-AEB-001,SWC_AEB_RiskAssessor,SWC_AEB_RiskAssessor,TD-REQ-AEB-208,,,,review,ASIL-D,review
+REQ-AEB-209,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-209,,REQ-AEB-1018,,review,ASIL-B,test
+REQ-AEB-301,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-301,,,,review,ASIL-D,analysis
+REQ-AEB-302,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-302,,REQ-AEB-1019,,review,ASIL-D,test
+REQ-AEB-303,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-303,,REQ-AEB-1020,UNECE R152,review,ASIL-D,test
+REQ-AEB-304,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-304,,REQ-AEB-1021,,review,ASIL-D,test
+REQ-AEB-305,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-305,,"REQ-AEB-1022, REQ-AEB-1023",,review,ASIL-C,test
+REQ-AEB-306,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-306,,,,review,ASIL-B,test
+REQ-AEB-307,REQ-AEB-001,SWC_AEB_Controller,SWC_AEB_Controller,TD-REQ-AEB-307,,,,review,ASIL-D,review
+REQ-AEB-308,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-308,,,,review,ASIL-D,test
+REQ-AEB-309,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-309,,,,review,ASIL-D,test
+REQ-AEB-310,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-310,,,,review,ASIL-B,test
+REQ-AEB-311,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-311,,,,review,ASIL-D,review
+REQ-AEB-312,REQ-AEB-001,SWC_AEB_Controller,SWC_AEB_Controller,TD-REQ-AEB-312,,,,review,ASIL-B,review
+REQ-AEB-401,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-401,,,,review,ASIL-D,analysis
+REQ-AEB-402,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-402,,,,review,ASIL-D,test
+REQ-AEB-403,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-403,,,,review,ASIL-D,test
+REQ-AEB-404,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-404,,REQ-AEB-1024,,review,ASIL-D,test
+REQ-AEB-405,REQ-AEB-001,SWC_AEB_BrakeActuator,SWC_AEB_BrakeActuator,TD-REQ-AEB-405,,,,review,ASIL-D,review
+REQ-AEB-406,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-406,,,,review,ASIL-D,test
+REQ-AEB-407,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-407,,REQ-AEB-1025,,review,ASIL-C,test
+REQ-AEB-408,REQ-AEB-001,SWC_AEB_BrakeActuator,SWC_AEB_BrakeActuator,TD-REQ-AEB-408,,,,review,ASIL-B,review
+REQ-AEB-501,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-501,,,,review,ASIL-D,analysis
+REQ-AEB-502,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-502,,REQ-AEB-1026,,review,ASIL-D,test
+REQ-AEB-503,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-503,,REQ-AEB-1027,,review,ASIL-D,test
+REQ-AEB-504,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-504,,REQ-AEB-1028,,review,ASIL-D,test
+REQ-AEB-505,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-505,,,,review,ASIL-D,test
+REQ-AEB-506,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-506,,,,review,ASIL-D,test
+REQ-AEB-507,REQ-AEB-001,SWC_AEB_SafetyMonitor,SWC_AEB_SafetyMonitor,TD-REQ-AEB-507,,,,review,ASIL-D,review
+REQ-AEB-508,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-508,,REQ-AEB-1029,,review,ASIL-D,test
+REQ-AEB-509,REQ-AEB-001,SWC_AEB_SafetyMonitor,SWC_AEB_SafetyMonitor,TD-REQ-AEB-509,,,,review,ASIL-B,review
+REQ-AEB-601,REQ-AEB-001,SWC_AEB_VehicleState,"RE_UpdateEgoMotion, SWC_AEB_VehicleState",TD-REQ-AEB-601,,,,review,ASIL-D,analysis
+REQ-AEB-602,REQ-AEB-001,SWC_AEB_VehicleState,SWC_AEB_VehicleState,TD-REQ-AEB-602,,,,review,ASIL-D,review
+REQ-AEB-603,REQ-AEB-001,SWC_AEB_VehicleState,"RE_UpdateEgoMotion, SWC_AEB_VehicleState",TD-REQ-AEB-603,,REQ-AEB-1030,,review,ASIL-D,test
+REQ-AEB-604,REQ-AEB-001,SWC_AEB_VehicleState,SWC_AEB_VehicleState,TD-REQ-AEB-604,,,,review,ASIL-B,review
+REQ-AEB-605,REQ-AEB-001,SWC_AEB_VehicleState,SWC_AEB_VehicleState,TD-REQ-AEB-605,,,,review,ASIL-D,review
+REQ-AEB-606,REQ-AEB-001,SWC_AEB_VehicleState,"RE_UpdateEgoMotion, SWC_AEB_VehicleState",TD-REQ-AEB-606,,,,review,ASIL-B,test
+REQ-AEB-701,REQ-AEB-001,SWC_AEB_HMI,SWC_AEB_HMI,TD-REQ-AEB-701,,,,review,ASIL-D,review
+REQ-AEB-702,REQ-AEB-001,SWC_AEB_HMI,"RE_UpdateWarning, SWC_AEB_HMI",TD-REQ-AEB-702,,,UNECE R152,review,ASIL-D,test
+REQ-AEB-703,REQ-AEB-001,SWC_AEB_HMI,"RE_UpdateWarning, SWC_AEB_HMI",TD-REQ-AEB-703,,REQ-AEB-1031,,review,ASIL-B,test
+REQ-AEB-704,REQ-AEB-001,SWC_AEB_HMI,SWC_AEB_HMI,TD-REQ-AEB-704,,,,review,ASIL-B,review
+REQ-AEB-801,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-801,,,"Automotive SPICE, ISO 26262, UNECE R152",review,ASIL-D,test
+REQ-AEB-802,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-802,,REQ-AEB-1032,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-803,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-803,,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-AEB-804,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_CommandBrake, SWC_AEB_BrakeActuator, SWC_AEB_SafetyMonitor",TD-REQ-AEB-804,,REQ-AEB-1033,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-805,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-805,,REQ-AEB-1034,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-806,REQ-AEB-001,SWC_AEB_HMI,"RE_UpdateWarning, SWC_AEB_HMI",TD-REQ-AEB-806,,,"ISO 26262, UNECE R152",review,ASIL-D,test
+REQ-AEB-807,REQ-AEB-001,SWC_AEB_SafetyMonitor,"SWC_AEB_BrakeActuator, SWC_AEB_SafetyMonitor",TD-REQ-AEB-807,,REQ-AEB-1035,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-808,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-808,,REQ-AEB-1036,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-AEB-809,REQ-AEB-001,SWC_AEB_SafetyMonitor,SWC_AEB_SafetyMonitor,TD-REQ-AEB-809,,REQ-AEB-1037,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-AEB-810,REQ-AEB-001,System,System,TD-REQ-AEB-810,,,ISO 21434,review,ASIL-D,review
+REQ-AEB-811,REQ-AEB-001,System,System,TD-REQ-AEB-811,,REQ-AEB-1038,"AUTOSAR, ISO 26262",review,ASIL-D,review
+REQ-AEB-812,REQ-AEB-001,System,"RE_ArbitrateBrakeDemand, RE_AssessCollisionRisk, RE_CommandBrake, RE_FuseObjects, RE_MonitorSafety, RE_UpdateEgoMotion, System",TD-REQ-AEB-812,,REQ-AEB-1039,"Automotive SPICE, ISO 26262",review,ASIL-D,analysis
+REQ-AEB-813,REQ-AEB-001,SWC_AEB_SafetyMonitor,SWC_AEB_SafetyMonitor,TD-REQ-AEB-813,,REQ-AEB-1040,"Automotive SPICE, ISO 26262",review,ASIL-D,review
+REQ-AEB-1001,,System,System,TD-REQ-AEB-1001,REQ-AEB-002,,UNECE R152,review,ASIL-D,test
+REQ-AEB-1002,,System,System,TD-REQ-AEB-1002,REQ-AEB-002,,UNECE R152,review,ASIL-D,test
+REQ-AEB-1003,,System,System,TD-REQ-AEB-1003,REQ-AEB-004,,UNECE R152,review,ASIL-D,test
+REQ-AEB-1004,,System,System,TD-REQ-AEB-1004,REQ-AEB-005,,,review,ASIL-C,test
+REQ-AEB-1005,,System,System,TD-REQ-AEB-1005,REQ-AEB-008,,AUTOSAR,review,ASIL-B,review
+REQ-AEB-1006,REQ-AEB-001,SWC_AEB_SensorFusion,SWC_AEB_SensorFusion,TD-REQ-AEB-1006,REQ-AEB-102,,,review,ASIL-D,review
+REQ-AEB-1007,REQ-AEB-001,SWC_AEB_SensorFusion,SWC_AEB_SensorFusion,TD-REQ-AEB-1007,REQ-AEB-102,,,review,ASIL-D,review
+REQ-AEB-1008,REQ-AEB-001,SWC_AEB_SensorFusion,SWC_AEB_SensorFusion,TD-REQ-AEB-1008,REQ-AEB-103,,,review,ASIL-D,review
+REQ-AEB-1009,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-1009,REQ-AEB-104,,,review,ASIL-D,test
+REQ-AEB-1010,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-1010,REQ-AEB-106,,,review,ASIL-B,test
+REQ-AEB-1011,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-1011,REQ-AEB-107,,,review,ASIL-D,test
+REQ-AEB-1012,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-1012,REQ-AEB-108,,,review,ASIL-D,test
+REQ-AEB-1013,REQ-AEB-001,SWC_AEB_SensorFusion,"RE_FuseObjects, SWC_AEB_SensorFusion",TD-REQ-AEB-1013,REQ-AEB-110,,,review,ASIL-B,review
+REQ-AEB-1014,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-1014,REQ-AEB-202,,,review,ASIL-D,test
+REQ-AEB-1015,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-1015,REQ-AEB-204,,,review,ASIL-D,test
+REQ-AEB-1016,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-1016,REQ-AEB-205,,,review,ASIL-D,test
+REQ-AEB-1017,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-1017,REQ-AEB-206,,,review,ASIL-D,test
+REQ-AEB-1018,REQ-AEB-001,SWC_AEB_RiskAssessor,"RE_AssessCollisionRisk, SWC_AEB_RiskAssessor",TD-REQ-AEB-1018,REQ-AEB-209,,,review,ASIL-B,test
+REQ-AEB-1019,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-1019,REQ-AEB-302,,,review,ASIL-D,test
+REQ-AEB-1020,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-1020,REQ-AEB-303,,UNECE R152,review,ASIL-D,test
+REQ-AEB-1021,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-1021,REQ-AEB-304,,,review,ASIL-D,test
+REQ-AEB-1022,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-1022,REQ-AEB-305,,,review,ASIL-C,test
+REQ-AEB-1023,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-1023,REQ-AEB-305,,,review,ASIL-C,test
+REQ-AEB-1024,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-1024,REQ-AEB-404,,,review,ASIL-D,test
+REQ-AEB-1025,REQ-AEB-001,SWC_AEB_BrakeActuator,"RE_CommandBrake, SWC_AEB_BrakeActuator",TD-REQ-AEB-1025,REQ-AEB-407,,,review,ASIL-C,test
+REQ-AEB-1026,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1026,REQ-AEB-502,,,review,ASIL-D,test
+REQ-AEB-1027,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1027,REQ-AEB-503,,,review,ASIL-D,test
+REQ-AEB-1028,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1028,REQ-AEB-504,,,review,ASIL-D,test
+REQ-AEB-1029,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1029,REQ-AEB-508,,,review,ASIL-D,test
+REQ-AEB-1030,REQ-AEB-001,SWC_AEB_VehicleState,"RE_UpdateEgoMotion, SWC_AEB_VehicleState",TD-REQ-AEB-1030,REQ-AEB-603,,,review,ASIL-D,test
+REQ-AEB-1031,REQ-AEB-001,SWC_AEB_HMI,"RE_UpdateWarning, SWC_AEB_HMI",TD-REQ-AEB-1031,REQ-AEB-703,,,review,ASIL-B,test
+REQ-AEB-1032,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1032,REQ-AEB-802,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-1033,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_CommandBrake, SWC_AEB_BrakeActuator, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1033,REQ-AEB-804,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-1034,REQ-AEB-001,SWC_AEB_Controller,"RE_ArbitrateBrakeDemand, SWC_AEB_Controller",TD-REQ-AEB-1034,REQ-AEB-805,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-1035,REQ-AEB-001,SWC_AEB_SafetyMonitor,"SWC_AEB_BrakeActuator, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1035,REQ-AEB-807,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-AEB-1036,REQ-AEB-001,SWC_AEB_SafetyMonitor,"RE_MonitorSafety, SWC_AEB_SafetyMonitor",TD-REQ-AEB-1036,REQ-AEB-808,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-AEB-1037,REQ-AEB-001,SWC_AEB_SafetyMonitor,SWC_AEB_SafetyMonitor,TD-REQ-AEB-1037,REQ-AEB-809,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-AEB-1038,REQ-AEB-001,System,System,TD-REQ-AEB-1038,REQ-AEB-811,,"AUTOSAR, ISO 26262",review,ASIL-D,review
+REQ-AEB-1039,REQ-AEB-001,System,"RE_ArbitrateBrakeDemand, RE_AssessCollisionRisk, RE_CommandBrake, RE_FuseObjects, RE_MonitorSafety, RE_UpdateEgoMotion, System",TD-REQ-AEB-1039,REQ-AEB-812,,"Automotive SPICE, ISO 26262",review,ASIL-D,analysis
+REQ-AEB-1040,REQ-AEB-001,SWC_AEB_SafetyMonitor,SWC_AEB_SafetyMonitor,TD-REQ-AEB-1040,REQ-AEB-813,,"Automotive SPICE, ISO 26262",review,ASIL-D,review

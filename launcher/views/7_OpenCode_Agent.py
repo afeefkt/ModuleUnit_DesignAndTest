@@ -52,19 +52,26 @@ def _find_opencode() -> str | None:
     return None
 
 
-def _start_serve(binary: str) -> None:
+def _start_serve(binary: str) -> str:
+    """Start ``opencode serve``; returns "" when it answers, else what went wrong."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    log = open(LOG_FILE, "ab")
-    proc = subprocess.Popen(
-        [binary, "serve", "--port", str(PORT), "--hostname", "127.0.0.1"],
-        cwd=str(_REPO_ROOT), stdout=log, stderr=subprocess.STDOUT,
-        start_new_session=True, env=os.environ.copy(),  # provider keys already exported
-    )
+    try:
+        with open(LOG_FILE, "ab") as log:   # the child keeps its own copy of the handle
+            proc = subprocess.Popen(
+                [binary, "serve", "--port", str(PORT), "--hostname", "127.0.0.1"],
+                cwd=str(_REPO_ROOT), stdout=log, stderr=subprocess.STDOUT,
+                start_new_session=True, env=os.environ.copy(),  # provider keys already exported
+            )
+    except OSError as exc:
+        return f"could not start `{binary}`: {exc}"
     PID_FILE.write_text(str(proc.pid), encoding="utf-8")
     for _ in range(30):
         if client.healthy():
-            return
+            return ""
+        if proc.poll() is not None:
+            return f"`opencode serve` exited with code {proc.returncode} — see `{LOG_FILE}`"
         time.sleep(0.5)
+    return f"`opencode serve` did not answer on port {PORT} within 15 s (is the port in use?) — see `{LOG_FILE}`"
 
 
 def _stop_serve() -> None:
@@ -92,8 +99,11 @@ elif binary:
     col_a.warning(f"`opencode serve` is not running ({binary}).")
     if col_b.button("Start serve", type="primary"):
         with st.spinner("Starting opencode serve…"):
-            _start_serve(binary)
-        st.rerun()
+            problem = _start_serve(binary)
+        if problem:
+            st.error(problem)
+        else:
+            st.rerun()
 else:
     col_a.error("No native OpenCode found in WSL (the Windows npm shim under /mnt/c can't run here).")
     st.code(INSTALL_HINT, language="bash")
@@ -115,7 +125,10 @@ provider = col2.selectbox("Provider", provider_ids, index=0,
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _models(pid: str) -> list[str]:
-    return [m["id"] for m in agents.available_models(pid)]
+    try:
+        return [m["id"] for m in agents.available_models(pid)]
+    except Exception:  # noqa: BLE001 - no key / no connection: type the model id instead
+        return []
 
 
 model = None
@@ -171,7 +184,10 @@ def _timeline() -> None:
     head, abort_col = st.columns([4, 1])
     head.markdown(f"**Agent status:** {badge} · {len(snap['order'])} action(s)")
     if status in ("busy", "retry") and abort_col.button("Abort", key="oc_abort"):
-        client.abort(watcher.session_id)
+        try:
+            client.abort(watcher.session_id)
+        except Exception as exc:  # noqa: BLE001 - serve stopped or unreachable
+            st.error(f"Abort failed: {exc}")
     if snap["error"]:
         st.error(snap["error"])
 
@@ -179,10 +195,12 @@ def _timeline() -> None:
         with st.container(border=True):
             st.markdown(f"🔐 **Permission requested:** `{perm['permission']}` → `{', '.join(perm['patterns'])}`")
             a, b = st.columns(2)
-            if a.button("Allow once", key=f"allow_{perm_id}"):
-                client.reply_permission(watcher.session_id, perm_id, "once")
-            if b.button("Reject", key=f"reject_{perm_id}"):
-                client.reply_permission(watcher.session_id, perm_id, "reject")
+            for col, label, answer in ((a, "Allow once", "once"), (b, "Reject", "reject")):
+                if col.button(label, key=f"{answer}_{perm_id}"):
+                    try:
+                        client.reply_permission(watcher.session_id, perm_id, answer)
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Could not send the answer: {exc}")
 
     for call in snap["order"]:
         t = snap["tools"][call]
@@ -207,14 +225,14 @@ _timeline()
 
 # ── Artifacts ─────────────────────────────────────────────────────────────────
 st.divider()
-st.subheader("④ Artifacts (latest run in outputs/)")
-latest = c.run_latest()
+st.subheader("④ Artifacts (current run)")
+latest = c.current_run()   # the run chosen in the top bar (the agent's new run becomes the newest)
 if latest:
-    st.write(f"Latest run: `{latest.folder.name}` ({latest.swc}, {latest.preset})")
+    st.write(f"Run: `{latest.folder.name}` ({latest.swc}, {latest.preset})")
     flows = sorted(latest.dir("mud").glob("*.mmd"))
     if flows:
         pick = st.selectbox("Flow chart", [f.name for f in flows])
-        c.render_mermaid((latest.dir("mud") / pick).read_text(encoding="utf-8"))
+        c.render_mermaid(latest.read_in("mud", pick, ""), alt=f"Flow chart {pick}")
     report = latest.read_text("RUN_REPORT.md", "")
     if report:
         with st.expander("RUN_REPORT.md"):

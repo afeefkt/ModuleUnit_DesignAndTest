@@ -132,6 +132,9 @@ RULES:
 - Port names: PP_ for provided, RP_ for required, RP_CalPrm_ for calibration parameters
 - Interface names: IF_SR_ for sender/receiver, IF_CS_ for client/server, IF_Prm_ for calibration
 - Data element names always start with DE_
+- A port that a requirement says CONTAINS several values (e.g. "PP_BrakePressure containing the pressure and a
+  status flag") keeps that one port: list it once per data element - same name, direction and interface,
+  a different data_element (DE_BrakePressure, DE_ActuationStatus) each with its own scalar data_type.
 - Every ASIL-C/D runnable must have at least one DEM event
 - Include ALL ports, runnables, IRVs, and CalPrm you can derive from the requirements
 - Do NOT include Section 7 pseudo-code — that comes later
@@ -166,7 +169,9 @@ Output ONLY the JSON object. No prose. No fences."""
 
 # ── Stage 3 prompt (per runnable) ─────────────────────────────────────────────
 
-_SECTION7_SYSTEM = _PSEUDO_GOLDEN_RULE + """
+# Only this body is a str.format() template ({{ }} escaped, one {few_shot_example} field). The
+# golden rule and the final reminder contain C code with braces and are added unformatted.
+_SECTION7_SYSTEM_BODY = """
 You are an AUTOSAR firmware engineer writing pseudo-code for a runnable.
 Output ONLY a single valid JSON object.
 Start with {{ and end with }}.
@@ -215,6 +220,18 @@ PSEUDO-CODE RULES:
    - "Write outputs"
 9. The code field must be compact pseudo-code, not narrative text.
 10. On early-exit paths, emit an explicit "return;" line.
+11. A status-returning read keeps status and value apart: "l_st = Rte_IrvRead(IRV_X, &l_x);" - never
+    "l_x = Rte_IrvRead(IRV_X, &l_x);" (the status 0 overwrites the value).
+12. Never read a provided (PP_) port - it is this SWC's own output. Keep the value in an IRV and read that.
+13. Write only this runnable's own outputs ("Writes" and "IRVs produced"); another runnable's IRV/port is read, not written.
+14. A value that must survive from one cycle to the next (timer, counter, debounce, previous value, latched
+    fault) is NEVER a plain local: read it from its IRV at the start and write it back to the IRV at the end.
+15. A port with several data elements is written element by element: Rte_IWrite_<Port>_<DataElement>(value),
+    e.g. Rte_IWrite_PP_BrakePressure_DE_BrakePressure(l_p); never Rte_IWrite(<Port>, value) for such a port.
+16. WdgM_UpdateAliveCounter() takes this runnable's supervised-entity id WDGM_SE_<RUNNABLE_NAME_UPPER>,
+    never 0 and never the runnable's function name.
+17. Never re-implement another runnable's logic: a coordinating runnable (e.g. RE_CommandBrake) reads the IRV
+    results of RE_MapDecelToPressure / RE_RampPressure / ... - it does not repeat their mapping, ramp or saturation.
 
 MANDATORY — every step.code MUST contain at least ONE of the following, or it will be REJECTED:
   · C assignment operator:                l_var = expr;
@@ -231,7 +248,17 @@ MANDATORY — every step.code MUST contain at least ONE of the following, or it 
 
 REFERENCE EXAMPLE (EPS RE_ControlTorque):
 {few_shot_example}
-""" + _PSEUDO_FINAL_REMINDER
+"""
+
+
+def _section7_system(few_shot_example: str) -> str:
+    return (_PSEUDO_GOLDEN_RULE
+            + _SECTION7_SYSTEM_BODY.replace("{few_shot_example}", few_shot_example).replace("{{", "{").replace("}}", "}")
+            + _PSEUDO_FINAL_REMINDER)
+
+
+# The prompt text with the example slot left open (read by the prompt-contract tests).
+_SECTION7_SYSTEM = _section7_system("{few_shot_example}")
 
 _SECTION7_USER_TMPL = """Generate Section 7 pseudo-code for runnable: {runnable_name}
 
@@ -294,7 +321,7 @@ def _validate_cross_refs(skeleton: dict, section7_map: dict[str, dict]) -> list[
         # Check DEM event IDs in code blocks
         for step in s7.get("steps", []):
             code = step.get("code", "")
-            for dem_ref in re.findall(r'SWC_DEM_E_[A-Z_]+', code):
+            for dem_ref in dict.fromkeys(re.findall(r'\bSWC_DEM_E_\w+', code)):
                 if dem_ref not in dem_ids:
                     issues.append(
                         f"[{runnable_name} step {step.get('step_num')}] "
@@ -367,8 +394,8 @@ def _assemble_markdown(skeleton: dict, section7_map: dict[str, dict],
     lines.append("")
 
     lines.append("### 2.3 Calibration Ports (CalPrm)")
-    lines.append("| Port Name | Interface | Data Type | Default | Range | Description |")
-    lines.append("|-----------|-----------|-----------|---------|-------|-------------|")
+    lines.append("| Port Name | Interface | Data Type | Default | Range | Memory | Description |")
+    lines.append("|-----------|-----------|-----------|---------|-------|--------|-------------|")
     for cp in skeleton.get("calparms", []):
         range_str = cp.get("range", "")
         unit = cp.get("unit", "")
@@ -376,7 +403,8 @@ def _assemble_markdown(skeleton: dict, section7_map: dict[str, dict],
         lines.append(
             f"| {cp.get('port_name','')} | IF_Prm_{cp.get('name','')} "
             f"| {cp.get('data_type','')} | {cp.get('default_value','')} "
-            f"| {range_unit} | {cp.get('description','')} |"
+            f"| {range_unit} | {cp.get('memory_section') or 'ROM (const, read-only at runtime)'} "
+            f"| {cp.get('description','')} |"
         )
     if not skeleton.get("calparms"):
         lines.append("| — | — | — | — | — | No calibration parameters defined |")
@@ -573,11 +601,18 @@ def _format_hints_block(hints: dict) -> str:
 
 # ── Skeleton-quality checks (deterministic, used to trigger one retry) ────────
 
-def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
+def _skeleton_problems(skeleton: dict, asil: str, planned: list[str] | None = None) -> list[str]:
     """Return a list of human-readable problems with the skeleton.
     Empty list = skeleton is acceptable."""
     problems: list[str] = []
     asil_safety = asil.upper() in ("ASIL-B", "ASIL-C", "ASIL-D")
+
+    # Rule 0: a skeleton without runnables gives a spec with no Section 7 at all
+    if not skeleton.get("runnables"):
+        problems.append(
+            "runnables[] is empty. List every RE_* runnable of this SWC "
+            "(name, trigger, period, description, reads, writes)."
+        )
 
     # Rule 1: ASIL-B/C/D must have at least one DEM event
     if asil_safety and not skeleton.get("dem_events"):
@@ -622,7 +657,76 @@ def _skeleton_problems(skeleton: dict, asil: str) -> list[str]:
             f"DEM event IDs must start with 'SWC_DEM_E_'. Wrong: {names}."
         )
 
+    # Rule 5: single writer — an IRV or P-port is produced by ONE runnable (RE_Init may also initialise it).
+    # Two producers in one cycle make the published value last-writer-wins; the reviewer rejected 4 of 4
+    # such specs (AEB r34, r35, r37, r38).
+    producers: dict[str, list[str]] = {}
+    for r in skeleton.get("runnables") or []:
+        name = str(r.get("name", ""))
+        if name == "RE_Init":
+            continue
+        for item in list(r.get("irvs_produced") or []) + list(r.get("writes") or []):
+            producers.setdefault(str(item), []).append(name)
+    multi = {k: v for k, v in producers.items() if len(set(v)) > 1}
+    if multi:
+        listing = "; ".join(f"{k}: {', '.join(sorted(set(v)))}" for k, v in list(multi.items())[:6])
+        problems.append(
+            "Each IRV and each provided port must have exactly ONE producer runnable (RE_Init may "
+            f"initialise it). Several producers: {listing}. Give each one owner; the other runnables "
+            "consume it (irvs_consumed) instead of writing it."
+        )
+
+    # Rule 8: runnables inherit the module ASIL (no decomposition is modelled): RE_Init / RE_Map... at ASIL-B in an
+    # ASIL-D module was a review error ("ASIL allocation is inconsistent"; spec-only round 10).
+    order = {"QM": 0, "ASIL-A": 1, "ASIL-B": 2, "ASIL-C": 3, "ASIL-D": 4}
+    mod_level = order.get(str(asil).upper(), None)
+    if mod_level:
+        low = [str(r.get("name", "")) for r in (skeleton.get("runnables") or [])
+               if order.get(str(r.get("asil", "")).upper(), mod_level) < mod_level]
+        if low:
+            problems.append(
+                f"The module is {asil.upper()}; every runnable must carry {asil.upper()} (no ASIL decomposition is "
+                f"modelled). Lower ASIL on: {', '.join(low[:10])}."
+            )
+
+    # Rule 7: every planned runnable is a runnable of its own - the skeleton folded 5 of 7 planned runnables
+    # into "sub-functions" of one runnable in 2 of 18 spec-only samples, and no repair could bring them back.
+    have = {str(r.get("name", "")) for r in (skeleton.get("runnables") or [])}
+    missing = [n for n in (planned or []) if n and n not in have]
+    if missing:
+        problems.append(
+            "Every planned runnable must appear in runnables[] as its own entry (not as a sub-function). "
+            f"Missing: {', '.join(missing[:10])}. Add each with its trigger, period, reads, writes, "
+            "irvs_consumed and irvs_produced."
+        )
+
     return problems
+
+
+_WRITE_RE = re.compile(
+    r"\b(?:Rte_IrvWrite\s*\(\s*(IRV_\w+)|Rte_I?Write\s*\(\s*(PP_\w+)|Rte_I?Write_(PP_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*?)_\w+\s*\()"
+)
+
+
+def _foreign_writes(s7: dict, runnable: dict, declared_ports: set[str]) -> list[str]:
+    """IRVs / P-ports this runnable's steps write although its metadata does not list them as its own output."""
+    if runnable.get("name") == "RE_Init":
+        return []
+    own = set(runnable.get("writes") or []) | set(runnable.get("irvs_produced") or [])
+    code = "\n".join(str(s.get("code", "")) for s in (s7.get("steps") or []))
+    code = re.sub(r"//[^\n]*", "", code)
+    out: list[str] = []
+    for m in _WRITE_RE.finditer(code):
+        name = next(g for g in m.groups() if g)
+        if name.startswith("PP_") and name not in declared_ports:
+            name = next((p for p in declared_ports if name.startswith(p)), name)
+        if name not in own and name not in out:
+            out.append(name)
+    return out
+
+
+# Top-level keys of a skeleton document (at least one must be present).
+_SKELETON_KEYS = ("runnables", "ports", "irvs", "calparms", "dem_events", "sub_functions", "data_types")
 
 
 # ── JSON extraction helper ────────────────────────────────────────────────────
@@ -818,7 +922,7 @@ class MudSpecPipeline:
             return None
 
         # ── Quality check + one retry on missing fields ────────────────────
-        problems = _skeleton_problems(skeleton, asil)
+        problems = _skeleton_problems(skeleton, asil, runnables)
         if problems:
             logger.warning(
                 "[Pipeline/Stage1] First skeleton has %d problem(s) — retrying once. Problems:\n  %s",
@@ -843,7 +947,7 @@ class MudSpecPipeline:
                 backend, system_prompt, retry_user_prompt, max(temperature, 0.0)
             )
             if retried:
-                still_bad = _skeleton_problems(retried, asil)
+                still_bad = _skeleton_problems(retried, asil, runnables)
                 if len(still_bad) < len(problems):
                     logger.info(
                         "[Pipeline/Stage1] Retry improved skeleton: %d → %d problems",
@@ -855,6 +959,12 @@ class MudSpecPipeline:
                         "[Pipeline/Stage1] Retry did not improve skeleton (%d problems remain).",
                         len(still_bad),
                     )
+
+        if not skeleton.get("runnables"):
+            # Nothing to write Section 7 for: let the caller fall back to the single-pass spec
+            # instead of assembling a document with no runnables.
+            logger.warning("[Pipeline/Stage1] Skeleton has no runnables after retry — rejected")
+            return None
 
         # Final defaulting — ensure swc_name + asil are always set
         if not skeleton.get("swc_name"):
@@ -871,20 +981,42 @@ class MudSpecPipeline:
         user_prompt: str,
         temperature: float,
     ) -> dict | None:
-        """Single skeleton AI call + JSON extraction + key normalisation."""
+        """Single skeleton AI call + JSON extraction + key normalisation.
+
+        An answer cut off at the output cap (``finish_reason == "length"``) is asked for once
+        more with twice the room and is never salvaged: the pieces of a truncated JSON document
+        are not a skeleton.
+        """
         try:
-            response = await backend.generate(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=temperature,
-                max_tokens=4096,
-                response_format="json",
-            )
+            response = None
+            for max_tokens in (4096, 8192):
+                response = await backend.generate(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format="json",
+                )
+                if getattr(response, "finish_reason", None) != "length":
+                    break
+                logger.warning(
+                    "[Pipeline/Stage1] Skeleton answer was cut off at the output cap (max_tokens=%d)",
+                    max_tokens,
+                )
+                if not (response.content or "").strip():
+                    # A reasoning model spent the whole budget thinking; asking again costs
+                    # minutes and ends the same way.
+                    return None
+            else:
+                return None
             skeleton = _extract_json(response.content)
+            if skeleton and not any(k in skeleton for k in _SKELETON_KEYS):
+                # A stray inner object (one port, one runnable) of a broken document.
+                skeleton = None
             if not skeleton:
                 logger.warning(
                     "[Pipeline/Stage1] Failed to extract JSON from response: %s…",
-                    response.content[:300],
+                    (response.content or "")[:300],
                 )
                 return None
 
@@ -931,7 +1063,7 @@ class MudSpecPipeline:
             or "(not available)"
         )
 
-        system_prompt = _SECTION7_SYSTEM.format(few_shot_example=few_shot)
+        system_prompt = _section7_system(few_shot)
         user_prompt = _SECTION7_USER_TMPL.format(
             runnable_name=rname,
             trigger=runnable.get("trigger", "Cyclic"),
@@ -957,12 +1089,23 @@ class MudSpecPipeline:
                 response_format="json",
             )
             s7 = _extract_json(response.content)
-            if not s7:
-                logger.warning(
-                    "[Pipeline/Stage3] Failed to extract JSON for %s: %s…",
-                    rname, response.content[:300],
+            if not s7 or not s7.get("steps"):
+                # No usable steps (unparseable, or a JSON without "steps" - seen for a large RE_CommandBrake, which
+                # then became a silent "// TODO: Section 7 generation failed" stub). Retry once with more room.
+                logger.warning("[Pipeline/Stage3] No steps for %s — retrying once with a larger budget: %s…",
+                               rname, (response.content or "")[:200])
+                response = await self._backend.generate(
+                    system_prompt=system_prompt,
+                    user_prompt="Your previous answer had no \"steps\" array. Return the COMPLETE JSON object with "
+                                "every step.\n\n" + user_prompt,
+                    temperature=min(temperature + 0.05, 0.3),
+                    max_tokens=4096,
+                    response_format="json",
                 )
-                return None
+                s7 = _extract_json(response.content)
+                if not s7 or not s7.get("steps"):
+                    logger.warning("[Pipeline/Stage3] Still no steps for %s after retry", rname)
+                    return None
 
             # Ensure required keys
             for key in ("reads", "writes", "irvs_consumed", "irvs_produced", "calparms_used", "steps"):
@@ -1032,6 +1175,33 @@ class MudSpecPipeline:
                         "[Pipeline/Stage3] Retry failed for %s: %s — keeping original",
                         rname, retry_exc,
                     )
+
+            # ── Single-writer gate: no writes of outputs another runnable owns ───────
+            declared_ports = {p.get("name", "") for p in skeleton.get("ports", []) if p.get("direction") == "provided"}
+            foreign = _foreign_writes(s7, runnable, declared_ports)
+            if foreign:
+                logger.warning("[Pipeline/Stage3] %s writes outputs it does not own: %s — retrying once",
+                               rname, ", ".join(foreign))
+                retry_user = (
+                    f"PREVIOUS ATTEMPT REJECTED: {rname} writes {', '.join(foreign)}, which it does not produce "
+                    f"(its own outputs are only: {', '.join(list(runnable.get('writes') or []) + list(runnable.get('irvs_produced') or [])) or 'none'}). "
+                    "Another runnable owns those. Do not write them on any path - on a guard or fault path "
+                    "write only this runnable's own outputs (or nothing) and return.\n\n" + user_prompt
+                )
+                try:
+                    retry_resp = await self._backend.generate(
+                        system_prompt=system_prompt, user_prompt=retry_user,
+                        temperature=min(temperature + 0.05, 0.3), max_tokens=2048, response_format="json",
+                    )
+                    retry_s7 = _extract_json(retry_resp.content)
+                    if retry_s7 and retry_s7.get("steps"):
+                        for key in ("reads", "writes", "irvs_consumed", "irvs_produced", "calparms_used", "steps"):
+                            retry_s7.setdefault(key, [])
+                        retry_s7.setdefault("runnable_name", rname)
+                        if len(_foreign_writes(retry_s7, runnable, declared_ports)) < len(foreign):
+                            s7 = retry_s7
+                except Exception as retry_exc:  # noqa: BLE001 - keep the first answer
+                    logger.warning("[Pipeline/Stage3] single-writer retry failed for %s: %s", rname, retry_exc)
 
             return s7
 

@@ -1,0 +1,26 @@
+{
+  "version": "0.1.0",
+  "description": "L2-oriented requirement quality rulebook. Generic rules apply to every domain; profiles add domain rules.",
+  "rules": [
+    {"id": "RQ-01", "category": "structure", "severity": "major", "title": "Atomicity", "description": "One primary 'shall' per requirement. Split compound requirements into separate IDs."},
+    {"id": "RQ-02", "category": "language", "severity": "minor", "title": "Vague language", "description": "Avoid undefined vague terms (appropriate, sufficient, fast, robust, minimize, etc.)."},
+    {"id": "RQ-03", "category": "verifiability", "severity": "critical", "title": "Acceptance criteria", "description": "Every requirement needs Given/When/Then acceptance criteria with expected outputs and tolerance."},
+    {"id": "RQ-04", "category": "verifiability", "severity": "critical", "title": "Verification method", "description": "Every requirement needs a verification method: test, analysis, review, or inspection."},
+    {"id": "RQ-05", "category": "traceability", "severity": "major", "title": "Parent trace", "description": "Software/unit requirements must trace to a parent system/stakeholder requirement."},
+    {"id": "RQ-06", "category": "safety", "severity": "major", "title": "ASIL rationale", "description": "ASIL-classified requirements need a safety goal/FSR reference or an explicit open issue."},
+    {"id": "RQ-07", "category": "abstraction", "severity": "major", "title": "Design leakage", "description": "Requirements state what/why; algorithms, filters, functions and formulas belong in design unless marked as a constraint with rationale."},
+    {"id": "RQ-08", "category": "interface", "severity": "major", "title": "Interface completeness", "description": "Interface requirements need port, direction, data type, unit, range, resolution and update rate."},
+    {"id": "RQ-09", "category": "timing", "severity": "major", "title": "Timing completeness", "description": "Timing requirements need trigger, period, deadline/WCET and jitter where applicable."},
+    {"id": "RQ-10", "category": "safety", "severity": "major", "title": "Safety completeness", "description": "Safety requirements need fault condition, safe state/reaction, debounce and FTTI."},
+    {"id": "RQ-11", "category": "safety", "severity": "major", "title": "Mandatory safety priority", "description": "A safety requirement cannot be 'should' or 'could'; use 'must' or justify a lower priority."},
+    {"id": "RQ-12", "category": "structure", "severity": "critical", "title": "Duplicate ID", "description": "Requirement IDs must be unique across the set."},
+    {"id": "RQ-13", "category": "traceability", "severity": "major", "title": "Test link", "description": "Every requirement needs at least one test-design ID."},
+    {"id": "RQ-14", "category": "verifiability", "severity": "info", "title": "Unsupported threshold", "description": "Numeric thresholds need a rationale or source; otherwise record an open issue."},
+    {"id": "RQ-15", "category": "language", "severity": "minor", "title": "Ambiguous phrase", "description": "Replace ambiguous phrases with measurable conditions (e.g. 'one control cycle' -> 'within 10 ms')."},
+    {"id": "RQ-16", "category": "consistency", "severity": "major", "title": "Known conflict", "description": "Conflicting requirements must be reconciled or recorded with a decision and open issue."},
+    {"id": "RQ-17", "category": "abstraction", "severity": "minor", "title": "Constraint rationale", "description": "Constraints must state why they are constraints and how they are verified."},
+    {"id": "RQ-18", "category": "structure", "severity": "major", "title": "Normative statement", "description": "The statement must use a normative 'shall' (or 'shall not')."},
+    {"id": "RQ-19", "category": "safety", "severity": "info", "title": "HARA/FSR assumption", "description": "ASIL values in a synthetic sample are assumptions until a HARA/FSR confirms them."},
+    {"id": "RQ-20", "category": "process", "severity": "info", "title": "Review status", "description": "A hardened requirement remains 'review' until a human approves the baseline."}
+  ]
+}

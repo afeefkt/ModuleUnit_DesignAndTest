@@ -1,7 +1,7 @@
 # Contributing to MUD_MUT
 
-Thanks for your interest! MUD_MUT is a local-AI, ASPICE-aligned pipeline that turns AUTOSAR requirements into
-validated Module Unit Design flow charts and CppUTest unit tests. Contributions of all kinds are welcome.
+Thanks for your interest! MUD_MUT is a local-AI, ASPICE-aware pipeline that turns AUTOSAR requirements into
+schema-checked draft Module Unit Design flow charts and CppUTest unit tests. Contributions of all kinds are welcome.
 
 ## Repository structure
 

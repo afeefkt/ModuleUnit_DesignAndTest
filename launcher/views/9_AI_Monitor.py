@@ -20,7 +20,7 @@ for p in (str(_REPO_ROOT), str(_REPO_ROOT / "launcher")):
         sys.path.insert(0, p)
 
 import _common as c  # noqa: E402
-from mudmut_core import agents, env  # noqa: E402
+from mudmut_core import agents, env, jobs  # noqa: E402
 from mudmut_core.llm import get_providers, has_key, observe, probe  # noqa: E402
 from mudmut_core.llm.client import stream_blocking  # noqa: E402
 
@@ -72,7 +72,7 @@ default_index = options.index(_stage_models[0]) if _stage_models else 0
 if options:
     model = cc2.selectbox(
         "Model", options, index=default_index, key=f"chat_model_{provider_id}",
-        format_func=lambda m: f"{'🆓 ' if m in free else ''}{m}{(' ' + probe.ICONS[status[m]]) if m in status else ''}",
+        format_func=lambda m: f"{'🆓 ' if m in free else ''}{m}{(' ' + probe.ICONS.get(status[m], '')) if m in status else ''}",
     )
 else:
     model = cc2.text_input("Model id", key=f"chat_model_{provider_id}",
@@ -92,6 +92,9 @@ if prov.is_cloud and not has_key(prov):
     allowed = False
 
 history = st.session_state.setdefault("chat_history", [])
+_MAX_CHAT = 40   # messages kept (and sent back to the model); older ones are dropped
+if len(history) > _MAX_CHAT:
+    del history[:-_MAX_CHAT]
 top = st.columns([1, 1, 3])
 if top[0].button("Quick test", disabled=not (allowed and model), help="Sends “Reply with the single word OK.”"):
     st.session_state["_chat_pending"] = "Reply with the single word OK."
@@ -162,17 +165,31 @@ prov_f = f2.selectbox("Provider", [""] + list(providers), format_func=lambda s: 
 problems = f3.toggle("Only problems", False, help="Errors and empty answers", key="feed_problems")
 if f4.button("Clear list"):
     observe.clear()
-calls_now = observe.recent(300)
-if calls_now:
+if observe.recent(1):
+    # Built only when the button is pressed (long runs hold large prompts and answers).
     st.download_button("Download log (JSON lines)",
-                       data="\n".join(json.dumps(x, ensure_ascii=False) for x in calls_now),
-                       file_name="llm_calls.jsonl", mime="application/json")
+                       data=lambda: "\n".join(json.dumps(x, ensure_ascii=False, default=str) for x in observe.recent(300)),
+                       file_name="llm_calls.jsonl", mime="application/json", on_click="ignore")
 
 
-@st.fragment(run_every=1)
-def _feed() -> None:
-    c.ai_feed(25, stage=st.session_state.get("feed_stage", ""), provider=st.session_state.get("feed_provider", ""),
+def _feed_body() -> None:
+    c.ai_feed(15, stage=st.session_state.get("feed_stage", ""), provider=st.session_state.get("feed_provider", ""),
               only_problems=st.session_state.get("feed_problems", False))
 
 
-_feed()
+@st.fragment(run_every=2)
+def _feed_live() -> None:
+    _feed_body()
+    # Stop refreshing as soon as nothing is in flight any more.
+    if not (jobs.any_running() or any(x["status"] == "running" for x in observe.recent(50))):
+        st.rerun(scope="app")
+
+
+# Live refresh only while a model call or a run is in flight — redrawing every call each second
+# made the browser hang once a run had produced long answers.
+if jobs.any_running() or any(x["status"] == "running" for x in observe.recent(50)):
+    st.caption("Updating live while a request is running…")
+    _feed_live()
+else:
+    st.button("Refresh", key="feed_refresh", help="Nothing is running, so the list does not update by itself.")
+    _feed_body()

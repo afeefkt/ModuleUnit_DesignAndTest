@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import os
 import re
 import time
 from typing import AsyncIterator, Optional
@@ -14,6 +15,12 @@ from mudtool.ai.base_backend import AIResponse, BaseAIBackend
 from mudtool.config.settings import CloudProvider, Settings
 
 logger = logging.getLogger(__name__)
+
+# Cloud models that think before answering (their reasoning counts against max_tokens).
+CLOUD_REASONING_KEYWORDS = ("reasoner", "deepseek-r1", "-r1", "qwq", "thinking", "gpt-oss", "o1", "o3", "o4-mini")
+# 16384 was not enough for deepseek-reasoner on the MUD spec skeleton: two calls of ~70 s each
+# ended with finish_reason=length and no usable answer (run 20261111_001000).
+REASONING_MIN_TOKENS = 32768
 
 
 class CloudBackend(BaseAIBackend):
@@ -96,6 +103,18 @@ class CloudBackend(BaseAIBackend):
             except ImportError:
                 raise RuntimeError("httpx package not installed. Run: pip install httpx")
         return self._openai_client
+
+    def _effective_max_tokens(self, max_tokens: int) -> int:
+        """Cloud reasoning models think inside the same token budget as the answer.
+
+        ``deepseek-reasoner`` with ``max_tokens=2048`` spent all of it thinking and returned an
+        empty answer (finish_reason=length). Give cloud reasoning models at least
+        ``REASONING_MIN_TOKENS``; local models keep the caller's value (their context is small).
+        """
+        model = (self._active_openai_model() or "").lower()
+        if self._is_local_ollama() or not any(k in model for k in CLOUD_REASONING_KEYWORDS):
+            return max_tokens
+        return max(int(max_tokens or 0), REASONING_MIN_TOKENS)
 
     def _is_local_ollama(self) -> bool:
         """Return True if the configured endpoint looks like a local Ollama instance."""
@@ -228,6 +247,33 @@ class CloudBackend(BaseAIBackend):
             latency_ms=latency,
         )
 
+    async def _post_with_deadline(self, client, payload: dict):
+        """POST with a hard wall-clock deadline and retries.
+
+        httpx's timeout is per read: a provider that keeps a stalled connection alive with
+        keep-alive bytes never trips it, and one call can hang for the whole run. The deadline
+        (MUD_CALL_DEADLINE seconds, default 360) cancels such a call and asks again.
+        """
+        import httpx
+        deadline = float(os.environ.get("MUD_CALL_DEADLINE", "360") or 360)
+        attempts = max(1, int(os.environ.get("MUD_CALL_ATTEMPTS", "3") or 3))
+        last: Exception = RuntimeError("no attempt made")
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await asyncio.wait_for(
+                    client.post("/chat/completions", json=payload), timeout=deadline)
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < attempts:
+                    last = RuntimeError(f"HTTP {response.status_code}")
+                    logger.warning(f"AI call got HTTP {response.status_code} (attempt {attempt}/{attempts}); retrying")
+                    await asyncio.sleep(min(30, 5 * attempt))
+                    continue
+                return response
+            except (asyncio.TimeoutError, httpx.TransportError) as exc:
+                last = exc
+                logger.warning(f"AI call failed after up to {deadline:.0f}s ({exc!r}); "
+                               f"attempt {attempt}/{attempts}")
+        raise RuntimeError(f"AI call failed after {attempts} attempt(s): {last!r}")
+
     async def _generate_openai(
         self,
         system_prompt: str,
@@ -243,7 +289,7 @@ class CloudBackend(BaseAIBackend):
 
         payload = {
             "model": self._active_openai_model(),
-            "max_tokens": max_tokens,
+            "max_tokens": self._effective_max_tokens(max_tokens),
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -278,14 +324,14 @@ class CloudBackend(BaseAIBackend):
             f"response_format={response_format}"
         )
 
-        response = await client.post("/chat/completions", json=payload)
+        response = await self._post_with_deadline(client, payload)
 
         # Auto-pull missing Ollama models and retry once
         if response.status_code == 404 and self._is_local_ollama():
             model_name = payload["model"]
             pulled = await self._pull_ollama_model(model_name)
             if pulled:
-                response = await client.post("/chat/completions", json=payload)
+                response = await self._post_with_deadline(client, payload)
 
         response.raise_for_status()
         data = response.json()
@@ -381,7 +427,7 @@ class CloudBackend(BaseAIBackend):
 
         payload = {
             "model": self._active_openai_model(),
-            "max_tokens": max_tokens,
+            "max_tokens": self._effective_max_tokens(max_tokens),
             "temperature": temperature,
             "stream": True,
             "messages": [
@@ -432,12 +478,24 @@ class CloudBackend(BaseAIBackend):
 
                 resp.raise_for_status()
 
-                async for raw_line in resp.aiter_lines():
+                idle = float(os.environ.get("MUD_STREAM_IDLE", "180") or 180)
+                last_data = time.monotonic()
+                lines = resp.aiter_lines().__aiter__()
+                while True:
+                    # A stalled stream (silent, or only keep-alive bytes) must not hang the run:
+                    # raise, and the fallback below asks again with the deadline-guarded call.
+                    try:
+                        raw_line = await asyncio.wait_for(lines.__anext__(), timeout=idle)
+                    except StopAsyncIteration:
+                        break
                     raw_line = raw_line.strip()
+                    if time.monotonic() - last_data > idle:
+                        raise asyncio.TimeoutError(f"no stream data for {idle:.0f}s")
                     if not raw_line:
                         continue
                     if not raw_line.startswith("data: "):
                         continue
+                    last_data = time.monotonic()
                     chunk_str = raw_line[6:]
                     if chunk_str == "[DONE]":
                         break
@@ -446,6 +504,7 @@ class CloudBackend(BaseAIBackend):
                     except _json.JSONDecodeError:
                         continue
 
+                    _observer.check_cancel("while the model was streaming")   # stop promptly on Cancel
                     delta = (chunk.get("choices") or [{}])[0].get("delta", {})
                     text = delta.get("content") or ""
                     reasoning_delta = (delta.get("reasoning") or delta.get("reasoning_content")

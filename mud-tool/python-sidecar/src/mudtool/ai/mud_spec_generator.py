@@ -39,6 +39,12 @@ from mudtool.ai.section7_normalizer import (
 
 logger = logging.getLogger(__name__)
 
+# Output room for a call that writes the WHOLE spec (generation and regeneration). A real spec is 20-27k
+# characters (7-8k tokens); with 6144 / 7168 the answer was cut off mid-statement and the last runnable's
+# section was lost (run 20261111_005406). 8192 is the largest output DeepSeek chat accepts.
+SPEC_OUTPUT_TOKENS = 8192
+REGEN_LARGE_SPEC_CHARS = 14000   # above this a rewrite may not fit an 8192-token model
+
 # ── Generation system prompt ─────────────────────────────────────────────────
 
 _GEN_SYSTEM_PROMPT = _PSEUDO_GUIDELINE_BLOCK + """
@@ -222,6 +228,16 @@ RULES (follow ALL — do not deviate):
     * SAFE_STATE output value (0 or fail-safe) for every ASIL-C/D validation step
     * Dem_ReportErrorStatus() with named DEM event ID (SWC_DEM_E_*) on every error path
     * Sub-function calls as standalone statements referencing names from Section 3.2
+    * TRACEABILITY: put the requirement IDs a step implements in its title, e.g.
+      "3. Validate calibration [REQ-XYZ-012, REQ-XYZ-013]" (IDs from "Linked Requirement IDs")
+    * Every local variable a step READS must be ASSIGNED earlier in the same runnable
+      (or be an IRV produced by another runnable) — no reads of never-set variables
+    * Locals are SCALARS only: never declare a struct/typedef-typed local (e.g. DT_X l_cmd) and
+      never use member access on a local (l_cmd.pressure = ..). For a composite port element use
+      one scalar local per element (l_cmdPressure, l_cmdStatus) and write each element with its
+      own Rte_Write_<port>_<element>(l_cmdPressure) call
+    * Do NOT call a sub-function whose logic you do not write out — write its statements
+      inline in the step instead (an undescribed helper becomes an empty function)
 - Signal ranges must use engineering units (Nm, deg, m/s, %, A, V)
 - Every CalPrm must have a default value and valid range in Section 2.3
 - If an IRV is shared between runnables in different OS tasks, list the ExclusiveArea name
@@ -400,6 +416,7 @@ class SpecReviewResult:
     error_count: int = 0        # computed on first access
     warning_count: int = 0
     info_count: int = 0
+    ai_review_empty: bool = False   # the reviewer model returned nothing; approval is ID-check only
 
     def __post_init__(self):
         self.error_count   = sum(1 for i in self.issues if i.severity == "error")
@@ -426,6 +443,7 @@ class SpecReviewResult:
             "error_count": self.error_count,
             "warning_count": self.warning_count,
             "info_count": self.info_count,
+            "ai_review_empty": self.ai_review_empty,
         }
 
     @classmethod
@@ -696,83 +714,23 @@ def apply_patch_only_review_fixes(
     requirements_text: str,
     review: SpecReviewResult,
 ) -> tuple[str, dict[str, Any]]:
-    """Patch only targeted Section 7 runnable blocks for coverage gaps.
+    """Deterministic repair of review findings — never used for coverage gaps.
 
-    Returns the original markdown unchanged when no safe deterministic patch can
-    be applied. The caller may then fall back to the model-based editor.
+    A coverage gap means the design logic for a requirement is missing. This function used to
+    append ``// Trace: <ID>`` and a prose step ("99. Cover <ID> / Requirement intent: …") to a
+    runnable. The ID then appeared in Section 7, the coverage check reported 100 %, the review
+    was approved and the ID was traced to that runnable's code and tests, although nothing had
+    been designed. Coverage gaps now always go to the model-based editor, and what it does not
+    cover stays reported as uncovered.
+
+    Returns the original markdown unchanged; the caller falls back to the model-based editor.
     """
     blocks = _section7_runnable_blocks(current_spec_markdown)
     if not blocks:
         return current_spec_markdown, {"changed": False, "reason": "section7_not_found"}
-
-    patch_items = [p for p in (review.patch_plan or []) if p.get("kind") == "coverage_gap"]
-    if not patch_items:
-        req_lines = _requirement_lines(requirements_text, review.uncovered_req_ids)
-        patch_items = [
-            {
-                "kind": "coverage_gap",
-                "req_id": req_id,
-                "target_runnable": _guess_patch_runnable(req_id, req_lines.get(req_id, ""), blocks),
-            }
-            for req_id in review.uncovered_req_ids
-        ]
-    if not patch_items:
-        return current_spec_markdown, {"changed": False, "reason": "no_patch_items"}
-
-    req_lines = _requirement_lines(requirements_text, [str(p.get("req_id", "")) for p in patch_items])
-    block_by_name = {b["name"]: b for b in blocks}
-    insertions: dict[str, list[str]] = {}
-    applied: list[str] = []
-    for item in patch_items:
-        req_id = str(item.get("req_id", "")).strip()
-        if not req_id or req_id in _extract_section7(current_spec_markdown):
-            continue
-        target = str(item.get("target_runnable", "")).strip()
-        if target not in block_by_name:
-            target = blocks[0]["name"]
-        req_summary = req_lines.get(req_id, req_id).replace("|", " ").strip()
-        insertions.setdefault(target, []).extend([
-            f"// Trace: {req_id}",
-            f"99. Cover {req_id}",
-            f"   Requirement intent: {req_summary[:180]}",
-        ])
-        applied.append(req_id)
-
-    if not insertions:
-        return current_spec_markdown, {"changed": False, "reason": "nothing_to_insert"}
-
-    patched = current_spec_markdown
-    for block in sorted(blocks, key=lambda b: b["abs_body_end"], reverse=True):
-        lines = insertions.get(block["name"])
-        if not lines:
-            continue
-        insertion = "\n" + "\n".join(lines) + "\n"
-        insert_at = block["abs_body_end"]
-        patched = patched[:insert_at].rstrip() + insertion + patched[insert_at:]
-
-    unchanged_lines = {
-        line.strip()
-        for line in current_spec_markdown.splitlines()
-        if line.strip()
-    }
-    patched_lines = {line.strip() for line in patched.splitlines() if line.strip()}
-    overlap = len(unchanged_lines & patched_lines) / max(len(unchanged_lines), 1) * 100
-    required_headings_present = all(
-        f"## {idx}." in patched for idx in range(1, 8)
-    )
-    if overlap < 95.0 or not required_headings_present:
-        return current_spec_markdown, {
-            "changed": False,
-            "reason": "patch_rejected",
-            "overlap_pct": round(overlap, 1),
-        }
-    return patched, {
-        "changed": True,
-        "mode": "patch_only",
-        "applied_req_ids": applied,
-        "overlap_pct": round(overlap, 1),
-        "targeted_sections": sorted(insertions),
-    }
+    if review.uncovered_req_ids or any(p.get("kind") == "coverage_gap" for p in (review.patch_plan or [])):
+        return current_spec_markdown, {"changed": False, "reason": "coverage_gap_needs_design_logic"}
+    return current_spec_markdown, {"changed": False, "reason": "no_patch_items"}
 
 
 def review_fix_fingerprints(review: SpecReviewResult) -> set[str]:
@@ -1070,7 +1028,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=6144,
+                max_tokens=SPEC_OUTPUT_TOKENS,
             ):
                 if not _first_token_received:
                     _first_token_received = True
@@ -1119,7 +1077,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=6144,
+                max_tokens=SPEC_OUTPUT_TOKENS,
                 response_format="text",   # ← no JSON mode for Markdown output
             )
             chunks = [response.content]
@@ -1178,8 +1136,11 @@ class MudSpecGenerator:
         # Truncate inputs so the reviewer prompt stays within model context limits.
         # Limits raised: real AUTOSAR specs are 8k-15k chars; truncating at 4k causes
         # the reviewer to miss issues in the tail and produce incomplete coverage reports.
-        _MAX_REQ_CHARS = 6000
-        _MAX_SPEC_CHARS = 10000
+        # A 6-runnable spec is 22-26k chars: at 10k the reviewer never saw Section 7 and reported it as
+        # missing/truncated (0 % coverage, never approved). Override with MUD_REVIEW_SPEC_CHARS.
+        import os as _os
+        _MAX_REQ_CHARS = int(_os.environ.get("MUD_REVIEW_REQ_CHARS", "12000") or 12000)
+        _MAX_SPEC_CHARS = int(_os.environ.get("MUD_REVIEW_SPEC_CHARS", "48000") or 48000)
         req_text_trimmed = (
             requirements_text[:_MAX_REQ_CHARS] + "\n…[truncated]"
             if len(requirements_text) > _MAX_REQ_CHARS else requirements_text
@@ -1217,6 +1178,9 @@ class MudSpecGenerator:
             len(response.content), swc_name, response.content[:200].replace("\n", " "),
         )
         result = self._parse_review(response.content, iteration=iteration)
+        # Say so when the reviewer model produced no answer (e.g. a reasoning model that used its
+        # whole token budget thinking): any approval below comes only from the deterministic ID check.
+        result.ai_review_empty = not (response.content or "").strip()
         deterministic = deterministic_requirement_coverage(
             mud_spec_markdown=mud_spec_markdown,
             requirements_text=requirements_text,
@@ -1430,6 +1394,17 @@ class MudSpecGenerator:
         # Regeneration edits Section 7 pseudo-code — route through the code-focused
         # generator backend (qwen) for consistency with the generation stage.
         backend = self._orchestrator._get_generator_backend()
+        # A whole-spec rewrite of a 6-runnable design is ~7k tokens: on a model capped at 8192 output
+        # tokens (deepseek-chat) it is cut off mid code block and the repair is discarded. Use the
+        # skeleton stage's model when that is a reasoning model (32k output budget) for large specs.
+        if len(current_spec_markdown or "") > REGEN_LARGE_SPEC_CHARS:
+            try:
+                skeleton_model = (getattr(self._orchestrator.settings, "mud_spec_skeleton_model", "") or "").lower()
+                if any(k in skeleton_model for k in ("reasoner", "thinking", "-r1")):
+                    backend = self._orchestrator._get_skeleton_backend()
+                    logger.info("regenerate_spec: large spec (%d chars) -> %s", len(current_spec_markdown), skeleton_model)
+            except Exception as exc:  # noqa: BLE001 - keep the generator backend
+                logger.warning("regenerate_spec: skeleton backend unavailable (%s)", exc)
 
         # ── Token-streaming regeneration ─────────────────────────────────────
         regen_iter = review.iteration + 1
@@ -1446,7 +1421,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=7168,
+                max_tokens=SPEC_OUTPUT_TOKENS,
             ):
                 chunks.append(chunk)
                 char_count += len(chunk)
@@ -1481,7 +1456,7 @@ class MudSpecGenerator:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=temperature,
-                max_tokens=7168,
+                max_tokens=SPEC_OUTPUT_TOKENS,
                 response_format="text",   # ← Markdown output, never JSON mode
             )
             chunks = [response.content]

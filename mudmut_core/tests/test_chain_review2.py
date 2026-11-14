@@ -32,7 +32,8 @@ def stubbed_chain(tmp_path, monkeypatch):
         )], architecture_summary="x")
 
     async def fake_spec(module, text, mode="two_stage", progress=None):
-        return "# MUD Spec\n## 7. Runnable RE_Foo\nl_u8X = 1;\n" * 20
+        return ("# MUD Spec: SWC_Test\n" + "Overview text for the test component. " * 6 +
+                "\n## 7. Functional Description\n### RE_Foo\n1. l_u8X = 1;\n2. Rte_Write_PP_X(l_u8X);\n")
 
     async def fake_activity(requirements, spec, swc, use_ai=True, progress=None):
         d = SimpleNamespace(diagrams=[SimpleNamespace()])
@@ -114,6 +115,34 @@ def test_failed_stage_skips_review_in_quick_mode():
     assert chain._failed_stage("spec", quick=True) == "activity"
     assert chain._failed_stage("spec", quick=False) == "review"
     assert chain._failed_stage(None, quick=True) == "import"
+
+
+def test_review_retries_an_empty_answer(stubbed_chain, monkeypatch):
+    class Rev:
+        def __init__(self, approved, empty):
+            self.approved = approved
+            self.ai_review_empty = empty
+            self.coverage_pct = 90
+            self.error_count = 0
+            self.warning_count = 0
+
+        def to_dict(self):
+            return {"approved": self.approved, "ai_review_empty": self.ai_review_empty}
+
+    calls = {"review": 0}
+
+    async def fake_review(module, text, spec_md, max_rounds=1, progress=None):
+        calls["review"] += 1
+        if calls["review"] == 1:
+            return spec_md, Rev(False, True)      # empty reviewer answer first
+        return spec_md, Rev(True, False)          # approved on the retry
+
+    monkeypatch.setattr(design, "review_and_improve", fake_review)
+    summary = asyncio.run(chain.run_full_chain(
+        str(stubbed_chain["req_file"]), swc="SWC_Test", quick=False, root=stubbed_chain["root"]))
+    assert calls["review"] == 2
+    assert summary["review_approved"] is True
+    assert summary["review_ai_empty"] is False
 
 
 def test_apply_stages_to_env_ignores_blank_models(monkeypatch):

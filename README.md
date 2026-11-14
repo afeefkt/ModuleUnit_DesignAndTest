@@ -1,11 +1,25 @@
-# MUD_MUT — Local-AI AUTOSAR Module Unit Design → Unit Tests
+# MUD_MUT — open, local-first, design-derived unit-test evidence for AUTOSAR
 
-> **From architectural requirements → validated MUD flow charts → AUTOSAR CppUTest unit tests.**
-> One ASPICE-aligned pipeline. Runs on **local models by default** — your requirements, designs, and code
+> **From architectural requirements → schema-checked draft MUD flow charts → AUTOSAR CppUTest unit tests.**
+> One ASPICE-aware pipeline. Runs on **local models by default** — your requirements, designs, and code
 > stay on your machine. Cloud models (Ollama Cloud, OpenRouter, NVIDIA, DeepSeek, Google) are optional, switched
 > on per stage, and every run report says whether any data left the machine. One Streamlit platform, **no Docker**.
 >
 > **New here? Read the step-by-step guide: [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md).**
+
+**Status in five lines**
+
+- **What it does:** requirements → Module Unit Design (MUD) spec → activity flow → C skeleton → CppUTest tests →
+  build, run and coverage in WSL → requirement ↔ test trace, with a per-stage ✅/⚠️/❌ report for every run.
+- **What it does not do:** it does not prove that a requirement is met, it does not replace engineering review, and
+  it is not qualified or certified tooling.
+- **Current result:** no requirement is verified yet by a test whose expected value comes from the requirement or
+  the design. Local 8B models: **0 of 30** `verified_by_test` on the BMS sample (the AI tests mostly did not
+  compile). Cloud model, AEB set: one run marks 18 of 21, but 11 of them rest only on `CHECK_TRUE(true)` tests
+  and the rest on values read from the generated code. All numbers per run: [BENCHMARK.md](BENCHMARK.md).
+- **Why not yet:** the generated tests take their expected values from the C code, not the design, and the trace
+  also counts no-op tests. A design-derived test oracle linked to each requirement ID is the open work.
+- **AI-assisted draft, not qualified tooling.** Every output needs engineer review (see `AGENTS.md`).
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-red)
@@ -38,36 +52,45 @@ Every AI step is wrapped in **deterministic guardrail layers** (see [Reliability
 
 ```mermaid
 flowchart LR
-    REQ[/"📄 inputs/requirements/<br/>DOORS · Polarion · Jira exports<br/>CSV · XLSX · ReqIF · MD · TXT"/]
+    RAW[/"📄 inputs/requirements/<br/>DOORS · Polarion · Jira exports<br/>CSV · XLSX · ReqIF · MD · TXT"/]
+    HARD["🧱 Harden requirements (optional)<br/>requirements_hardening/ · audit → author → review<br/>→ inputs/requirements_hardened/&lt;set&gt;/"]
+    REQ[/"📄 requirement file<br/>raw or hardened baseline"/]
+    RAW --> HARD --> REQ
+    RAW --> REQ
 
     subgraph UI["🖥️ Streamlit (launcher/) · localhost:8501 — runs in WSL"]
         direction TB
-        SET["⚙️ Providers & Keys · Workflow & Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
-        P1["① Design MUD"] --- P2["② Unit Tests MUT"] --- P3["③ Full Chain<br/>background job · live % bar"]
-        RR["📊 Runs & Reports<br/>stage rail · test report · coverage · ZIP"]
+        SET["⚙️ Keys & providers · Models · Settings<br/>preset or provider+model per stage · CppUTest folder"]
+        P1["① Requirements & design<br/>step by step · background steps + cancel<br/>one run folder per component"] --- P2["② Unit tests<br/>background build · verdicts updated"] --- P3["③ Full chain<br/>first / every / named SWC · live % + stage rail<br/>cancel · reset view"]
+        RR["📊 Runs & Reports<br/>stage rail · run state (interrupted / damaged)<br/>test report · coverage · trace table · ZIP"]
         AIM["🛰️ AI monitor<br/>every request / answer / thinking · test chat"]
         OCP["🤖 OpenCode Agent<br/>chat + live tool timeline"]
     end
 
     subgraph MUD["🧩 MUD — mud-tool library (in-process)"]
         direction TB
-        IMP["Import"] --> PLAN["Plan modules (SWC)<br/><i>stage: planner</i>"]
+        IMP["Import"] --> PLAN["Plan modules (SWC)<br/><i>stage: planner</i><br/>each SWC gets only its own requirements"]
         PLAN --> SPEC["MUD spec<br/>single_pass · two_stage + review<br/><i>stages: skeleton · generator · reviewer</i>"]
-        SPEC --> ACT{"Activity flow"}
-        ACT -- "quick mode / AI placeholder" --> FB["Deterministic Section 7<br/>flow builder"]
+        SPEC --> SCHK{"Spec check (no AI)<br/>real logic per runnable?<br/>locals read but never set · undescribed helpers"}
+        SCHK -- "gaps found" --> SREP["One targeted spec repair<br/>kept only if the re-check is better"]
+        SREP --> SCHK2{"no runnable with logic?"}
+        SCHK -- "no gaps" --> SCHK2
+        SCHK2 -- "yes" --> STOP["⛔ stop: spec rejected<br/>(activity AI never called)"]
+        SCHK2 -- "no" --> ACT{"Activity flow"}
+        ACT -- "quick mode / AI placeholder" --> FB["Deterministic Section 7<br/>flow builder<br/>multi-line statements joined · IDs via symbols"]
         ACT --> EXP["Export C skeleton + Mermaid"]
         FB --> EXP
     end
 
     subgraph C["🔧 compilable.py — gcc in WSL"]
-        CMP["Declare missing symbols (TODO(design))<br/>→ comment only what still fails<br/>→ Rte stubs + &lt;SWC&gt;.h"]
+        CMP["Declare missing symbols (TODO(design))<br/>typed by use: bit masks uint32 · value helpers float64 · libc from &lt;math.h&gt;<br/>→ comment only what still fails<br/>→ Rte stubs + &lt;SWC&gt;.h (helpers linkable by tests)<br/>quality gate: dropped logic / never-assigned / lost args = ❌"]
     end
 
     subgraph MUT["🧪 MUT — cpputest-rag library (in-process)"]
         direction TB
         GEN["Generate CppUTest per runnable<br/>RAG examples · <i>stage: test_generator</i>"]
         GEN --> FIX["Build (make in WSL) → fix loop:<br/>define invented constants → LLM fix ×2<br/><i>stage: test_fixer</i>"]
-        FIX -- "still red" --> Q["quarantined/ (+ smoke test if none compile)"]
+        FIX -- "still red" --> Q["quarantined/ (+ smoke test if none compile — reported ❌, proves nothing)"]
         FIX --> RUN["Run → JUnit · lcov coverage · HTML report"]
         Q --> RUN
     end
@@ -127,7 +150,7 @@ requirements.csv
 |---|---|---|
 | [`launcher/`](launcher/) | The Streamlit platform (router + `views/`: Overview · Requirements & design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent) | `./launch.sh` / `launch.bat` |
 | [`mudmut_core/`](mudmut_core/) | The shared in-process engine (design, compilable, verify, trace, report, chain, LLM providers, stage registry) | used by the UI, the CLI, the agent and the tests |
-| [`mud-tool/`](mud-tool/) | Requirements → MUD spec → validated AUTOSAR flow charts → C-skeleton export | in-process library |
+| [`mud-tool/`](mud-tool/) | Requirements → MUD spec → schema-checked draft AUTOSAR flow charts → C-skeleton export | in-process library |
 | [`cpputest-rag/`](cpputest-rag/) | C code → FAISS RAG → CppUTest unit tests → build & coverage | in-process library |
 | [`agentic/`](agentic/) | OpenCode agent layer (`mudmut_cli.py` tools on `mudmut_core`) | [agentic/README.md](agentic/README.md) |
 | `inputs/` · `outputs/` | Requirements, guidelines, skills, test examples · one folder per run | `config/` holds presets + your stage selection |
@@ -143,6 +166,7 @@ requirements.csv
 | [docs/providers.md](docs/providers.md) | Providers, free models, the probe, capping the local context window |
 | [agentic/README.md](agentic/README.md) | The OpenCode agent layer |
 | [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | Project background, learnings and honest limits |
+| [BENCHMARK.md](BENCHMARK.md) | Every run so far: input, models, kept/stubbed C, tests compiled, verified requirements — generated from `outputs/` |
 
 ## Quick start (local, no Docker)
 
@@ -180,16 +204,25 @@ wsl -u root -e apt-get install -y build-essential cpputest lcov
 Then use the pages (details for each in [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md)):
 
 1. **Start ▸ Overview** — Ollama, the WSL build tools (incl. CppUTest) and cloud keys should be green.
+   (Optional) **Design ▸ Harden requirements** turns a raw export into a reviewable, testable baseline first.
 2. **Setup ▸ Settings** — CppUTest folder (empty = auto-detect), optional compiler flags; **Check** shows what was found.
 3. **Setup ▸ Keys & providers** — test each provider; **Probe free models** marks which free cloud models really answer.
 4. **Setup ▸ Models** — flow charts of every workflow, and a **provider + model per stage** (presets: *Local - recommended*,
    *Local - fast*, *OpenRouter - free*, *NVIDIA NIM*, *DeepSeek*, *Ollama Cloud*).
 5. **Review ▸ AI monitor** — press **Quick test** in the test chat to confirm a model answers before a long run.
-6. **Verify ▸ Full chain** — one click end-to-end with a live progress bar, writing `outputs/<run>/RUN_REPORT.md`.
+6. **Verify ▸ Full chain** — pick the requirements file, choose the first / every / named software component, and run
+   end-to-end with a live progress bar and **Cancel**, writing `outputs/<run>/RUN_REPORT.md` per component.
    Or go step by step: **Design ▸ Requirements & design**, then **Verify ▸ Unit tests**.
-7. **Review ▸ Runs & reports** — test report, coverage, run report, per-test results, ZIP download, compare runs.
+7. **Review ▸ Runs & reports** — a sortable table of all runs, test report, coverage (of the component's own C file),
+   run report, per-test results, ZIP download, compare runs, archive/restore.
 
-The **current run** and a nine-box **stage rail** (green/amber/red/grey per stage) are shown at the top of every page.
+The **current run** (newest first), a nine-box **stage rail** (green/amber/red/grey per stage; a live rail while a run is
+going) and **Reset view** (clear the previous run's results from the screen; saved runs stay) are at the top of every
+page.
+
+**Honest verdicts:** a smoke-test-only result, commented-out design logic, a value that is read but never assigned, or a
+helper call that lost its arguments is reported as ❌ — a compiling, "passing" run is not shown as green when the
+design was not really implemented or tested. ASIL-B/C/D sets are flagged for human review.
 
 Each run writes to `outputs/<run>/` (see below).
 
@@ -246,8 +279,10 @@ Every stage is guarded, so the chain always finishes with a truthful report rath
   - Test files that still don't compile are moved to `quarantined/` and listed.
   - If none compile, a deterministic smoke test runs every runnable once (clearly labelled).
   - Test failures are real results: compare them with the design before trusting either side.
-- **Traceability:** a requirement is marked `verified_by_test` only when a test exercises a function
-  whose design carries its ID. Everything else is reported as `not_verified`.
+- **Traceability:** a requirement is marked `verified_by_test` only when the test file of a function
+  whose design carries its ID ran and every case in it passed. Otherwise it is `failing_test` (a case
+  failed), `test_not_run` (the file produced no results) or `not_verified` (no test for that function).
+  Known gap: a passing file of no-op cases (`CHECK_TRUE(true)`) also counts today; `BENCHMARK.md` separates them.
 
 All output is an AI-assisted draft, not certified tooling (see `AGENTS.md`).
 
@@ -275,6 +310,7 @@ output trustworthy enough to work with:
 ```
 MUD_MUT/
 ├── README.md                 ← you are here
+├── BENCHMARK.md              ← every run's numbers (python -m mudmut_core.benchmark --write BENCHMARK.md)
 ├── LICENSE                   ← Apache-2.0
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
@@ -288,7 +324,9 @@ MUD_MUT/
 ├── outputs/                  ← <run>/ 00_input · 01_mud · 02_code · 03_mut · 04_trace · RUN_REPORT.md
 ├── launcher/
 │   ├── streamlit_app.py      ← router: theme, run bar + stage rail, grouped menu
-│   └── views/                ← Overview · Design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent
+│   ├── views/                ← Overview · Design · Unit tests · Full chain · Runs & reports · AI monitor · Models · Keys · Settings · OpenCode agent
+│   ├── static/vendor/        ← pinned Mermaid + svg-pan-zoom (flow charts work offline)
+│   └── tests/                ← headless page tests (Streamlit AppTest), run in CI
 ├── mudmut_core/              ← the shared in-process engine (UI + CLI + agent + tests)
 ├── agentic/                  ← OpenCode agent layer (CLI tools, client, eval)
 ├── mud-tool/                 ← DESIGN half (history-preserved subtree)
@@ -305,14 +343,6 @@ MUD_MUT/
   used a cloud API key locally, rotate it if there's any chance it was shared.
 
 ---
-
-## Publishing to GitHub
-
-```bash
-gh repo create MUD_MUT --public --source=. --remote=origin --push
-```
-
-CI runs automatically on push/PR via [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ## Agentic mode (OpenCode layer)
 
@@ -332,3 +362,4 @@ See [agentic/README.md](agentic/README.md).
 ## License
 
 [Apache License 2.0](LICENSE). Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+CI runs on push/PR to `main` via [.github/workflows/ci.yml](.github/workflows/ci.yml).

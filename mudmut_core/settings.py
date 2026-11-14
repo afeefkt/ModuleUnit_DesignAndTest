@@ -18,7 +18,12 @@ SETTINGS_FILE = env.REPO_ROOT / "config" / "settings.json"
 DEFAULTS: dict[str, Any] = {
     "cpputest_home": "",   # folder holding include/CppUTest and lib*/libCppUTest.*
     "extra_cflags": "",    # appended to CFLAGS/CXXFLAGS in the generated Makefile
+    "auto_reset_view": "on",   # clear the previous run's screen state when a new run starts
 }
+
+
+def auto_reset_enabled() -> bool:
+    return str(get_settings().get("auto_reset_view", "on")).lower() in ("on", "true", "1", "yes")
 
 
 def get_settings() -> dict[str, Any]:

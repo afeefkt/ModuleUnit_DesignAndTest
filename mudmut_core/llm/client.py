@@ -8,7 +8,9 @@ reported to :mod:`mudmut_core.llm.observe` (no credentials are recorded).
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
 import time
 import urllib.error
@@ -161,10 +163,27 @@ async def achat(provider: Provider, model: str, messages: list[dict], *, max_tok
     call_id = _begin(provider, model, messages, "chat")
     started = time.monotonic()
     try:
+        # httpx's timeout is per read, so keep-alive bytes from a stalled provider never trip it:
+        # a hard wall-clock deadline per attempt (MUD_CALL_DEADLINE, default 360 s), retried.
+        deadline = min(float(timeout), float(os.environ.get("MUD_CALL_DEADLINE", "360") or 360))
+        attempts = max(1, int(os.environ.get("MUD_CALL_ATTEMPTS", "3") or 3))
+        last: Exception | None = None
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(_chat_url(provider), json=payload, headers=_headers(provider))
-            _raise_for_status(resp)
-            return _finish(call_id, resp.json(), started)
+            for attempt in range(1, attempts + 1):
+                try:
+                    resp = await asyncio.wait_for(
+                        client.post(_chat_url(provider), json=payload, headers=_headers(provider)),
+                        timeout=deadline)
+                except (asyncio.TimeoutError, httpx.TransportError) as exc:
+                    last = exc
+                    continue
+                if getattr(resp, "status_code", 0) in (429, 500, 502, 503, 504) and attempt < attempts:
+                    last = RuntimeError(f"HTTP {resp.status_code}")
+                    await asyncio.sleep(min(30, 5 * attempt))
+                    continue
+                _raise_for_status(resp)
+                return _finish(call_id, resp.json(), started)
+        raise RuntimeError(f"AI call failed after {attempts} attempt(s): {last!r}")
     except Exception as exc:
         observe.error_call(call_id, f"{type(exc).__name__}: {exc}")
         raise

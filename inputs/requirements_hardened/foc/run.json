@@ -1,0 +1,748 @@
+{
+  "set": "foc",
+  "input": "inputs/requirements/samples/Motcontrolcomp.csv",
+  "input_hash": "9788558f29abc6f5aa920dcc8c21ebcd5137e359d72b90165f85d6b87be7d2d3",
+  "run_dir": "outputs/req_hardening/20261108_221904_foc",
+  "hardened_dir": "inputs/requirements_hardened/foc",
+  "requirements": 35,
+  "hardened_requirements": 48,
+  "baseline_metrics": {
+    "requirements": 35,
+    "findings": 202,
+    "critical": 35,
+    "major": 123,
+    "minor": 8,
+    "info": 36,
+    "average_score": 38.1,
+    "with_acceptance_criteria": 0,
+    "with_verification_method": 35,
+    "with_parent": 0,
+    "traceable_total": 35,
+    "with_test_link": 0,
+    "with_safety_goal": 0,
+    "with_interface_data": 0,
+    "interface_total": 5,
+    "with_timing_data": 0,
+    "timing_total": 3,
+    "with_safe_state": 0,
+    "safety_total": 8,
+    "atomic": 32,
+    "compound_candidates": 3,
+    "per_requirement": [
+      {
+        "id": "ARCH-REQ-001",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-002",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-003",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-004",
+        "score": 31,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-005",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "ARCH-REQ-006",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-007",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-008",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-009",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-010",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-011",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-012",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-020",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-021",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-022",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-023",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-024",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-025",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-030",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-031",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-032",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-033",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-034",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-035",
+        "score": 31,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-036",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-040",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-041",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-042",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-043",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-044",
+        "score": 34,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-045",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-046",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-047",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-060",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "ARCH-REQ-061",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      }
+    ]
+  },
+  "hardened_metrics": {
+    "requirements": 48,
+    "findings": 0,
+    "critical": 0,
+    "major": 0,
+    "minor": 0,
+    "info": 0,
+    "average_score": 100.0,
+    "with_acceptance_criteria": 48,
+    "with_verification_method": 48,
+    "with_parent": 46,
+    "traceable_total": 46,
+    "with_test_link": 48,
+    "with_safety_goal": 48,
+    "with_interface_data": 5,
+    "interface_total": 5,
+    "with_timing_data": 4,
+    "timing_total": 4,
+    "with_safe_state": 14,
+    "safety_total": 14,
+    "atomic": 48,
+    "compound_candidates": 0,
+    "per_requirement": [
+      {
+        "id": "ARCH-REQ-000",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-005",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-008",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-009",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-010",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-011",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-012",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-020",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-021",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-022",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-023",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-024",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-025",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-030",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-031",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-032",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-033",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-034",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-035",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-036",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-040",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-041",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-042",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-043",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-044",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-045",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-046",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-047",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-060",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-061",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-801",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-802",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-803",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-804",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-805",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-806",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-807",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-808",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-1001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-1002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-1003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "ARCH-REQ-1004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "independent-reviewer-v0.1",
+    "requirements": 48,
+    "decisions": {
+      "accept_with_open_issues": 48
+    },
+    "accept": 48,
+    "blocking": 0
+  },
+  "paths": {
+    "findings": "outputs/req_hardening/20261108_221904_foc/02_findings/findings.json",
+    "review": "outputs/req_hardening/20261108_221904_foc/04_reviews/review.json",
+    "metrics": "outputs/req_hardening/20261108_221904_foc/05_verified/metrics.json",
+    "extended_json": "inputs/requirements_hardened/foc/foc_requirements_extended.json",
+    "hardened_csv": "inputs/requirements_hardened/foc/foc_requirements_hardened.csv",
+    "extended_csv": "inputs/requirements_hardened/foc/foc_requirements_extended.csv",
+    "test_design": "inputs/requirements_hardened/foc/test_design.csv",
+    "trace": "inputs/requirements_hardened/foc/trace_matrix.csv",
+    "change_log": "outputs/req_hardening/20261108_221904_foc/change_log.md",
+    "run_report": "outputs/req_hardening/20261108_221904_foc/RUN_REPORT.md",
+    "review_packet": "outputs/req_hardening/20261108_221904_foc/REVIEW_PACKET.md",
+    "readme": "inputs/requirements_hardened/foc/README.md",
+    "polished_markdown": "inputs/requirements_hardened/foc/FOC_REQUIREMENTS_POLISHED.md"
+  },
+  "status": "L2-oriented draft; human review required; not certified"
+}

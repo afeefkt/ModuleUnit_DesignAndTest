@@ -30,6 +30,9 @@ class MudActivityContext:
     rte_calls: list[str]
     helper_functions: list[str]
     raw_markdown: str
+    # Design symbol (DEM event, port, calibration, helper …) → requirement IDs named next to it
+    # outside Section 7. Lets a step trace to requirements even when Section 7 names no IDs.
+    symbol_reqs: dict[str, list[str]] | None = None
 
     @property
     def has_usable_flow_source(self) -> bool:
@@ -93,6 +96,57 @@ class MudActivityContext:
         )
 
 
+def ids_named(ids: list[str], text: str) -> list[str]:
+    """The requirement IDs that appear in ``text`` as whole IDs (REQ-AEB-102 is not in REQ-AEB-1024)."""
+    import re
+    text = text or ""
+    return [r for r in ids if re.search(rf"(?<![A-Za-z0-9_-]){re.escape(r)}(?![A-Za-z0-9_])", text)]
+
+
+_REQ_ID_RE = re.compile(r"\b[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+\b")
+# Identifiers worth linking: contain an underscore or mixed case + digits (SWC_DEM_E_X, RP_CalPrm_Y,
+# WdgM_UpdateAliveCounter, irvFaultBitmask). Plain English words never match.
+_SYMBOL_RE = re.compile(r"\b(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+|[a-z]+[A-Z][A-Za-z0-9]+)\b")
+_GENERIC_SYMBOLS = {"Rte_Read", "Rte_Write", "Rte_Prm", "Rte_Call", "Dem_ReportErrorStatus",
+                    "DEM_EVENT_STATUS_FAILED", "DEM_EVENT_STATUS_PASSED", "DEM_EVENT_STATUS_PREPASSED"}
+
+
+def symbol_requirement_map(markdown: str) -> dict[str, list[str]]:
+    """``{symbol: [REQ ids]}`` from every line outside Section 7 that names both.
+
+    e.g. ``- `SWC_DEM_E_ABS_CONFLICT` — … (REQ-AEB-805, REQ-AEB-1034)`` links that DEM event
+    to both IDs, so the step reporting it traces to them.
+    """
+    section7 = _extract_section(markdown, "7. Functional Description") or ""
+    text = markdown.replace(section7, "") if section7 else markdown
+    out: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        ids = _REQ_ID_RE.findall(line)
+        if not ids:
+            continue
+        for sym in _SYMBOL_RE.findall(line):
+            if sym in _GENERIC_SYMBOLS or _REQ_ID_RE.fullmatch(sym):
+                continue
+            bucket = out.setdefault(sym, [])
+            for i in ids:
+                if i not in bucket:
+                    bucket.append(i)
+    return out
+
+
+def ids_for_symbols(symbol_reqs: dict[str, list[str]] | None, text: str, allowed: list[str] | None = None) -> list[str]:
+    """Requirement IDs linked to the design symbols used in ``text`` (restricted to ``allowed``)."""
+    if not symbol_reqs or not text:
+        return []
+    allowed_set = set(allowed) if allowed else None
+    found: list[str] = []
+    for sym in _SYMBOL_RE.findall(text):
+        for rid in symbol_reqs.get(sym, ()):
+            if (allowed_set is None or rid in allowed_set) and rid not in found:
+                found.append(rid)
+    return found
+
+
 def build_mud_activity_context(markdown: str, module_context: str | None = None) -> MudActivityContext:
     swc_name = _extract_swc_name(markdown) or (module_context or "")
     # Try "3.1 Main Runnables" first (new split format), fall back to full "3. Runnables"
@@ -127,6 +181,9 @@ def build_mud_activity_context(markdown: str, module_context: str | None = None)
         # the entire pseudo-code into one giant unreadable string and the
         # activity-diagram AI would return nodes:[] → repair fallback produces
         # the placeholder Start → Action → End.
+        # A comment spread over several lines carries no logic but its pieces were read as statements
+        # ('use same > comparison. */ if (...)' became broken C). Single-line comments are kept.
+        body = re.sub(r"/\*.*?\*/", lambda m: "" if "\n" in m.group(0) else m.group(0), body, flags=re.S)
         runnable.functional_description = body.strip()
 
     # Last-resort: if structured parsing yielded nothing, extract RE_/Init_/Cyclic_ names
@@ -153,6 +210,7 @@ def build_mud_activity_context(markdown: str, module_context: str | None = None)
         rte_calls=rte_calls,
         helper_functions=helper_functions,
         raw_markdown=_trim_markdown(markdown),
+        symbol_reqs=symbol_requirement_map(markdown),
     )
 
 
@@ -184,17 +242,23 @@ def synthesize_activity_diagrams_from_context(
         helper_call_counts = _count_helper_calls(steps, helper_names)
 
         # Trace each runnable to the requirement IDs its own Section 7 text
-        # names; only when it names none fall back to the module's full list.
+        # names. Fall back to the module's list only when it is short: tagging every
+        # statement with 100+ IDs says nothing about which requirement a line implements.
         own_text = f"{runnable.summary}\n{runnable.functional_description}"
-        own_reqs = [r for r in trace_reqs if r in own_text]
-        runnable_reqs = own_reqs or trace_reqs
+        own_reqs = ids_named(trace_reqs, own_text)
+        # Section 7 names no IDs: use the IDs the spec links to the symbols this runnable uses
+        # (DEM events, ports, calibrations) before giving up.
+        symbol_ids = ids_for_symbols(context.symbol_reqs, own_text, trace_reqs or None)
+        runnable_reqs = own_reqs or symbol_ids or (trace_reqs if len(trace_reqs) <= 5 else [])
 
         builder = _ActivityGraphBuilder(
             swc_name=context.swc_name,
             runnable_name=runnable.name,
             req_ids=runnable_reqs,
+            all_ids=trace_reqs,
             helper_names=helper_names,
             helper_call_counts=helper_call_counts,
+            symbol_reqs=context.symbol_reqs,
         )
         start_id = builder.add_node(
             name="Start",
@@ -244,8 +308,12 @@ class _ActivityGraphBuilder:
         req_ids: list[str],
         helper_names: set[str],
         helper_call_counts: dict[str, int],
+        all_ids: list[str] | None = None,
+        symbol_reqs: dict[str, list[str]] | None = None,
     ) -> None:
         from mudtool.models.json_uml import ActivityEdge, ActivityNode, ActivityNodeType
+
+        self.symbol_reqs = symbol_reqs or {}
 
         self.ActivityNode = ActivityNode
         self.ActivityEdge = ActivityEdge
@@ -253,6 +321,7 @@ class _ActivityGraphBuilder:
         self.swc_name = swc_name
         self.runnable_name = runnable_name
         self.req_ids = list(req_ids)
+        self.all_ids = list(all_ids if all_ids is not None else req_ids)
         self.helper_names = set(helper_names)
         self.helper_call_counts = dict(helper_call_counts)
         self.nodes: list[ActivityNode] = []
@@ -262,6 +331,17 @@ class _ActivityGraphBuilder:
         self._node_counter = 1
         self._edge_counter = 1
         self.terminal_exits: list[tuple[str, str | None]] = []
+
+    def trace_for(self, text: str) -> list[str]:
+        """IDs this one step names; otherwise the runnable's own IDs (never the whole module)."""
+        named = ids_named(self.all_ids, text)
+        if named:
+            # A step title tagged "Validate calibration [REQ-X-1]" applies to the statements under it.
+            if re.search(r"\[[^\]]*\]\s*$", text or ""):
+                self._section_reqs = named
+            return named
+        linked = ids_for_symbols(self.symbol_reqs, text, self.all_ids or None)
+        return linked or list(getattr(self, "_section_reqs", None) or self.req_ids)
 
     def add_node(
         self,
@@ -276,6 +356,7 @@ class _ActivityGraphBuilder:
         port: str | None = None,
         element: str | None = None,
         callee: str | None = None,
+        code: str | None = None,
     ) -> str:
         node_id = node_id or f"N_{self._node_counter:02d}"
         if node_id != "N_00":
@@ -289,6 +370,7 @@ class _ActivityGraphBuilder:
                 port=port,
                 element=element,
                 callee=callee,
+                code=code,
                 trace_reqs=list(trace_reqs if trace_reqs is not None else self.req_ids),
                 description=description,
                 confidence=confidence,
@@ -398,6 +480,8 @@ class _ActivityGraphBuilder:
             callee=callee,
             description=description,
             confidence=0.88,
+            trace_reqs=self.trace_for(step_text),
+            code=_code_statement(step_text),
         )
         self.connect_pending(pending, node_id)
         if callee and callee not in self._sub_ids and self._should_emit_helper_subdiagram(callee, step_text, pending):
@@ -439,6 +523,7 @@ class _ActivityGraphBuilder:
             node_type=self.ActivityNodeType.ACTION,
             description=_short_step_description(step_text),
             confidence=0.88,
+            trace_reqs=self.trace_for(step_text),
         )
         self.connect_pending(pending, node_id)
         self.terminal_exits.append((node_id, None))
@@ -487,7 +572,8 @@ class _ActivityGraphBuilder:
         # rendered diagram shows e.g. "[l_f32Torque > LIMIT]" rather than the
         # generic "[true]" / "[false]" labels.
         condition_text = _strip_control_prefix(steps[index - 1].text)
-        condition_text = re.sub(r"^\s*if\s*\(?\s*", "", condition_text, flags=re.IGNORECASE).strip().rstrip(")")
+        condition_text = _balanced_condition(
+            re.sub(r"^\s*if\s*\(?\s*", "", condition_text, flags=re.IGNORECASE))
         true_guard  = f"[{condition_text}]" if condition_text else "[true]"
         false_guard = "[else]"
 
@@ -504,12 +590,12 @@ class _ActivityGraphBuilder:
         while index < len(steps) and steps[index].depth == depth and steps[index].kind == "else_if":
             rte_meta = _extract_rte_metadata(steps[index].text)
             else_if_condition = _strip_control_prefix(steps[index].text)
-            else_if_condition = re.sub(
+            else_if_condition = _balanced_condition(re.sub(
                 r"^\s*(?:else\s+if|elseif|if)\s*\(?\s*",
                 "",
                 else_if_condition,
                 flags=re.IGNORECASE,
-            ).strip().rstrip(")")
+            ))
             else_if_decision = self.add_node(
                 name=else_if_condition or _strip_control_prefix(steps[index].text),
                 node_type=self.ActivityNodeType.DECISION,
@@ -529,19 +615,13 @@ class _ActivityGraphBuilder:
                 pending=[(else_if_decision, elseif_true_guard)],
                 stop_kinds={"else_if", "else", "end_if"},
             )
+            # The false path of this else-if feeds only the NEXT link of the chain (another else-if or the
+            # final else). It used to be merged with this branch's true exits first, so the final else body
+            # also ran after the else-if branch and overwrote its result ("l_ramped = l_targetPressure"
+            # after the ramp-down).
             elseif_false_pending = [(else_if_decision, "[else]")]
-            remaining_chain = index < len(steps) and steps[index].depth == depth and steps[index].kind in {"else_if", "else"}
-            if remaining_chain:
-                merged_exits = _merge_branch_exits(
-                    elseif_exits + elseif_false_pending,
-                    merge_name="Else-if merge",
-                    merge_description="Else-if branch merge",
-                )
-                branch_exits.extend(merged_exits)
-                false_pending = merged_exits
-            else:
-                branch_exits.extend(elseif_exits)
-                false_pending = elseif_false_pending
+            branch_exits.extend(elseif_exits)
+            false_pending = elseif_false_pending
 
         if index < len(steps) and steps[index].depth == depth and steps[index].kind == "else":
             index += 1
@@ -791,7 +871,8 @@ def _parse_numbered_step_entries(text: str) -> list[NumberedStep]:
         # they are formatting, not steps, and would otherwise become nodes.
         if raw_line.strip().startswith("```"):
             continue
-        numbered = re.match(r"^(\s*)(\d+(?:\.\d+)*)(?:[.)])\s*(.+)$", raw_line)
+        # "1. Guard" and the two-stage assembler's bold form "**1. Guard**"
+        numbered = re.match(r"^(\s*)(?:\*\*)?(\d+(?:\.\d+)*)(?:[.)])\s*(.+?)(?:\*\*)?\s*$", raw_line)
         if numbered:
             if current_header is not None:
                 steps.extend(_expand_numbered_step_block(current_header, current_body_lines, current_depth))
@@ -802,7 +883,77 @@ def _parse_numbered_step_entries(text: str) -> list[NumberedStep]:
             current_body_lines.append(raw_line.rstrip())
     if current_header is not None:
         steps.extend(_expand_numbered_step_block(current_header, current_body_lines, current_depth))
+    if not steps:
+        steps = _parse_code_block_steps(text)
     return steps
+
+
+_LOGIC_CALL_RE = re.compile(
+    r"\b(Rte_(?:I?Read|I?Write|Send|Receive|Prm|IrvRead|IrvWrite|IRead|IWrite)\w*|Dem_\w+)\s*\(")
+_ASSIGN_RE = re.compile(r"(?<![=!<>])=(?!=)")
+_PLACEHOLDER_RE = re.compile(r"\bl_?Rte_Call\s*\(|\bRte_Cbk_\w*|\bTODO\b|\.\.\.")
+_CONTROL_KINDS = {"if", "else", "elif", "loop", "while", "for", "switch", "decision"}
+
+
+def is_logic_step(step: "NumberedStep") -> bool:
+    """A step that does real work: an assignment, a condition/loop, RTE data access or a DEM report.
+
+    Callback stubs such as ``l_Rte_Call(Rte_Cbk_X, 0)``, ``TODO`` or ``...`` do not count.
+    """
+    text = step.text or ""
+    if step.kind in _CONTROL_KINDS:
+        return True
+    if _PLACEHOLDER_RE.search(text) and not _ASSIGN_RE.search(text):
+        return False
+    return bool(_ASSIGN_RE.search(text) or _LOGIC_CALL_RE.search(text))
+
+
+def runnable_flow_quality(runnable: "RunnableContext") -> str:
+    """Strict pseudo-code rule for one runnable's Section 7: ``logic`` / ``placeholder`` / ``empty``.
+
+    Only ``logic`` runnables may be sent to the AI activity step.
+    """
+    steps = _parse_numbered_step_entries(runnable.functional_description)
+    if not steps:
+        return "empty"
+    return "logic" if any(is_logic_step(s) for s in steps) else "placeholder"
+
+
+_FUNC_HEAD_RE = re.compile(r"^\s*(?:static\s+)?(?:inline\s+)?[A-Za-z_][\w\s\*]*\b[A-Za-z_]\w*\s*\([^;{)]*\)\s*\{?\s*$")
+
+
+def _parse_code_block_steps(text: str) -> list[NumberedStep]:
+    """Section 7 written as a C function (``void RE_X(void) { … }``) instead of numbered steps.
+
+    The function body's statements become steps (if/else blocks keep their nesting), so the
+    deterministic flow builder works on this style too instead of silently needing the AI step.
+    """
+    lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.strip().startswith("```")]
+    if not lines:
+        return []
+    body: list[str] = []
+    in_body = False
+    depth = 0
+    for raw in lines:
+        stripped = raw.strip()
+        if not in_body and _FUNC_HEAD_RE.match(stripped) and not re.match(r"^(if|else|while|for|switch)\b", stripped):
+            in_body = True
+            depth = 1 if stripped.endswith("{") else 0
+            continue
+        if not in_body:
+            continue
+        if depth == 0 and stripped == "{":
+            depth = 1
+            continue
+        depth += stripped.count("{") - stripped.count("}")
+        if depth <= 0:
+            # closing brace of the function; anything after belongs to another function
+            in_body = False
+            continue
+        body.append(raw)
+    if not body:
+        return []
+    return _parse_pseudocode_block_lines(body, 1)
 
 
 def _expand_numbered_step_block(header: str, body_lines: list[str], base_depth: int) -> list[NumberedStep]:
@@ -840,11 +991,52 @@ def _expand_numbered_step_block(header: str, body_lines: list[str], base_depth: 
     ]
 
 
+def _balanced_condition(text: str) -> str:
+    """Drop only the trailing ``)`` that have no matching ``(`` (the ``if (`` wrapper's).
+
+    ``rstrip(")")`` also removed the one closing ``Rte_Prm(X)`` in ``a > Rte_Prm(X))``,
+    which left an uncompilable condition.
+    """
+    cond = (text or "").strip()
+    while cond.endswith(")") and cond.count(")") > cond.count("("):
+        cond = cond[:-1].rstrip()
+    return cond
+
+
+def _join_continuations(lines: list[str]) -> list[str]:
+    """Join a statement written over several lines into one line.
+
+    ``x = f(a,\\n  b,\\n  c);`` or ``if ((a > b)\\n  && c) {`` — a line whose parentheses are
+    still open (or that ends in a comma / binary operator) continues on the next line.
+    Without this each fragment became its own broken statement (``Rte_Prm(X),;``).
+    """
+    out: list[str] = []
+    buf = ""
+    for raw in lines:
+        if buf:
+            buf = f"{buf} {raw.strip()}"
+        else:
+            if raw.strip().startswith("//"):
+                out.append(raw)
+                continue
+            buf = raw.rstrip()
+        code = re.sub(r"//.*$|/\*.*?\*/", "", buf)
+        open_parens = code.count("(") - code.count(")")
+        tail = code.rstrip()
+        continues = open_parens > 0 or tail.endswith((",", "&&", "||", "+", "-", "*", "/", "|", "&", "="))
+        if not continues:
+            out.append(buf)
+            buf = ""
+    if buf:
+        out.append(buf)
+    return out
+
+
 def _parse_pseudocode_block_lines(lines: list[str], base_depth: int) -> list[NumberedStep]:
     steps: list[NumberedStep] = []
     depth_offset = 0
 
-    for raw_line in lines:
+    for raw_line in _join_continuations(lines):
         line = raw_line.strip()
         if not line:
             continue
@@ -1062,6 +1254,37 @@ def _count_helper_calls(steps: list[NumberedStep], helper_names: set[str]) -> di
     return counts
 
 
+_CODE_STMT_RE = re.compile(
+    r"^(?:[A-Za-z_][\w\.\[\]]*\s*(?:[-+*/|&^%]|<<|>>)?=(?!=)\s*\S.*"      # assignment
+    r"|[A-Za-z_]\w*\s*\(.*\))\s*;?$"                                        # call
+)
+
+
+_SHOWABLE_STMT_RE = re.compile(
+    r"^(?:(?:[A-Za-z_]\w*\s+)?[A-Za-z_][\w\.\[\]]*\s*(?:[-+*/|&^%]|<<|>>)?=(?!=)\s*\S.*"      # (type) assignment
+    r"|[A-Za-z_]\w*\s*\(.*\))\s*;?$"                                                              # call
+)
+
+
+def _showable_statement(text: str, limit: int = 120) -> bool:
+    """A single balanced C statement short enough to be shown verbatim as a node label / description."""
+    return len(text) <= limit and bool(_SHOWABLE_STMT_RE.match(text)) and text.count("(") == text.count(")")
+
+
+def _code_statement(step: str) -> str | None:
+    """The step as a full C statement when it is code (assignment or call), else ``None``.
+
+    The display label may be shortened ("x = ...") for the diagram, but the C exporter must
+    keep the whole expression — dropping it is how formulas silently disappeared.
+    """
+    text = _normalize_ws(step)
+    _header, tail = _split_heading_prefix(text)
+    text = _normalize_ws(tail or text)
+    if not text or not _CODE_STMT_RE.match(text) or text.count("(") != text.count(")"):
+        return None
+    return text.rstrip(";").strip()
+
+
 def _compact_step_label(
     step: str,
     *,
@@ -1084,6 +1307,10 @@ def _compact_step_label(
     header, tail = _split_heading_prefix(trimmed)
     candidate = _normalize_ws(tail or trimmed)
     if len(candidate) <= 72:
+        return candidate
+    # A code statement keeps its real expression up to 120 chars: "x = ..." made the diagram look as if the
+    # formula were missing (the activity judge penalised exactly that).
+    if _showable_statement(candidate):
         return candidate
 
     assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", candidate)
@@ -1115,6 +1342,9 @@ def _short_step_description(step: str) -> str:
     if _extract_rte_metadata(target):
         return target
 
+    if _showable_statement(target):
+        return target
+
     helper = _extract_helper_call(target, set())
     if helper:
         assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*.+$", target)
@@ -1137,6 +1367,10 @@ def _split_heading_prefix(step: str) -> tuple[str | None, str | None]:
     head = parts[0].strip()
     tail = parts[1].strip()
     if not head or not tail:
+        return None, None
+    # "l_abs = (l_a < 0.0f) ? -l_a : l_a;" has a colon too, but its head is code (an assignment / the
+    # condition of a ternary), not a title: splitting it kept only "l_a" and dropped the assignment.
+    if "?" in head or _ASSIGN_RE.search(head):
         return None, None
     if _classify_step_kind(head) != "action":
         return None, None

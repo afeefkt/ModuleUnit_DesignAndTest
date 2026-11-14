@@ -1,0 +1,63 @@
+Req_ID,Parent_IDs,Allocated_To,Design_Links,Test_IDs,Split_From,Split_Into,Standards,Status,ASIL,Verification
+REQ-BMS-000,,System,System,TD-REQ-BMS-000,,REQ-BMS-1017,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-BMS-001,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-001,,,AUTOSAR,review,ASIL-D,review
+REQ-BMS-002,REQ-BMS-000,SWC_BatteryManagement,"RE_EstimateSOC, SWC_BatteryManagement",TD-REQ-BMS-002,,,,review,ASIL-D,analysis
+REQ-BMS-003,REQ-BMS-000,SWC_BatteryManagement,"RE_BalanceCells, SWC_BatteryManagement",TD-REQ-BMS-003,,,,review,ASIL-B,analysis
+REQ-BMS-004,REQ-BMS-000,SWC_BatteryManagement,"RE_ManageThermal, SWC_BatteryManagement",TD-REQ-BMS-004,,,,review,ASIL-C,analysis
+REQ-BMS-005,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-005,,,,review,ASIL-D,analysis
+REQ-BMS-006,REQ-BMS-000,SWC_BatteryManagement,"RE_ControlContactors, SWC_BatteryManagement",TD-REQ-BMS-006,,,,review,ASIL-D,test
+REQ-BMS-007,REQ-BMS-000,SWC_BatteryManagement,"RE_Initialize, SWC_BatteryManagement",TD-REQ-BMS-007,,,,review,ASIL-D,test
+REQ-BMS-010,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-010,,,AUTOSAR,review,ASIL-D,review
+REQ-BMS-011,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-011,,,AUTOSAR,review,ASIL-D,review
+REQ-BMS-020,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-020,,,,review,ASIL-D,test
+REQ-BMS-021,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-021,,,,review,ASIL-D,test
+REQ-BMS-022,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-022,,REQ-BMS-1001,,review,ASIL-D,test
+REQ-BMS-023,REQ-BMS-000,SWC_BatteryManagement,"RE_EstimateSOC, SWC_BatteryManagement",TD-REQ-BMS-023,,REQ-BMS-1002,,review,ASIL-B,test
+REQ-BMS-030,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-030,,,,review,ASIL-B,test
+REQ-BMS-031,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-031,,REQ-BMS-1003,,review,ASIL-B,test
+REQ-BMS-032,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-032,,REQ-BMS-1004,,review,ASIL-B,test
+REQ-BMS-040,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-040,,REQ-BMS-1005,,review,ASIL-C,test
+REQ-BMS-041,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-041,,REQ-BMS-1006,,review,ASIL-C,test
+REQ-BMS-042,REQ-BMS-000,SWC_BatteryManagement,"RE_ManageThermal, SWC_BatteryManagement",TD-REQ-BMS-042,,,,review,ASIL-C,test
+REQ-BMS-050,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-050,,REQ-BMS-1007,,review,ASIL-D,test
+REQ-BMS-051,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-051,,REQ-BMS-1008,,review,ASIL-D,test
+REQ-BMS-052,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-052,,"REQ-BMS-1009, REQ-BMS-1010",,review,ASIL-D,test
+REQ-BMS-053,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-053,,,,review,ASIL-D,test
+REQ-BMS-060,REQ-BMS-000,SWC_BatteryManagement,"RE_ControlContactors, SWC_BatteryManagement",TD-REQ-BMS-060,,,,review,ASIL-D,test
+REQ-BMS-061,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-061,,"REQ-BMS-1011, REQ-BMS-1012",,review,ASIL-D,test
+REQ-BMS-070,REQ-BMS-000,SWC_BatteryManagement,"RE_EstimateSOC, SWC_BatteryManagement",TD-REQ-BMS-070,,,,review,ASIL-B,test
+REQ-BMS-080,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-080,,,,review,ASIL-D,test
+REQ-BMS-081,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-081,,REQ-BMS-1013,,review,ASIL-B,test
+REQ-BMS-090,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-090,,REQ-BMS-1014,AUTOSAR,review,ASIL-D,test
+REQ-BMS-091,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-091,,"REQ-BMS-1015, REQ-BMS-1016",,review,ASIL-D,test
+REQ-BMS-801,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-801,,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-BMS-802,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-802,,,ISO 26262,review,ASIL-D,test
+REQ-BMS-803,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-803,,,"ISO 26262, ISO 6469",review,ASIL-D,test
+REQ-BMS-804,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-804,,,ISO 26262,review,ASIL-D,test
+REQ-BMS-805,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-805,,REQ-BMS-1018,ISO 26262,review,ASIL-D,test
+REQ-BMS-806,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-806,,,ISO 26262,review,ASIL-B,test
+REQ-BMS-807,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-807,,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-BMS-808,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-808,,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-BMS-809,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-809,,REQ-BMS-1019,ISO 21434,review,ASIL-D,review
+REQ-BMS-810,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-810,,,"AUTOSAR, ISO 26262",review,ASIL-D,review
+REQ-BMS-811,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-811,,REQ-BMS-1020,"Automotive SPICE, ISO 26262",review,ASIL-D,review
+REQ-BMS-1001,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1001,REQ-BMS-022,,,review,ASIL-D,test
+REQ-BMS-1002,REQ-BMS-000,SWC_BatteryManagement,"RE_EstimateSOC, SWC_BatteryManagement",TD-REQ-BMS-1002,REQ-BMS-023,,,review,ASIL-B,test
+REQ-BMS-1003,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1003,REQ-BMS-031,,,review,ASIL-B,test
+REQ-BMS-1004,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1004,REQ-BMS-032,,,review,ASIL-B,test
+REQ-BMS-1005,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1005,REQ-BMS-040,,,review,ASIL-C,test
+REQ-BMS-1006,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1006,REQ-BMS-041,,,review,ASIL-C,test
+REQ-BMS-1007,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-1007,REQ-BMS-050,,,review,ASIL-D,test
+REQ-BMS-1008,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-1008,REQ-BMS-051,,,review,ASIL-D,test
+REQ-BMS-1009,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-1009,REQ-BMS-052,,,review,ASIL-D,test
+REQ-BMS-1010,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-1010,REQ-BMS-052,,,review,ASIL-D,test
+REQ-BMS-1011,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1011,REQ-BMS-061,,,review,ASIL-D,test
+REQ-BMS-1012,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1012,REQ-BMS-061,,,review,ASIL-D,test
+REQ-BMS-1013,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1013,REQ-BMS-081,,,review,ASIL-B,test
+REQ-BMS-1014,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1014,REQ-BMS-090,,AUTOSAR,review,ASIL-D,test
+REQ-BMS-1015,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-1015,REQ-BMS-091,,,review,ASIL-D,test
+REQ-BMS-1016,REQ-BMS-000,SWC_BatteryManagement,"RE_MonitorSafety, SWC_BatteryManagement",TD-REQ-BMS-1016,REQ-BMS-091,,,review,ASIL-D,test
+REQ-BMS-1017,,System,System,TD-REQ-BMS-1017,REQ-BMS-000,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-BMS-1018,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1018,REQ-BMS-805,,ISO 26262,review,ASIL-D,test
+REQ-BMS-1019,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1019,REQ-BMS-809,,ISO 21434,review,ASIL-D,review
+REQ-BMS-1020,REQ-BMS-000,SWC_BatteryManagement,SWC_BatteryManagement,TD-REQ-BMS-1020,REQ-BMS-811,,"Automotive SPICE, ISO 26262",review,ASIL-D,review

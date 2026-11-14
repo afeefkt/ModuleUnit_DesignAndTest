@@ -21,6 +21,66 @@ def _fake_cpputest(root: Path, libdir: str, ext: bool = True) -> Path:
     return root
 
 
+def test_test_prompt_lists_the_symbols_that_exist(tmp_path):
+    """Run 20261111_001000: tests used STATUS_NOT_READY / ACT_STATUS_OK, which exist nowhere."""
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import available_symbols
+    (tmp_path / "SWC_T.c").write_text('#include "Rte_SWC_T.h"\n#define LOCAL_LIMIT (5U)\nvoid RE_Run(void)\n{\n}\n')
+    (tmp_path / "Rte_SWC_T.h").write_text(
+        "#ifndef RTE_SWC_T_H\n#define RTE_SWC_T_H\n#define STATUS_READY (1)  /* TODO(design) */\n"
+        "#define Rte_Read_RP_A_B(dst) ((*(dst) = Rte_Read_RP_A_B), E_OK)\n"
+        "    extern float64 Rte_Read_RP_A_B;\n    extern uint8 irvState;\n#endif\n")
+    text = available_symbols(tmp_path / "SWC_T.c")
+    assert "#define STATUS_READY (1)" in text and "#define LOCAL_LIMIT (5U)" in text
+    assert "float64 Rte_Read_RP_A_B;" in text and "uint8 irvState;" in text
+    assert "RTE_SWC_T_H" not in text and "dst" not in text        # no guards, no function-like macros
+
+
+def test_test_prompt_teaches_the_call_recorders(tmp_path):
+    """The prompt used to forbid counting calls; the stubs now record them, so it must say how to read them."""
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import CALL_RECORDER_HINT, available_symbols
+    assert "_callCount" in CALL_RECORDER_HINT and "_arg0" in CALL_RECORDER_HINT
+    assert "Never define your own mock" in CALL_RECORDER_HINT
+    assert "Do NOT mock" not in CALL_RECORDER_HINT
+    # the recorder variables of the generated header reach the AVAILABLE SYMBOLS list
+    (tmp_path / "SWC_T.c").write_text('#include "Rte_SWC_T.h"\nvoid RE_Run(void)\n{\n}\n')
+    (tmp_path / "Rte_SWC_T.h").write_text(
+        "    float64 Dem_ReportErrorStatus(float64, float64);\n"
+        "    extern uint32 Dem_ReportErrorStatus_callCount;\n    extern float64 Dem_ReportErrorStatus_arg0;\n")
+    text = available_symbols(tmp_path / "SWC_T.c")
+    assert "uint32 Dem_ReportErrorStatus_callCount;" in text and "float64 Dem_ReportErrorStatus_arg0;" in text
+
+
+def test_prompt_names_the_exact_variables_a_function_uses():
+    """Run 20261111_005406, Test_RE_Init: the code reads ``IRV_InitComplete`` (Rte_IrvRead) but the model set
+    ``Rte_IRead_IRV_InitComplete_InitComplete`` — another variable — so the runnable never took the path
+    the test was about. The prompt lists the exact names, derived from the function's own source."""
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import function_io
+    src = (
+        "void RE_X(void)\n{\n"
+        "    Rte_IrvRead(IRV_InitComplete, &l_a);\n"
+        "    Rte_IRead_RP_Demand_Value(&l_b);\n"
+        "    l_c = Rte_Prm(RP_CalPrm_PMax);\n"
+        "    Rte_Read(RP_Speed, &l_d);\n"
+        "    /* Rte_IrvRead(IRV_InComment, &x); */\n"
+        "    Dem_ReportErrorStatus(SWC_DEM_E_X, DEM_EVENT_STATUS_FAILED);\n"
+        "    Helper_NoRecorder();\n"
+        "    Rte_IrvWrite(IRV_Out, l_a);\n"
+        "    Rte_IWrite_PP_Pressure_Value(l_b);\n"
+        "    Rte_Write(PP_Fault, 1);\n"
+        "    Rte_IrvWrite(IRV_Out, 2);\n"
+        "}\n")
+    io = function_io(src, "uint32 Dem_ReportErrorStatus_callCount;\nfloat64 Dem_ReportErrorStatus_arg0;")
+    assert io["set"] == ["IRV_InitComplete", "Rte_IRead_RP_Demand_Value", "Rte_Prm_RP_CalPrm_PMax", "Rte_Read_RP_Speed"]
+    assert io["check"] == ["IRV_Out", "Rte_IWrite_PP_Pressure_Value", "Rte_Write_PP_Fault"]
+    assert io["calls"] == ["Dem_ReportErrorStatus"]
+
+
 def test_settings_roundtrip_and_env_override(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "SETTINGS_FILE", tmp_path / "settings.json")
     monkeypatch.delenv("MUDMUT_CPPUTEST_HOME", raising=False)
@@ -62,10 +122,20 @@ def test_makefile_bakes_cpputest_paths(tmp_path):
     text = (tmp_path / "Makefile").read_text()
     assert "CPPUTEST_HOME ?= /opt/cpp\n" in text
     assert "CPPUTEST_LIB ?= /opt/cpp/lib64\n" in text
-    assert "-lCppUTest --coverage" in text and "-lCppUTestExt" not in text
+    assert "-lCppUTest -lm --coverage" in text and "-lCppUTestExt" not in text
     assert "-MMD -MP" in text and "-include $(DEPS)" in text
     assert "CFLAGS += -DUNIT_TEST" in text
     assert "\r" not in text
+
+
+def test_makefile_cleans_stale_junit_groups(tmp_path):
+    tg = _test_generator()
+    tg.create_makefile(tmp_path)
+    text = (tmp_path / "Makefile").read_text()
+    # The per-group cpputest_*.xml files must be removed before a run and on clean,
+    # otherwise stale suites from earlier (quarantined) runs leak into test-results.xml.
+    assert "rm -f cpputest_cpputest_*.xml" in text
+    assert "rm -f test-results.xml cpputest_cpputest_*.xml" in text
 
 
 def test_build_reports_missing_cpputest(tmp_path, monkeypatch):
@@ -86,3 +156,20 @@ def test_run_scripts_written_next_to_makefile(tmp_path):
     assert sh.startswith(b"#!/usr/bin/env bash\n") and b"\r" not in sh
     assert b"make \"$@\"" in sh and b"clean all coverage" in sh
     assert b"\r\n" in bat and b"wsl.exe --cd \"%~dp0.\" -e bash ./build_and_run.sh %*" in bat
+
+
+def test_dem_reports_in_the_source_are_listed_for_the_test_writer():
+    from mudmut_core import env
+    env.ensure_environment()
+    from app.services.test_generator import function_io, function_io_block
+    src = ("void RE_X(void)\n{\n"
+           "    if (l_a < 0.0f)\n    {\n        Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_FAILED);\n        return;\n    }\n"
+           "    Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED);\n"
+           "    Dem_ReportErrorStatus(SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED);  /* duplicate pair */\n"
+           "    /* Dem_ReportErrorStatus(SWC_DEM_E_Hidden, DEM_EVENT_STATUS_FAILED); */\n}\n")
+    symbols = "uint32 Dem_ReportErrorStatus_callCount;"
+    io = function_io(src, symbols)
+    assert io["dem"] == ["SWC_DEM_E_A, DEM_EVENT_STATUS_FAILED", "SWC_DEM_E_A, DEM_EVENT_STATUS_PASSED"]
+    block = function_io_block(io)
+    assert "healthy path still reports PASSED" in block and "hist_arg0[k]" in block
+    assert function_io(src, "")["dem"] == []            # no recorder for it: nothing to say

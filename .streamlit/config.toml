@@ -10,6 +10,8 @@ baseRadius = "small"
 
 [server]
 headless = true
+# Serves launcher/static/ at /app/static/ (vendored Mermaid + svg-pan-zoom for offline flow charts).
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false

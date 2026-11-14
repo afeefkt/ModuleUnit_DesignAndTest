@@ -1,0 +1,99 @@
+Req_ID,Parent_IDs,Allocated_To,Design_Links,Test_IDs,Split_From,Split_Into,Standards,Status,ASIL,Verification
+REQ-EPS-000,,System,System,TD-REQ-EPS-000,,REQ-EPS-1028,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-EPS-001,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_DiagnosticUpdate, RE_HandleModeChange, RE_Initialize, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-001,,"REQ-EPS-1001, REQ-EPS-1002, REQ-EPS-1003, REQ-EPS-1004, REQ-EPS-1005",AUTOSAR,review,ASIL-D,test
+REQ-EPS-002,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, SWC_ElectricPowerSteering",TD-REQ-EPS-002,,,,review,ASIL-D,analysis
+REQ-EPS-003,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-003,,,,review,ASIL-D,analysis
+REQ-EPS-004,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_Initialize, SWC_ElectricPowerSteering",TD-REQ-EPS-004,,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-005,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_HandleModeChange, SWC_ElectricPowerSteering",TD-REQ-EPS-005,,,,review,ASIL-D,test
+REQ-EPS-006,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_DiagnosticUpdate, SWC_ElectricPowerSteering",TD-REQ-EPS-006,,,,review,ASIL-D,test
+REQ-EPS-007,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-007,,,AUTOSAR,review,ASIL-D,review
+REQ-EPS-008,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-008,,,AUTOSAR,review,ASIL-D,review
+REQ-EPS-010,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-010,,,,review,ASIL-D,test
+REQ-EPS-011,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-011,,,,review,ASIL-D,test
+REQ-EPS-012,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-012,,,,review,ASIL-D,test
+REQ-EPS-013,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-013,,,,review,ASIL-D,test
+REQ-EPS-014,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-014,,,,review,QM,test
+REQ-EPS-015,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-015,,,,review,QM,test
+REQ-EPS-016,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-016,,,,review,ASIL-B,test
+REQ-EPS-017,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-017,,,,review,QM,test
+REQ-EPS-018,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-018,,,,review,QM,test
+REQ-EPS-019,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-019,,,,review,ASIL-D,test
+REQ-EPS-020,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-020,,,,review,ASIL-D,test
+REQ-EPS-021,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-021,,,,review,QM,test
+REQ-EPS-022,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-022,,,,review,QM,test
+REQ-EPS-023,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-023,,,,review,ASIL-B,test
+REQ-EPS-024,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-024,,,,review,ASIL-D,test
+REQ-EPS-030,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_HandleModeChange, SWC_ElectricPowerSteering",TD-REQ-EPS-030,,,,review,ASIL-D,test
+REQ-EPS-031,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-031,,,,review,ASIL-D,test
+REQ-EPS-032,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-032,,REQ-EPS-1006,,review,ASIL-B,test
+REQ-EPS-033,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-033,,,,review,ASIL-D,test
+REQ-EPS-034,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-034,,REQ-EPS-1007,,review,ASIL-D,test
+REQ-EPS-035,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-035,,"REQ-EPS-1008, REQ-EPS-1009",,review,ASIL-B,test
+REQ-EPS-036,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-036,,REQ-EPS-1010,,review,ASIL-D,test
+REQ-EPS-037,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-037,,,,review,ASIL-D,analysis
+REQ-EPS-040,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, SWC_ElectricPowerSteering",TD-REQ-EPS-040,,,,review,ASIL-D,test
+REQ-EPS-041,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-041,,REQ-EPS-1011,,review,ASIL-D,test
+REQ-EPS-042,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-042,,REQ-EPS-1012,,review,ASIL-D,test
+REQ-EPS-043,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-043,,"REQ-EPS-1013, REQ-EPS-1014",,review,ASIL-B,test
+REQ-EPS-044,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-044,,"REQ-EPS-1015, REQ-EPS-1016",,review,ASIL-D,test
+REQ-EPS-045,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, SWC_ElectricPowerSteering",TD-REQ-EPS-045,,"REQ-EPS-1017, REQ-EPS-1018",,review,ASIL-D,test
+REQ-EPS-046,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-046,,REQ-EPS-1019,AUTOSAR,review,ASIL-D,test
+REQ-EPS-047,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_Initialize, SWC_ElectricPowerSteering",TD-REQ-EPS-047,,REQ-EPS-1020,,review,ASIL-D,test
+REQ-EPS-048,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-048,,REQ-EPS-1021,AUTOSAR,review,ASIL-D,test
+REQ-EPS-049,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-049,,REQ-EPS-1022,,review,QM,review
+REQ-EPS-050,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-050,,,,review,ASIL-D,test
+REQ-EPS-051,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-051,,REQ-EPS-1023,,review,ASIL-B,test
+REQ-EPS-052,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-052,,REQ-EPS-1024,,review,ASIL-B,test
+REQ-EPS-053,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-053,,REQ-EPS-1025,,review,ASIL-D,test
+REQ-EPS-054,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-054,,,,review,ASIL-D,test
+REQ-EPS-055,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_DiagnosticUpdate, SWC_ElectricPowerSteering",TD-REQ-EPS-055,,,,review,ASIL-D,test
+REQ-EPS-056,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-056,,,,review,ASIL-B,test
+REQ-EPS-060,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-060,,REQ-EPS-1026,,review,ASIL-D,review
+REQ-EPS-061,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-061,,,,review,ASIL-D,review
+REQ-EPS-062,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-062,,,,review,QM,review
+REQ-EPS-063,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-063,,REQ-EPS-1027,,review,ASIL-D,review
+REQ-EPS-064,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-064,,,,review,ASIL-D,review
+REQ-EPS-065,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, SWC_ElectricPowerSteering",TD-REQ-EPS-065,,,,review,ASIL-D,review
+REQ-EPS-066,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-066,,,,review,ASIL-B,review
+REQ-EPS-801,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-801,,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-EPS-802,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-802,,,ISO 26262,review,ASIL-D,test
+REQ-EPS-803,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-803,,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-EPS-804,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-804,,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-EPS-805,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-805,,REQ-EPS-1029,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-EPS-806,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-806,,REQ-EPS-1030,ISO 26262,review,ASIL-D,test
+REQ-EPS-807,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-807,,,"AUTOSAR, ISO 26262",review,ASIL-D,test
+REQ-EPS-808,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-808,,,"AUTOSAR, ISO 26262",review,ASIL-D,review
+REQ-EPS-809,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-809,,REQ-EPS-1031,ISO 21434,review,ASIL-D,review
+REQ-EPS-810,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-810,,REQ-EPS-1032,"Automotive SPICE, ISO 26262",review,ASIL-D,review
+REQ-EPS-1001,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_DiagnosticUpdate, RE_HandleModeChange, RE_Initialize, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1001,REQ-EPS-001,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1002,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_DiagnosticUpdate, RE_HandleModeChange, RE_Initialize, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1002,REQ-EPS-001,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1003,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_DiagnosticUpdate, RE_HandleModeChange, RE_Initialize, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1003,REQ-EPS-001,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1004,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_DiagnosticUpdate, RE_HandleModeChange, RE_Initialize, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1004,REQ-EPS-001,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1005,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_DiagnosticUpdate, RE_HandleModeChange, RE_Initialize, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1005,REQ-EPS-001,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1006,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1006,REQ-EPS-032,,,review,ASIL-B,test
+REQ-EPS-1007,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1007,REQ-EPS-034,,,review,ASIL-D,test
+REQ-EPS-1008,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1008,REQ-EPS-035,,,review,ASIL-B,test
+REQ-EPS-1009,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1009,REQ-EPS-035,,,review,ASIL-B,test
+REQ-EPS-1010,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1010,REQ-EPS-036,,,review,ASIL-D,test
+REQ-EPS-1011,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1011,REQ-EPS-041,,,review,ASIL-D,test
+REQ-EPS-1012,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1012,REQ-EPS-042,,,review,ASIL-D,test
+REQ-EPS-1013,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1013,REQ-EPS-043,,,review,ASIL-B,test
+REQ-EPS-1014,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1014,REQ-EPS-043,,,review,ASIL-B,test
+REQ-EPS-1015,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1015,REQ-EPS-044,,,review,ASIL-D,test
+REQ-EPS-1016,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1016,REQ-EPS-044,,,review,ASIL-D,test
+REQ-EPS-1017,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, SWC_ElectricPowerSteering",TD-REQ-EPS-1017,REQ-EPS-045,,,review,ASIL-D,test
+REQ-EPS-1018,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, SWC_ElectricPowerSteering",TD-REQ-EPS-1018,REQ-EPS-045,,,review,ASIL-D,test
+REQ-EPS-1019,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1019,REQ-EPS-046,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1020,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_Initialize, SWC_ElectricPowerSteering",TD-REQ-EPS-1020,REQ-EPS-047,,,review,ASIL-D,test
+REQ-EPS-1021,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1021,REQ-EPS-048,,AUTOSAR,review,ASIL-D,test
+REQ-EPS-1022,REQ-EPS-000,SWC_ElectricPowerSteering,"RE_ControlTorque, RE_MonitorSafety, SWC_ElectricPowerSteering",TD-REQ-EPS-1022,REQ-EPS-049,,,review,QM,review
+REQ-EPS-1023,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1023,REQ-EPS-051,,,review,ASIL-B,test
+REQ-EPS-1024,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1024,REQ-EPS-052,,,review,ASIL-B,test
+REQ-EPS-1025,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1025,REQ-EPS-053,,,review,ASIL-D,test
+REQ-EPS-1026,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1026,REQ-EPS-060,,,review,ASIL-D,review
+REQ-EPS-1027,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1027,REQ-EPS-063,,,review,ASIL-D,review
+REQ-EPS-1028,,System,System,TD-REQ-EPS-1028,REQ-EPS-000,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-EPS-1029,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1029,REQ-EPS-805,,"Automotive SPICE, ISO 26262",review,ASIL-D,test
+REQ-EPS-1030,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1030,REQ-EPS-806,,ISO 26262,review,ASIL-D,test
+REQ-EPS-1031,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1031,REQ-EPS-809,,ISO 21434,review,ASIL-D,review
+REQ-EPS-1032,REQ-EPS-000,SWC_ElectricPowerSteering,SWC_ElectricPowerSteering,TD-REQ-EPS-1032,REQ-EPS-810,,"Automotive SPICE, ISO 26262",review,ASIL-D,review

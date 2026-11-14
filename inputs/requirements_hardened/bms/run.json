@@ -1,0 +1,820 @@
+{
+  "set": "bms",
+  "input": "inputs/requirements/samples/bms_requirements.csv",
+  "input_hash": "09e6cf89bde325fe443378968ef4bcbbcee8459c0b448bdf3e506f9ec1c02bd9",
+  "run_dir": "outputs/req_hardening/20261108_221935_bms",
+  "hardened_dir": "inputs/requirements_hardened/bms",
+  "requirements": 30,
+  "hardened_requirements": 62,
+  "baseline_metrics": {
+    "requirements": 30,
+    "findings": 217,
+    "critical": 30,
+    "major": 114,
+    "minor": 17,
+    "info": 56,
+    "average_score": 33.4,
+    "with_acceptance_criteria": 0,
+    "with_verification_method": 30,
+    "with_parent": 0,
+    "traceable_total": 30,
+    "with_test_link": 0,
+    "with_safety_goal": 0,
+    "with_interface_data": 0,
+    "interface_total": 2,
+    "with_timing_data": 0,
+    "timing_total": 4,
+    "with_safe_state": 0,
+    "safety_total": 9,
+    "atomic": 11,
+    "compound_candidates": 16,
+    "per_requirement": [
+      {
+        "id": "REQ-BMS-001",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-BMS-002",
+        "score": 20,
+        "critical": 1,
+        "major": 5,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-003",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-004",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-005",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-006",
+        "score": 44,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 1
+      },
+      {
+        "id": "REQ-BMS-007",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-010",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-011",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-020",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-021",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-022",
+        "score": 20,
+        "critical": 1,
+        "major": 5,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-023",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-030",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-031",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-BMS-032",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-040",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-041",
+        "score": 40,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-042",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-050",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-051",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-052",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-053",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-060",
+        "score": 43,
+        "critical": 1,
+        "major": 3,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-061",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-070",
+        "score": 37,
+        "critical": 1,
+        "major": 3,
+        "minor": 2,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-080",
+        "score": 33,
+        "critical": 1,
+        "major": 4,
+        "minor": 0,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-081",
+        "score": 41,
+        "critical": 1,
+        "major": 3,
+        "minor": 1,
+        "info": 1
+      },
+      {
+        "id": "REQ-BMS-090",
+        "score": 30,
+        "critical": 1,
+        "major": 4,
+        "minor": 1,
+        "info": 2
+      },
+      {
+        "id": "REQ-BMS-091",
+        "score": 23,
+        "critical": 1,
+        "major": 5,
+        "minor": 0,
+        "info": 2
+      }
+    ]
+  },
+  "hardened_metrics": {
+    "requirements": 62,
+    "findings": 0,
+    "critical": 0,
+    "major": 0,
+    "minor": 0,
+    "info": 0,
+    "average_score": 100.0,
+    "with_acceptance_criteria": 62,
+    "with_verification_method": 62,
+    "with_parent": 60,
+    "traceable_total": 60,
+    "with_test_link": 62,
+    "with_safety_goal": 62,
+    "with_interface_data": 2,
+    "interface_total": 2,
+    "with_timing_data": 4,
+    "timing_total": 4,
+    "with_safe_state": 27,
+    "safety_total": 27,
+    "atomic": 62,
+    "compound_candidates": 0,
+    "per_requirement": [
+      {
+        "id": "REQ-BMS-000",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-005",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-010",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-011",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-020",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-021",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-022",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-023",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-030",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-031",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-032",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-040",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-041",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-042",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-050",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-051",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-052",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-053",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-060",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-061",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-070",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-080",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-081",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-090",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-091",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-801",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-802",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-803",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-804",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-805",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-806",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-807",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-808",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-809",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-810",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-811",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1001",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1002",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1003",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1004",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1005",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1006",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1007",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1008",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1009",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1010",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1011",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1012",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1013",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1014",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1015",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1016",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1017",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1018",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1019",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      {
+        "id": "REQ-BMS-1020",
+        "score": 100,
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "independent-reviewer-v0.1",
+    "requirements": 62,
+    "decisions": {
+      "accept_with_open_issues": 62
+    },
+    "accept": 62,
+    "blocking": 0
+  },
+  "paths": {
+    "findings": "outputs/req_hardening/20261108_221935_bms/02_findings/findings.json",
+    "review": "outputs/req_hardening/20261108_221935_bms/04_reviews/review.json",
+    "metrics": "outputs/req_hardening/20261108_221935_bms/05_verified/metrics.json",
+    "extended_json": "inputs/requirements_hardened/bms/bms_requirements_extended.json",
+    "hardened_csv": "inputs/requirements_hardened/bms/bms_requirements_hardened.csv",
+    "extended_csv": "inputs/requirements_hardened/bms/bms_requirements_extended.csv",
+    "test_design": "inputs/requirements_hardened/bms/test_design.csv",
+    "trace": "inputs/requirements_hardened/bms/trace_matrix.csv",
+    "change_log": "outputs/req_hardening/20261108_221935_bms/change_log.md",
+    "run_report": "outputs/req_hardening/20261108_221935_bms/RUN_REPORT.md",
+    "review_packet": "outputs/req_hardening/20261108_221935_bms/REVIEW_PACKET.md",
+    "readme": "inputs/requirements_hardened/bms/README.md",
+    "polished_markdown": "inputs/requirements_hardened/bms/BMS_REQUIREMENTS_POLISHED.md"
+  },
+  "status": "L2-oriented draft; human review required; not certified"
+}

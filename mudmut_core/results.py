@@ -16,18 +16,23 @@ def _pct(hit: int, found: int) -> float | None:
     return round(100.0 * hit / found, 1) if found else None
 
 
-def coverage_summary(coverage_info: Path) -> dict[str, Any]:
-    """Sum the lcov ``LF/LH`` (lines), ``BRF/BRH`` (branches), ``FNF/FNH`` (functions) records."""
+def coverage_summary(coverage_info: Path, only: str | None = None) -> dict[str, Any]:
+    """Sum the lcov ``LF/LH`` (lines), ``BRF/BRH`` (branches), ``FNF/FNH`` (functions) records.
+
+    ``only`` (optional) keeps just the source files whose path ends with it (e.g. ``SWC_X.c``).
+    """
     totals = {"LF": 0, "LH": 0, "BRF": 0, "BRH": 0, "FNF": 0, "FNH": 0}
     files = 0
     if not Path(coverage_info).is_file():
         return {}
+    keep = True
     for line in Path(coverage_info).read_text(encoding="utf-8", errors="ignore").splitlines():
         if line.startswith("SF:"):
-            files += 1
+            keep = only is None or line[3:].strip().replace("\\", "/").endswith(only)
+            files += keep
             continue
         key, _, value = line.partition(":")
-        if key in totals and value.strip().isdigit():
+        if keep and key in totals and value.strip().isdigit():
             totals[key] += int(value)
     return {
         "files": files,

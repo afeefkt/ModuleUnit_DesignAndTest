@@ -14,3 +14,4 @@ spike lives under `agentic/` and drives the deterministic `mudtool` library via
    artifacts are produced by the CLI, not hand-written. The agent writes only
    `outputs/<id>/01_mud/activity.json`.
 5. **Least privilege.** Run only the tools your agent is permitted to run.
+

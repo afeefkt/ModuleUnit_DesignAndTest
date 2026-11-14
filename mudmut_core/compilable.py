@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from mudmut_core import toolchain
 
@@ -67,12 +67,378 @@ typedef unsigned char Std_ReturnType;
 #endif
 #define E_OK       ((Std_ReturnType) 0U)
 #define E_NOT_OK   ((Std_ReturnType) 1U)
+/* AUTOSAR RTE return codes (SWS_Rte). RTE_E_OK is 0 like E_OK: with a placeholder value the stubs'
+   E_OK never equalled it and every "Rte_IrvRead(..) != RTE_E_OK" guard took its error path. */
+#ifndef RTE_E_OK
+#define RTE_E_OK                 ((Std_ReturnType) 0U)
+#define RTE_E_INVALID            ((Std_ReturnType) 1U)
+#define RTE_E_COM_STOPPED        ((Std_ReturnType) 128U)
+#define RTE_E_TIMEOUT            ((Std_ReturnType) 129U)
+#define RTE_E_LIMIT              ((Std_ReturnType) 130U)
+#define RTE_E_NO_DATA            ((Std_ReturnType) 131U)
+#define RTE_E_TRANSMIT_ACK       ((Std_ReturnType) 132U)
+#define RTE_E_NEVER_RECEIVED     ((Std_ReturnType) 133U)
+#define RTE_E_UNCONNECTED        ((Std_ReturnType) 134U)
+#define RTE_E_IN_EXCLUSIVE_AREA  ((Std_ReturnType) 135U)
+#define RTE_E_SEG_FAULT          ((Std_ReturnType) 136U)
+#define RTE_E_OUT_OF_RANGE       ((Std_ReturnType) 137U)
+#endif
+/* AUTOSAR Dem_EventStatusType (SWS_Dem): the values a design cannot choose. */
+#ifndef DEM_EVENT_STATUS_PASSED
+#define DEM_EVENT_STATUS_PASSED     (0U)
+#define DEM_EVENT_STATUS_FAILED     (1U)
+#define DEM_EVENT_STATUS_PREPASSED  (2U)
+#define DEM_EVENT_STATUS_PREFAILED  (3U)
+#endif
 #ifndef NULL
 #define NULL ((void*) 0)
 #endif
 
+/* The C standard library the design may use (fabsf, fminf, memset, abs …). */
+#include <math.h>
+#include <string.h>
+#include <stdlib.h>
+
 #endif /* RTE_TYPE_H */
 """
+
+
+# Standard C library functions: declared by Rte_Type.h's system includes, never stubbed.
+STDLIB_FUNCS = {
+    "fabs", "fabsf", "fmin", "fminf", "fmax", "fmaxf", "sqrt", "sqrtf", "floor", "floorf",
+    "ceil", "ceilf", "round", "roundf", "trunc", "truncf", "fmod", "fmodf", "pow", "powf",
+    "exp", "expf", "log", "logf", "sin", "sinf", "cos", "cosf", "tan", "tanf", "atan", "atanf",
+    "atan2", "atan2f", "abs", "labs", "llabs", "memset", "memcpy", "memmove", "memcmp",
+    "strlen", "strcmp", "strncmp", "strcpy", "strncpy",
+}
+
+# ── RTE signals as test variables ────────────────────────────────────────────
+# Rte_Read / Rte_Write / Rte_Prm with a port name become macros over one variable per port, so a
+# unit test can set inputs and calibrations and check outputs (a stub function returning 0 cannot
+# be controlled — tests wrote "Rte_Prm(RP_CalPrm_X) = 0.5F;" and were quarantined).
+SIGNAL_APIS = ("Read", "Write", "Prm", "IRead", "IWrite")
+_RTE_SIGNAL_RE = re.compile(r"\bRte_(Read|Write|Prm)\s*\(\s*([A-Za-z_]\w*)\s*[,)]")
+# The implicit sender-receiver forms the design uses as values: ``x = Rte_IRead(RP_X);`` and
+# ``Rte_IWrite(PP_Y, v);`` (one resp. two arguments). Without a macro they were stub functions returning a
+# status, and the test's input variable was a dummy the code never read (26 of 43 generated tests failed).
+_RTE_IREAD_RE = re.compile(r"\bRte_IRead\s*\(\s*([A-Za-z_]\w*)\s*\)")
+_RTE_IWRITE_RE = re.compile(r"\bRte_IWrite\s*\(\s*([A-Za-z_]\w*)\s*,")
+_CALPRM_ROW_RE = re.compile(
+    r"^\|\s*`?(RP_\w+)`?\s*\|[^|\n]*\|\s*`?(\w+)`?\s*\|\s*`?([-+]?\d+(?:\.\d+)?)[fFuU]?`?\s*\|", re.M)
+_C_TYPES = {"uint8", "uint16", "uint32", "uint64", "sint8", "sint16", "sint32", "sint64",
+            "float32", "float64", "boolean"}
+
+
+def rte_signals(c_code: str) -> dict[str, list[str]]:
+    """``{"Read": [ports], "Write": [ports], "Prm": [ports]}`` used with a plain port name."""
+    found: dict[str, list[str]] = {k: [] for k in SIGNAL_APIS}
+    text = _COMMENT_RE.sub(" ", c_code)
+    pairs = list(_RTE_SIGNAL_RE.findall(text))
+    pairs += [("IRead", p) for p in _RTE_IREAD_RE.findall(text)]
+    pairs += [("IWrite", p) for p in _RTE_IWRITE_RE.findall(text)]
+    for kind, port in pairs:
+        if port not in found[kind]:
+            found[kind].append(port)
+    return found
+
+
+def calprm_defaults(spec_md: str | None) -> dict[str, tuple[str, str]]:
+    """``{port: (c_type, default)}`` from the spec's calibration table (port | iface | type | default | …)."""
+    out: dict[str, tuple[str, str]] = {}
+    for port, ctype, value in _CALPRM_ROW_RE.findall(spec_md or ""):
+        ctype = ctype if ctype in _C_TYPES else "float64"
+        if ctype.startswith("float") and "." not in value:
+            value += ".0"
+        out[port] = (ctype, value)
+    return out
+
+
+def _signal_decls(signals: dict[str, list[str]], defaults: dict[str, tuple[str, str]],
+                  accessors: dict[str, str] | None = None) -> list[tuple[str, str, str]]:
+    """``(c_type, variable, default)`` for every signal variable."""
+    rows: list[tuple[str, str, str]] = []
+    for kind in SIGNAL_APIS:
+        for port in signals.get(kind, []):
+            ctype, value = defaults.get(port, ("float64", "0")) if kind == "Prm" else ("float64", "0")
+            rows.append((ctype, f"Rte_{kind}_{port}", value))
+    seen = {var for _c, var, _v in rows}
+    rows += [("float64", name, "0") for name in sorted(accessors or {}) if name not in seen]
+    return rows
+
+
+_SIGNAL_MACROS = {
+    "Read": "#define Rte_Read(port, dst)  ((*(dst) = Rte_Read_##port), E_OK)",
+    "Write": "#define Rte_Write(port, val) ((Rte_Write_##port = (val)), E_OK)",
+    "Prm": "#define Rte_Prm(port)        (Rte_Prm_##port)",
+    "IRead": "#define Rte_IRead(port)      (Rte_IRead_##port)",
+    "IWrite": "#define Rte_IWrite(port, val) ((Rte_IWrite_##port = (val)), E_OK)",
+}
+
+# Explicit accessors — Rte_Read_<port>_<elem>(&x), x = Rte_IRead_<port>_<elem>(), Rte_Write_<port>_<elem>(v),
+# Rte_IrvRead/IrvWrite… — get the same treatment: one variable per accessor plus a function-like
+# macro of the same name. "Rte_Read_P_E(&x)" expands to a read of the variable, while a test's
+# "Rte_Read_P_E = 5;" (no parenthesis, so no expansion) sets it.
+_ACCESSOR_CALL_RE = re.compile(
+    r"\b(Rte_(Read|IRead|IrvRead|IrvIRead|Write|IWrite|IrvWrite|IrvIWrite)_[A-Za-z0-9_]+)\s*\(([^()]*)\)")
+
+
+def rte_accessors(c_code: str) -> dict[str, str]:
+    """``{accessor name: #define line}`` for explicit RTE accessors that are used in one consistent way."""
+    shapes: dict[str, set[str]] = {}
+    for name, kind, args in _ACCESSOR_CALL_RE.findall(_COMMENT_RE.sub(" ", c_code)):
+        args = args.strip()
+        if not args:
+            shape = "get"                                    # x = Rte_IRead_P_E();
+        elif "," in args:
+            shape = "other"
+        elif "Read" in kind and args.startswith("&"):
+            shape = "read"                                   # Rte_Read_P_E(&x);
+        elif "Write" in kind:
+            shape = "write"                                  # Rte_Write_P_E(v);
+        else:
+            shape = "other"
+        shapes.setdefault(name, set()).add(shape)
+    macros = {
+        "get": "#define {n}() ({n})",
+        "read": "#define {n}(dst) ((*(dst) = {n}), E_OK)",
+        "write": "#define {n}(val) (({n} = (val)), E_OK)",
+    }
+    return {name: macros[next(iter(kinds))].format(n=name)
+            for name, kinds in sorted(shapes.items()) if len(kinds) == 1 and "other" not in kinds}
+
+
+# The generic IRV form ``Rte_IrvRead(IRV_X, &dst)`` / ``Rte_IrvWrite(IRV_X, value)`` names the IRV variable
+# itself as the first argument. A stub function cannot read or write it, so it becomes a macro over that
+# variable — a test sets ``IRV_X = 5;`` before the runnable and checks it afterwards.
+_IRV_CALL_RE = re.compile(r"\b(Rte_Irv(?:I?Read|I?Write))\s*\(([^()]*)\)")
+_IRV_MACROS = {
+    "get": "#define {n}(var, dst) ((*(dst) = (var)), E_OK)",
+    "put": "#define {n}(var, val) (((var) = (val)), E_OK)",
+    # x = Rte_IrvRead(IRV_X);  — the value form, one argument
+    "val": "#define {n}(var) (var)",
+}
+
+
+def _irv_both_forms(n: str) -> str:
+    """One macro for ``Rte_IrvRead(var, &dst)`` (status) and ``x = Rte_IrvRead(var)`` (value) in the same file.
+
+    Generated code mixes both; with only one shape allowed the name stayed a stub function and *no* IRV
+    read worked (the guards read nothing and every runnable saw zeros).
+    """
+    return (f"#define {n}_2(var, dst) ((*(dst) = (var)), E_OK)\n"
+            f"#define {n}_1(var) (var)\n"
+            f"#define {n}_PICK(a, b, NAME, ...) NAME\n"
+            f"#define {n}(...) {n}_PICK(__VA_ARGS__, {n}_2, {n}_1, 0)(__VA_ARGS__)")
+
+
+def _irv_variable_names(c_code: str) -> set[str]:
+    """Names used as the variable argument of ``Rte_Irv*(IRV_X, ..)``: variables even though upper case."""
+    return set(re.findall(r"\bRte_Irv\w*\s*\(\s*([A-Za-z_]\w*)", _COMMENT_RE.sub(" ", c_code)))
+
+
+def irv_macros(c_code: str) -> dict[str, str]:
+    """``{name: #define line(s)}`` for the generic ``Rte_Irv[I]Read/Write(var, …)`` calls.
+
+    Read: ``(var, &dst)`` and/or ``(var)``; write: ``(var, value)``. Any other shape (a non-variable first
+    argument, a mix with a write shape) leaves the name a stub function, as before.
+    """
+    shapes: dict[str, set[str]] = {}
+    for name, args in _IRV_CALL_RE.findall(_COMMENT_RE.sub(" ", c_code)):
+        parts = [a.strip() for a in args.split(",")]
+        first_ok = bool(parts and re.fullmatch(r"[A-Za-z_]\w*", parts[0]))
+        if "Read" in name:
+            if first_ok and len(parts) == 2 and parts[1].startswith("&"):
+                shapes.setdefault(name, set()).add("get")
+            elif first_ok and len(parts) == 1:
+                shapes.setdefault(name, set()).add("val")
+            else:
+                shapes.setdefault(name, set()).add("other")
+        else:
+            if first_ok and len(parts) == 2 and parts[1]:
+                shapes.setdefault(name, set()).add("put")
+            else:
+                shapes.setdefault(name, set()).add("other")
+    out: dict[str, str] = {}
+    for name, kinds in sorted(shapes.items()):
+        if "other" in kinds:
+            continue
+        if kinds == {"get", "val"}:
+            out[name] = _irv_both_forms(name)
+        elif len(kinds) == 1:
+            out[name] = _IRV_MACROS[next(iter(kinds))].format(n=name)
+    return out
+
+
+# Local variables: the exporter guesses a type from a Hungarian prefix in the name and falls back to
+# uint32 (``l_fDecelDemand``, ``l_finalPressure`` → uint32), but the spec declares the real one
+# (``float32 l_fDecelDemand``). A physical value stored in uint32 is truncated (123.5 → 123) and a
+# negative one wraps (-10 → 4294967286), so the spec's declaration wins.
+_SPEC_LOCAL_RE = re.compile(
+    r"\b(uint8|uint16|uint32|uint64|sint8|sint16|sint32|sint64|float32|float64|boolean)\s+(l_[A-Za-z0-9_]+)\b")
+_FILE_SCOPE_LOCAL_RE = re.compile(r"^(?P<type>\w+)(?P<sp>[ \t]+)(?P<name>l_\w+)(?P<end>[ \t]*;)", re.MULTILINE)
+
+
+def spec_local_types(spec_md: str | None) -> dict[str, str]:
+    """``{l_name: type}`` for locals the spec declares with one consistent type (conflicts are left out)."""
+    seen: dict[str, set[str]] = {}
+    for ctype, name in _SPEC_LOCAL_RE.findall(spec_md or ""):
+        seen.setdefault(name, set()).add(ctype)
+    return {name: next(iter(types)) for name, types in seen.items() if len(types) == 1}
+
+
+def apply_spec_local_types(c_code: str, types: dict[str, str]) -> str:
+    """Give the skeleton's file-scope ``<type> l_name;`` declarations the type the spec declares."""
+    if not types:
+        return c_code
+
+    def fix(m: re.Match) -> str:
+        want = types.get(m.group("name"))
+        if not want or want == m.group("type"):
+            return m.group(0)
+        return f"{want}{m.group('sp')}{m.group('name')}{m.group('end')}"
+
+    return _FILE_SCOPE_LOCAL_RE.sub(fix, c_code)
+
+
+# ── calls to external functions, recorded for tests ──────────────────────────
+# A stub that does nothing cannot be checked, so a requirement such as "report event X to the Dem" had
+# no test: the model wrote its own mock (a C++ symbol the C code never calls) and the case failed with
+# "expected <1> but was <0>". Each external function whose calls all have one plain shape becomes
+#     uint32  <fn>_callCount;   float64 <fn>_arg0, <fn>_arg1 …   (arguments of the LAST call)
+# which a test reads after the runnable; Rte_Stubs_Reset() clears them.
+_UNPLAIN_ARG_RE = re.compile(r"&|\"|'|->|[A-Za-z_]\w*\s*\.\s*[A-Za-z_]|\[")
+
+
+def call_arities(c_code: str, names: set[str]) -> dict[str, int]:
+    """``{function: argument count}`` for functions whose every call site is plain and has the same count.
+
+    Plain: no pointer (``&x``), string, member access, index or nested call in the arguments.
+    A function with any other call shape is left out and stays an unrecorded stub.
+    """
+    body = _COMMENT_RE.sub(" ", c_code)
+    out: dict[str, int] = {}
+    for name in names:
+        n = re.escape(name)
+        total = len(re.findall(rf"\b{n}\s*\(", body))
+        sites = re.findall(rf"\b{n}\s*\(([^()]*)\)", body)
+        if not total or len(sites) != total:          # no call, or one with a nested call
+            continue
+        counts = set()
+        for args in sites:
+            args = args.strip()
+            if args and _UNPLAIN_ARG_RE.search(args):
+                counts = set()
+                break
+            counts.add(len([a for a in args.split(",")]) if args else 0)
+        if len(counts) == 1:
+            out[name] = next(iter(counts))
+    return out
+
+
+# Every call is kept too: ``<fn>_hist_arg<i>[n]`` is argument i of the n-th call since the reset. A function that
+# reports several events in one run (Dem_ReportErrorStatus FAILED then PASSED for other events) left only the
+# last one in ``<fn>_arg<i>``, and 8 of 51 tests checked the wrong event.
+CALL_HISTORY = 16
+
+
+def _call_hist_vars(calls: dict[str, int]) -> list[str]:
+    return [f"{name}_hist_arg{i}" for name in sorted(calls) for i in range(calls[name])]
+
+
+# RTE APIs whose return value is a BOOLEAN (TRUE = updated), not a Std_ReturnType status: the stub returns a
+# variable a test can set (default TRUE). Returning E_OK (= 0 = FALSE) made "Rte_IsUpdated(..) == FALSE" always
+# true and the rest of the runnable unreachable.
+BOOLEAN_RTE_APIS = {"Rte_IsUpdated"}
+
+
+def _call_var_default(var: str) -> int:
+    return 1 if var.endswith("_return") else 0
+
+
+def _call_vars(calls: dict[str, int]) -> list[tuple[str, str]]:
+    """``(c_type, variable)`` of every call recorder."""
+    rows: list[tuple[str, str]] = []
+    for name in sorted(calls):
+        rows.append(("uint32", f"{name}_callCount"))
+        if name in BOOLEAN_RTE_APIS:
+            rows.append(("uint32", f"{name}_return"))
+        rows += [("float64", f"{name}_arg{i}") for i in range(calls[name])]
+    return rows
+
+
+_FLOAT_LIT = r"(?:\d+\.\d*|\.\d+)[fF]?|\d+[fF]\b"
+_FLOAT_FUNCS = r"(?:fabsf?|fminf?|fmaxf?|sqrtf?|floorf?|ceilf?|roundf?|truncf?|fmodf?|powf?)"
+_ARITH = r"(?:<=|>=|==|!=|<|>|\+=|-=|\*=|/=|=|\+|-|\*|/)"
+# Hungarian prefixes that say "integer" in the name: never retyped by usage.
+_INT_PREFIX_RE = re.compile(r"^l_(?:u8|u16|u32|u64|s8|s16|s32|s64|b)[A-Z]")
+
+
+def float_locals(c_code: str) -> set[str]:
+    """File-scope ``uint32 l_x;`` locals the code uses as floating-point values.
+
+    Evidence: compared with / assigned a float literal, assigned from a float math function, or
+    computed from another such local (repeated until nothing new is found). Locals with an integer
+    Hungarian prefix and any other use stay uint32.
+    """
+    cands = {m.group("name") for m in _FILE_SCOPE_LOCAL_RE.finditer(c_code)
+             if m.group("type") == "uint32" and not _INT_PREFIX_RE.match(m.group("name"))}
+    body = _COMMENT_RE.sub(" ", c_code)
+    stmts = [s for s in re.split(r"[;{}]", body)]
+    floats: set[str] = set()
+    for name in cands:
+        n = re.escape(name)
+        if re.search(rf"\b{n}\b\s*{_ARITH}\s*\(?\s*-?\s*(?:{_FLOAT_LIT})|(?:{_FLOAT_LIT})\s*{_ARITH}\s*\(?\s*{n}\b", body) \
+                or re.search(rf"\b{n}\s*=\s*{_FLOAT_FUNCS}\s*\(", body):
+            floats.add(name)
+    assigns = []                                  # (target, right-hand side) of every plain assignment
+    for s in stmts:
+        m = re.search(r"\b(l_\w+)\s*=(?!=)([^=].*)$", s, re.S)
+        if m:
+            assigns.append((m.group(1), m.group(2)))
+    changed = True
+    while changed:
+        changed = False
+        for target, rhs in assigns:
+            names = {n for n in cands if re.search(rf"\b{re.escape(n)}\b", rhs)}
+            if target in floats:                  # x = a - b with float x: a and b are floats too
+                new = names - floats
+            elif target in cands and names & floats:
+                new = {target}                    # x = a - b with a float: x is a float
+            else:
+                new = set()
+            if new:
+                floats |= new
+                changed = True
+    return floats
+
+
+def apply_float_locals(c_code: str) -> str:
+    """Declare the locals :func:`float_locals` found as ``float32``."""
+    floats = float_locals(c_code)
+    if not floats:
+        return c_code
+
+    def fix(m: re.Match) -> str:
+        if m.group("name") in floats and m.group("type") == "uint32":
+            return f"float32{m.group('sp')}{m.group('name')}{m.group('end')}"
+        return m.group(0)
+
+    return _FILE_SCOPE_LOCAL_RE.sub(fix, c_code)
+
+
+_BITWISE_USE =r"(?:\b{n}\s*(?:\||\^|%|<<|>>|&(?!&))|(?:\||\^|%|<<|>>|~)\s*{n}\b|[\w)\]]\s*&\s*{n}\b|\b{n}\s*=\s*[^;]*\d+[uU]\b)"
+
+
+def placeholder_type(name: str, code: str) -> str:
+    """Type for an identifier the design uses but never declares.
+
+    Bit masks and counters (``x | MASK``, ``x & BIT``, ``x = 0U``) need an integer type —
+    ``float64`` made every ``irvFaultBitmask | FAULT_BIT`` line fail to compile.
+    """
+    n = re.escape(name)
+    if re.search(_BITWISE_USE.format(n=n), code):
+        return "uint32"
+    return "float64"
 
 
 _TRAILING_COMMENT_RE = re.compile(r"(\s*/\*.*?\*/)+\s*$")
@@ -83,6 +449,7 @@ _UNDECLARED_RE = re.compile("['\"‘](\\w+)['\"’] undeclared")
 _FILE_SCOPE_STATIC_VAR_RE = re.compile(r"^static\s+(\w+)\s+(l_\w+)\s*;", re.MULTILINE)
 _RUNNABLE_DEF_RE = re.compile(r"^void\s+(\w+)\s*\(\s*void\s*\)\s*$", re.MULTILINE)
 _RTE_INCLUDE_RE = re.compile(r'#include\s+"(Rte_\w+)\.h"')
+_STATIC_FUNC_RE = re.compile(r"^static\s+(void\s+\w+\s*\(\s*void\s*\))", re.MULTILINE)
 
 
 def _code_part(line: str) -> str:
@@ -114,13 +481,37 @@ def _is_statement_line(line: str) -> bool:
     return False
 
 
-def _is_junk_statement(line: str) -> bool:
+_C_TYPES = {
+    "void", "char", "short", "int", "long", "float", "double", "boolean", "bool", "size_t",
+    "uint8", "uint16", "uint32", "uint64", "sint8", "sint16", "sint32", "sint64", "float32", "float64",
+    "uint8_t", "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t",
+    "Std_ReturnType",
+}
+_DECL_QUALIFIERS = {"static", "const", "volatile", "unsigned", "signed", "struct", "enum", "union", "register"}
+_TYPEDEF_NAME_RE = re.compile(r"\}\s*(\w+)\s*;|^typedef\s+[^;{}\n]*?(\w+)\s*;", re.MULTILINE)
+
+
+def _is_declaration(code: str, known_types: set[str] | frozenset[str] = frozenset()) -> bool:
+    """``uint8 count;`` / ``static const float32 gain;`` / ``Object_t obj;`` — words only, like a
+    prose label, but a declaration (struct member or local variable), which must stay C."""
+    words = code.rstrip(";").split()
+    while words and words[0] in _DECL_QUALIFIERS:
+        words.pop(0)
+    if len(words) != 2:
+        return len(words) == 1 and code.split()[0] in _DECL_QUALIFIERS - {"struct", "enum", "union"}
+    type_name = words[0]
+    return type_name in _C_TYPES or type_name in known_types or type_name.endswith(("_t", "Type"))
+
+
+def _is_junk_statement(line: str, known_types: set[str] | frozenset[str] = frozenset()) -> bool:
     """Exporter output that can never be C: markdown fences and prose labels
     (``Guard;``, ``Restore defaults;``, ``Compute average of speeds;``)."""
     code = _code_part(line)
     if "`" in code:
         return True
-    return code not in _BARE_KEYWORD_STATEMENTS and bool(_PROSE_RE.match(code))
+    if code in _BARE_KEYWORD_STATEMENTS or not _PROSE_RE.match(code):
+        return False
+    return not _is_declaration(code, known_types)
 
 
 def collect_identifiers(c_code: str) -> tuple[set[str], set[str]]:
@@ -134,7 +525,10 @@ def collect_identifiers(c_code: str) -> tuple[set[str], set[str]]:
 
 
 def _is_constant_name(name: str) -> bool:
-    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", name))
+    """UPPER_CASE names, and enum-like ones with two or more capitalised prefix segments
+    (``SWC_DEM_E_ActuatorInitFailed``). Those were variables, so every Dem event id was 0 and a test
+    could not tell one event from another; as constants they get distinct values."""
+    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*|(?:[A-Z][A-Z0-9]*_){2,}[A-Za-z0-9_]+", name))
 
 
 def generate_rte_swc_header(
@@ -144,19 +538,63 @@ def generate_rte_swc_header(
     *,
     constants: dict[str, int] | None = None,
     variables: set[str] | None = None,
+    types: dict[str, str] | None = None,
+    signals: dict[str, list[str]] | None = None,
+    defaults: dict[str, tuple[str, str]] | None = None,
+    accessors: dict[str, str] | None = None,
+    irv: dict[str, str] | None = None,
+    calls: dict[str, int] | None = None,
 ) -> str:
     """Return ``Rte_<SWC>.h``: RTE/helper declarations plus design symbols the
-    skeleton uses but the MUD never defined (placeholder constants/variables)."""
+    skeleton uses but the MUD never defined (placeholder constants/variables).
+
+    ``irv`` = generic ``Rte_IrvRead/Write`` macros (see :func:`irv_macros`): macros over the IRV
+    variables, so they are not declared as functions. ``calls`` = external functions with a call
+    recorder (see :func:`call_arities`).
+    """
+    types = types or {}
+    signals = signals or {}
+    accessors = accessors or {}
+    irv = irv or {}
+    calls = {k: v for k, v in (calls or {}).items() if k in rte_functions}
+    rte_functions = set(rte_functions) - set(accessors) - set(irv)
+    sig_rows = _signal_decls(signals, defaults or {}, accessors)
+    macro_block = ""
+    if sig_rows or irv or calls:
+        macros = "\n".join([_SIGNAL_MACROS[k] for k in SIGNAL_APIS if signals.get(k)]
+                           + list(accessors.values()) + list(irv.values()))
+        macro_block = (
+            "/* Test interface: every RTE signal is a variable.\n"
+            " *   set   Rte_Read_<port> / Rte_IRead_<port> / Rte_Prm_<port>  before calling a runnable (inputs, calibration)\n"
+            " *   check Rte_Write_<port> / Rte_IWrite_<port>         after it (outputs)\n"
+            " *   call  Rte_Stubs_Reset()                 in setup() to restore the defaults\n"
+            " * The same holds for explicit accessors: Rte_Read_<port>_<elem>, Rte_IRead_<port>_<elem>,\n"
+            " * Rte_Write_<port>_<elem> … are variables too (the call form used by the code is a macro).\n"
+            " * Rte_Prm_<port> starts at the default from the MUD's calibration table. */\n"
+            f"{macros}\n"
+        )
     # In C, "f()" accepts any arguments; in C++ it means "no arguments", so the
     # C++ unit tests get a variadic declaration of the same extern "C" symbol.
     decls: list[str] = []
     for name in sorted(rte_functions):
-        decls.append(f"Std_ReturnType {name}(MUDMUT_ANY_ARGS);")
+        if name in calls:
+            params = ", ".join(["float64"] * calls[name]) or "void"
+            decls.append(f"{types.get(name, 'Std_ReturnType')} {name}({params});")
+        else:
+            decls.append(f"{types.get(name, 'Std_ReturnType')} {name}(MUDMUT_ANY_ARGS);")
     for name in sorted(extra_funcs or ()):
         if name not in rte_functions:
             decls.append(f"void {name}(MUDMUT_ANY_ARGS);")
     for name in sorted(variables or ()):
-        decls.append(f"extern float64 {name};  /* TODO(design): type not defined in the MUD */")
+        decls.append(f"extern {types.get(name, 'float64')} {name};  /* TODO(design): type not defined in the MUD */")
+    for ctype, var, _value in sig_rows:
+        decls.append(f"extern {ctype} {var};")
+    for ctype, var in _call_vars(calls):
+        decls.append(f"extern {ctype} {var};")
+    for var in _call_hist_vars(calls):
+        decls.append(f"extern float64 {var}[{CALL_HISTORY}];")
+    if sig_rows or irv or calls:
+        decls.append("void Rte_Stubs_Reset(void);")
     guard = f"RTE_{swc.upper()}_H"
     body = "\n".join(f"    {d}" for d in decls) if decls else "    /* no RTE API calls found */"
     const_lines = "\n".join(
@@ -179,6 +617,7 @@ def generate_rte_swc_header(
 
 {const_lines}
 
+{macro_block}
 #ifdef __cplusplus
 extern "C" {{
 #endif
@@ -199,16 +638,51 @@ def generate_rte_stubs(
     extra_funcs: set[str] | None = None,
     *,
     variables: set[str] | None = None,
+    types: dict[str, str] | None = None,
+    signals: dict[str, list[str]] | None = None,
+    defaults: dict[str, tuple[str, str]] | None = None,
+    accessors: dict[str, str] | None = None,
+    irv: dict[str, str] | None = None,
+    calls: dict[str, int] | None = None,
 ) -> str:
     """Return ``Rte_Stubs.c`` with default definitions so the test binary links."""
+    types = types or {}
+    rte_functions = set(rte_functions) - set(accessors or {}) - set(irv or {})
+    calls = {k: v for k, v in (calls or {}).items() if k in rte_functions}
+    sig_rows = _signal_decls(signals or {}, defaults or {}, accessors)
     defs: list[str] = []
+    if sig_rows:
+        defs.append("\n".join(f"{ctype} {var} = {value};" for ctype, var, value in sig_rows))
+    if calls:
+        defs.append("\n".join([f"{ctype} {var} = {_call_var_default(var)};" for ctype, var in _call_vars(calls)]
+                              + [f"float64 {var}[{CALL_HISTORY}] = {{0}};" for var in _call_hist_vars(calls)]))
     for name in sorted(rte_functions):
-        defs.append(f"Std_ReturnType {name}()\n{{\n    (void)0;\n    return E_OK;\n}}")
+        ret_type = types.get(name, "Std_ReturnType")
+        ret = "E_OK" if ret_type == "Std_ReturnType" else "0"
+        if name in BOOLEAN_RTE_APIS:
+            ret = f"({ret_type}){name}_return"
+        if name in calls:
+            params = ", ".join(f"float64 a{i}" for i in range(calls[name])) or "void"
+            history = "".join(f"    if ({name}_callCount < {CALL_HISTORY}) {name}_hist_arg{i}[{name}_callCount] = a{i};\n"
+                              for i in range(calls[name]))                 # before the count moves on
+            record = "".join(f"    {name}_arg{i} = a{i};\n" for i in range(calls[name]))
+            defs.append(f"{ret_type} {name}({params})\n{{\n{history}    {name}_callCount++;\n{record}    return {ret};\n}}")
+            continue
+        defs.append(f"{ret_type} {name}()\n{{\n    (void)0;\n    return {ret};\n}}")
     for name in sorted(extra_funcs or ()):
         if name not in rte_functions:
             defs.append(f"void {name}()\n{{\n    (void)0;\n}}")
     for name in sorted(variables or ()):
-        defs.append(f"float64 {name} = 0;")
+        defs.append(f"{types.get(name, 'float64')} {name} = 0;")
+    if sig_rows or irv or calls:
+        # Reset signals AND the placeholder variables (IRVs …) defined above, so state from one
+        # test (e.g. a deviation timer) does not leak into the next.
+        resets = "\n".join([f"    {var} = {value};" for _ctype, var, value in sig_rows]
+                           + [f"    {name} = 0;" for name in sorted(variables or ())]
+                           + [f"    {var} = {_call_var_default(var)};" for _ctype, var in _call_vars(calls)]
+                           + [f"    for (unsigned k = 0; k < {CALL_HISTORY}; k++) {var}[k] = 0;"
+                              for var in _call_hist_vars(calls)])
+        defs.append(f"void Rte_Stubs_Reset(void)\n{{\n{resets}\n}}")
     body = "\n\n".join(defs) if defs else "/* no stubs needed */"
     return f"""/* Generated by mudmut_core.compilable — stub definitions for {swc}. */
 #include "Rte_Type.h"
@@ -217,12 +691,29 @@ def generate_rte_stubs(
 """
 
 
+# Object-like ``#define NAME value`` (not ``NAME(x)``, not an include guard without a value).
+_OWN_DEFINE_RE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)[ \t]+(\S[^\n]*)$", re.MULTILINE)
+# ``typedef struct/enum/union { … } Name;`` (may span lines) and one-line ``typedef old New;``.
+_OWN_TYPEDEF_RE = re.compile(
+    r"^typedef\s+(?:struct|enum|union)\b[^;{]*\{[^}]*(?:\{[^}]*\}[^}]*)*\}\s*\w+\s*;|^typedef\s+[^;{}\n]+;",
+    re.MULTILINE)
+
+
 def generate_swc_header(swc: str, c_code: str) -> str:
     """Return ``<SWC>.h`` for the unit tests: runnable prototypes plus ``extern``
     declarations of the design's file-scope variables (white-box access)."""
     lines = [f"/* Generated by mudmut_core.compilable — test interface for {swc}. */",
-             f"#ifndef {swc.upper()}_H", f"#define {swc.upper()}_H", "",
-             f'#include "Rte_{swc}.h"', "", "#ifdef __cplusplus", 'extern "C" {', "#endif", ""]
+             f"#ifndef {swc.upper()}_H", f"#define {swc.upper()}_H", "", '#include "Rte_Type.h"']
+    # Constants and types the C file defines itself, before the Rte header: the tests then use
+    # the same values as the code (not a placeholder from Rte_<SWC>.h) and know its struct types.
+    defines = dict(_OWN_DEFINE_RE.findall(c_code))
+    if defines:
+        lines += ["", "/* Constants defined in the C file */"]
+        lines += [f"#ifndef {name}\n#define {name} {value.strip()}\n#endif" for name, value in defines.items()]
+    typedefs = [m.group(0).strip() for m in _OWN_TYPEDEF_RE.finditer(c_code)]
+    if typedefs:
+        lines += ["", "/* Types defined in the C file */"] + typedefs
+    lines += ["", f'#include "Rte_{swc}.h"', "", "#ifdef __cplusplus", 'extern "C" {', "#endif", ""]
     for name in dict.fromkeys(_RUNNABLE_DEF_RE.findall(c_code)):
         lines.append(f"void {name}(void);")
     for m in re.finditer(r"^(\w+)\s+(l_\w+)\s*;", c_code, re.MULTILINE):
@@ -245,8 +736,169 @@ def _comment_line(line: str) -> str:
     if stripped.startswith("/*") and stripped.endswith("*/") and "*/" not in stripped[2:-2]:
         return line
     indent = line[: len(line) - len(line.lstrip())]
-    # Neutralise any comment terminators inside so the wrapper stays one comment.
-    return f"{indent}/* TODO(design): {stripped.replace('*/', '* /')} */"
+    # Neutralise comment openers/terminators inside so the wrapper stays one comment
+    # (an inner "/*" makes gcc warn "/* within comment").
+    inner = stripped.replace("/*", "/ *").replace("*/", "* /")
+    return f"{indent}/* TODO(design): {inner} */"
+
+
+# A stubbed statement is real design logic (not a prose label such as "Guard;") when it
+# assigns something or calls a function.
+_LOGIC_RE = re.compile(r"(?<![=!<>])=(?!=)|\b[A-Za-z_]\w*\s*\(")
+
+_DECL_TYPES = (r"(?:uint8|uint16|uint32|uint64|sint8|sint16|sint32|sint64|float32|float64|boolean|"
+               r"Std_ReturnType|int|float|double|char|unsigned\s+\w+|signed\s+\w+)")
+_DECL_RE = re.compile(rf"^\s*(?:static\s+)?(?:volatile\s+)?{_DECL_TYPES}\s+([A-Za-z_]\w*)\s*(=[^;]*)?;", re.M)
+_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+
+
+def is_logic_statement(code: str) -> bool:
+    body = _code_part(code)
+    return bool(body.strip()) and bool(_LOGIC_RE.search(body))
+
+
+def unassigned_reads(c_code: str) -> list[str]:
+    """Variables the code declares and reads but never assigns (excluding TODO comments).
+
+    File-scope variables are zero-initialised, so gcc's -Wuninitialized cannot see that a
+    computation was dropped; this check can (e.g. ``l_f32Cmd`` used in a clamp but never set).
+    """
+    code = _COMMENT_RE.sub(" ", c_code)
+    names: dict[str, bool] = {}
+    for m in _DECL_RE.finditer(code):
+        names[m.group(1)] = bool(m.group(2))          # declared with an initialiser = assigned
+    out: list[str] = []
+    for name, initialised in names.items():
+        if initialised:
+            continue
+        nm = re.escape(name)
+        assigned = re.search(rf"\b{nm}\s*(\[[^\]]*\])?\s*([-+*/|&^%]|<<|>>)?=(?!=)", code) or \
+            re.search(rf"&\s*{nm}\b|\b{nm}\s*(\+\+|--)|(\+\+|--)\s*{nm}\b", code)
+        uses = len(re.findall(rf"\b{nm}\b", code))
+        if not assigned and uses > 1:                   # more than the declaration itself
+            out.append(name)
+    return out
+
+
+# ── compile errors → the model → corrected code ──────────────────────────────
+# A fixer takes (c_code, compiler errors, header excerpt, note) and returns corrected C ("" = no answer).
+# ``note`` says why the previous answer was refused (empty on the first request).
+CodeFixer = Callable[..., str]
+
+_FUNC_DEF_RE = re.compile(
+    r"^(?:[A-Za-z_]\w*[ \t\*]+)+(\w+)\s*\((?:[^;{}()]|\([^()]*\))*\)\s*\{", re.MULTILINE)
+MAX_FIX_REQUESTS = 8          # model requests per file
+MAX_FIX_STALLS = 2            # answers in a row that did not reduce the errors
+
+
+def defined_functions(c_code: str) -> set[str]:
+    """Names of the functions a C file defines (not prototypes)."""
+    return set(_FUNC_DEF_RE.findall(_COMMENT_RE.sub(" ", c_code)))
+
+
+def fix_problem(old: str, new: str) -> str:
+    """Why ``new`` cannot replace ``old`` as a compile fix ("" when it can).
+
+    A fix may change statements, but it must keep every function and every requirement ID the design
+    carries: a model that "fixes" a file by deleting a runnable or its trace comments compiles and
+    verifies nothing.
+    """
+    from mudmut_core.trace import extract_requirements
+    if not (new or "").strip():
+        return "no answer"
+    lost = sorted(defined_functions(old) - defined_functions(new))
+    if lost:
+        return f"the fix removed function(s) {', '.join(lost)}"
+    gone = sorted(set(extract_requirements(old)) - set(extract_requirements(new)))
+    if gone:
+        return f"the fix removed requirement comment(s) {', '.join(gone[:5])}"
+    if new.count("```"):
+        return "the answer still contains markdown fences"
+    return ""
+
+
+def _fenceless(text: str) -> str:
+    text = (text or "").strip()
+    text = re.sub(r"^```(?:c|cpp)?\s*\n", "", text)
+    return re.sub(r"\n```\s*$", "", text).strip() + "\n"
+
+
+def llm_code_fixer(stage: str = "mud_spec_generator", *, timeout: int = 300) -> CodeFixer:
+    """A :data:`CodeFixer` that asks the model of ``stage`` (provider + model from the stage registry)."""
+    def fix(c_code: str, errors: str, header: str = "", note: str = "") -> str:
+        import os
+        from mudmut_core import env
+        from mudmut_core.llm import chat_blocking, get_providers
+        env.ensure_environment()
+        provider_id, model = "ollama", os.environ.get("GEN_MODEL", "qwen2.5:7b")
+        try:
+            from mudmut_core import agents
+            st = agents.get_stages().get(stage, {})
+            provider_id = st.get("provider", "ollama")
+            model = st.get("model") or model
+        except Exception:  # noqa: BLE001
+            pass
+        provider = get_providers().get(provider_id) or get_providers().get("ollama")
+        prompt = (
+            "The following C99 file does not compile. Fix the compile errors and return ONLY the complete "
+            "corrected file (no markdown, no explanation).\n"
+            "Rules: change only what the errors require; keep every function with its name and signature; "
+            "keep every comment (/* Requirements: ... */, /* [REQ-...] */); do not delete statements or turn "
+            "them into comments; names that are undeclared are declared for you automatically; use the "
+            "macros and variables of the header below instead of inventing new ones.\n"
+            + (f"\nYour previous answer was refused: {note}. Fix it this time.\n" if note else "")
+            + f"\nCOMPILER ERRORS (gcc -std=c99):\n{errors}\n\nHEADER (declarations and macros available):\n{header}\n"
+              f"\nFILE:\n```c\n{c_code}\n```\n"
+        )
+        try:
+            return _fenceless(chat_blocking(provider, model, [{"role": "user", "content": prompt}],
+                                            max_tokens=8192, temperature=0.1, timeout=timeout))
+        except Exception as exc:  # noqa: BLE001 - a failed request only means "no fix"
+            print(f"[mudmut_core] compile fixer request failed: {exc}")
+            return ""
+    return fix
+
+
+# A statement that is only a name (``l_maxPressure;``, a code identifier — not a prose label like ``Guard;``) has no effect: it is removed, not counted as stubbed.
+_NOOP_STATEMENT_RE = re.compile(r"^\s*[A-Za-z]+_\w+\s*;?\s*$")
+
+# ── BSW services are provided by the environment, never defined by the SWC ───────────────────────────
+_BSW_PREFIXES = ("WdgM_", "Dem_", "Det_", "NvM_", "Os_", "Com_", "EcuM_", "BswM_", "SchM_", "Fee_", "MemIf_",
+                 "Rte_", "Csm_", "CanIf_", "ComM_", "Dcm_", "FiM_")
+_BSW_DEF_RE = re.compile(
+    r"^(?:[A-Za-z_]\w*[ \t\*]+)+(?:%s)\w*\s*\([^;{}]*\)\s*(\{|;)" % "|".join(p.rstrip("_") + "_" for p in _BSW_PREFIXES),
+    re.M)
+
+
+def strip_bsw_definitions(c_code: str) -> tuple[str, list[str]]:
+    """Remove definitions and prototypes of BSW service functions (``WdgM_*``, ``Dem_*``, ...).
+
+    The activity step sometimes draws a sub-diagram for a BSW call and invents a body for it; the C then
+    defines a function the stubs (and, on target, the BSW) already provide: "multiple definition".
+    """
+    removed: list[str] = []
+    out: list[str] = []
+    pos = 0
+    for m in _BSW_DEF_RE.finditer(c_code):
+        if m.start() < pos:
+            continue
+        name = re.search(r"((?:%s)\w*)\s*\(" % "|".join(p.rstrip("_") + "_" for p in _BSW_PREFIXES), m.group(0)).group(1)
+        end = m.end()
+        if m.group(1) == "{":
+            depth, i = 1, m.end()
+            while i < len(c_code) and depth:
+                depth += (c_code[i] == "{") - (c_code[i] == "}")
+                i += 1
+            end = i
+        else:                                   # a prototype: drop the rest of its line (the comment)
+            nl_at = c_code.find("\n", end)
+            end = nl_at if nl_at != -1 else len(c_code)
+        out.append(c_code[pos:m.start()])
+        pos = end
+        if name not in removed:
+            removed.append(name)
+    out.append(c_code[pos:])
+    return "".join(out), removed
 
 
 @dataclass
@@ -261,6 +913,16 @@ class CompilabilityReport:
     headers: dict[str, str] = field(default_factory=dict)  # filename → content
     placeholder_constants: list[str] = field(default_factory=list)
     placeholder_variables: list[str] = field(default_factory=list)
+    stubbed_logic: list[str] = field(default_factory=list)       # commented-out assignments / calls
+    never_assigned: list[str] = field(default_factory=list)      # read but never set
+    dropped_arguments: int = 0                                    # helper calls emitted without the design's args
+    fix_requests: int = 0                                         # compile errors sent to the model
+    fixes_applied: int = 0                                        # answers that reduced the errors and were kept
+    removed_bsw_definitions: list[str] = field(default_factory=list)  # BSW functions the design defined itself
+
+    @property
+    def logic_stubbed(self) -> int:
+        return len(self.stubbed_logic)
 
     @property
     def kept_statements(self) -> int:
@@ -273,10 +935,22 @@ class CompilabilityReport:
                 f"; {len(self.placeholder_constants)} constant(s) and "
                 f"{len(self.placeholder_variables)} variable(s) declared as TODO(design) placeholders"
             )
+        gate = ""
+        if self.stubbed_logic:
+            gate += f"; {len(self.stubbed_logic)} logic statement(s) commented out"
+        if self.dropped_arguments:
+            gate += f"; {self.dropped_arguments} helper call(s) without the design's arguments"
+        if self.never_assigned:
+            gate += f"; read but never assigned: {', '.join(self.never_assigned)}"
+        if self.fix_requests:
+            gate += f"; {self.fix_requests} fix request(s) to the model, {self.fixes_applied} kept"
         return (
             f"{self.kept_statements} of {self.total_statements} statements kept as C, "
-            f"{self.stubbed_statements} stubbed{extra} (compile_ok={self.compile_ok})"
+            f"{self.stubbed_statements} stubbed{extra}{gate} (compile_ok={self.compile_ok})"
         )
+
+
+_WDGM_RUNNABLE_ARG_RE = re.compile(r"\b(WdgM_\w+\s*\(\s*)(RE_\w+)(\s*[,)])")
 
 
 def make_compilable(
@@ -284,7 +958,10 @@ def make_compilable(
     swc: str,
     workdir: Path,
     *,
-    max_rounds: int = 25,
+    max_rounds: int = 40,
+    spec_md: str | None = None,
+    fixer: CodeFixer | None = None,
+    max_fix_requests: int = MAX_FIX_REQUESTS,
 ) -> CompilabilityReport:
     """Write headers + stubs and iteratively repair the skeleton until it compiles.
 
@@ -292,7 +969,10 @@ def make_compilable(
     1. declare what the design uses but never defined — undeclared helper
        functions, UPPER_CASE constants (unique placeholder values) and other
        identifiers (``float64`` placeholders) — all marked TODO(design);
-    2. only when a statement still cannot compile, turn it into a
+    2. when ``fixer`` is given, send the compiler errors and the file to it and keep its answer when it
+       keeps every function and requirement comment and reduces the errors — repeated until the file
+       compiles, up to ``max_fix_requests`` requests, and stopped after two answers without progress;
+    3. only when a statement still cannot compile, turn it into a
        ``/* TODO(design): … */`` comment (trace comments are kept).
     Markdown fences and prose labels are commented out up front.
     """
@@ -303,26 +983,51 @@ def make_compilable(
     # File-scope design variables become plain globals so unit tests can set
     # inputs and check outputs through <SWC>.h (white-box testing).
     current = _FILE_SCOPE_STATIC_VAR_RE.sub(r"\1 \2;", c_code)
+    # Helper functions too: a static helper cannot be linked by its unit test
+    # (one "undefined reference" quarantined every AI test file of a run).
+    current = _STATIC_FUNC_RE.sub(r"\1", current)
+    current, removed_bsw = strip_bsw_definitions(current)
+    # WdgM_*(RE_X): the design names the supervised entity by its runnable; a function name cannot be passed
+    # as the entity id (the call was stubbed). Use a named entity-id constant (declared as a placeholder).
+    current = _WDGM_RUNNABLE_ARG_RE.sub(lambda m: f"{m.group(1)}WDGM_SE_{m.group(2).upper()}{m.group(3)}", current)
+    current = apply_spec_local_types(current, spec_local_types(spec_md))   # the design's declaration first
+    current = apply_float_locals(current)                                  # then usage, for what it leaves at uint32
 
     lines = current.splitlines()
     total = sum(1 for line in lines if _is_statement_line(line))
     stubbed = 0
+    own_types = {a or b for a, b in _TYPEDEF_NAME_RE.findall(current)}
     for i, line in enumerate(lines):
-        if _is_statement_line(line) and _is_junk_statement(line):
+        if _is_statement_line(line) and _is_junk_statement(line, own_types):
             lines[i] = _comment_line(line)
-            stubbed += 1
+            if not _NOOP_STATEMENT_RE.match(line):      # a bare name does nothing: not stubbed logic
+                stubbed += 1
     current = "\n".join(lines) + "\n"
 
     rte_funcs, _call_idents = collect_identifiers(current)
-    declared = set(rte_funcs)  # start with only Rte_* (user funcs are defined in-place)
+    signals = rte_signals(current)
+    accessors = rte_accessors(current)
+    irv = irv_macros(current)
+    signal_apis = {f"Rte_{k}" for k, ports in signals.items() if ports}
+    defaults = calprm_defaults(spec_md)
+    # start with only Rte_* (user funcs are defined in-place); signal APIs and IRV accessors are macros
+    declared = set(rte_funcs) - STDLIB_FUNCS - signal_apis - set(irv)
     constants: dict[str, int] = {}
     variables: set[str] = set()
+    forward: set[str] = set()      # defined later in the C file itself: declared, not stubbed
+    var_types: dict[str, str] = {}
 
     def write_support_files() -> dict[str, str]:
+        calls = call_arities(current, declared - set(accessors) - set(irv))
         files = {
             "Rte_Type.h": generate_rte_type_header(),
-            f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants, variables=variables),
-            "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables),
+            f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants,
+                                                    variables=variables | forward, types=var_types,
+                                                    signals=signals, defaults=defaults, accessors=accessors,
+                                                    irv=irv, calls=calls),
+            "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables, types=var_types,
+                                              signals=signals, defaults=defaults, accessors=accessors,
+                                              irv=irv, calls=calls),
             f"{swc}.h": generate_swc_header(swc, current),
         }
         # The skeleton may include Rte_<owner_swc>.h under another SWC name.
@@ -337,6 +1042,18 @@ def make_compilable(
     compile_ok = False
     last_error = ""
     rounds = 0
+    stubbed_logic: list[str] = []
+    fix_requests = fixes_applied = stalls = 0
+    fix_note = ""
+
+    def compile_now(code: str):
+        c_file.write_text(code, encoding="utf-8", newline="\n")
+        return toolchain.run_c(
+            ["gcc", "-std=c99", "-fsyntax-only", "-w", f"-I{workdir}", str(c_file)], cwd=str(workdir), timeout=120)
+
+    def count_errors(result) -> int:
+        return sum(len(v) for v in _error_lines(result.stderr + "\n" + result.stdout, c_file.name).values()) \
+            or (0 if result.returncode == 0 else 1)
 
     for round_no in range(1, max_rounds + 1):
         rounds = round_no
@@ -355,25 +1072,70 @@ def make_compilable(
         diagnostics = result.stderr + "\n" + result.stdout
 
         # 1. Declare instead of delete.
-        new_funcs = set(_IMPLICIT_DECL_RE.findall(diagnostics)) - declared
-        new_idents = set(_UNDECLARED_RE.findall(diagnostics)) - set(constants) - variables - declared
+        new_funcs = set(_IMPLICIT_DECL_RE.findall(diagnostics)) - declared - STDLIB_FUNCS
+        new_idents = set(_UNDECLARED_RE.findall(diagnostics)) - set(constants) - variables - forward - declared
         if new_funcs or new_idents:
             declared |= new_funcs
+            for name in new_funcs:
+                # A design helper whose result is used ("x = Map(y);") returns a value, not a status.
+                if not name.startswith("Rte_") and re.search(rf"=\s*{re.escape(name)}\s*\(", current):
+                    var_types[name] = "float64"
             for name in sorted(new_idents):
-                if _is_constant_name(name):
+                own = re.search(rf"^(\w+)\s+{re.escape(name)}\s*(?:=[^;\n]*)?;", current, re.MULTILINE)
+                if own:
+                    # Defined further down in the file (used by an earlier runnable): only a
+                    # forward declaration with its real type. A float64 placeholder here clashed
+                    # with the definition ("conflicting types") and nothing compiled.
+                    forward.add(name)
+                    var_types[name] = own.group(1)
+                elif _is_constant_name(name) and name not in _irv_variable_names(current):
                     constants[name] = len(constants) + 1  # distinct placeholder values
                 else:
                     variables.add(name)
+                    var_types[name] = placeholder_type(name, current)
             headers = write_support_files()
             continue
 
-        # 2. Comment out statements that still cannot compile.
+        # 2. Send the compiler's message to the model and keep a corrected file (recursively, until it compiles).
+        if fixer is not None and fix_requests < max_fix_requests and stalls < MAX_FIX_STALLS:
+            fix_requests += 1
+            before = count_errors(result)
+            errors_text = "\n".join(
+                line for line in diagnostics.splitlines() if c_file.name in line or line.startswith(" "))[:6000]
+            header_text = (workdir / f"Rte_{swc}.h").read_text(encoding="utf-8", errors="ignore")[:6000]
+            try:
+                candidate = fixer(current, errors_text or diagnostics[:6000], header_text, fix_note)
+            except Exception as exc:  # noqa: BLE001 - a failed request only means "no fix"
+                candidate, fix_note = "", f"the request failed ({exc})"
+            problem = fix_problem(current, candidate) if candidate else (fix_note or "no answer")
+            accepted = False
+            if not problem:
+                candidate = candidate if candidate.endswith("\n") else candidate + "\n"
+                trial = compile_now(candidate)
+                after = count_errors(trial)
+                if trial.returncode == 0 or after < before:
+                    current, accepted = candidate, True
+                else:
+                    problem = f"no better: {after} error(s) after the fix, {before} before"
+            c_file.write_text(current, encoding="utf-8", newline="\n")
+            if accepted:
+                fixes_applied += 1
+                stalls, fix_note = 0, ""
+                continue                      # compile again: the next error (or success) decides
+            stalls += 1
+            fix_note = problem                # the next request says why this answer was refused
+            if stalls < MAX_FIX_STALLS and fix_requests < max_fix_requests:
+                continue                      # ask once more, now with the reason
+
+        # 3. Comment out statements that still cannot compile.
         err_lines = _error_lines(diagnostics, c_file.name)
         lines = current.splitlines()
         changed = 0
         for lineno in sorted(err_lines):
             idx = lineno - 1
             if 0 <= idx < len(lines) and _is_statement_line(lines[idx]):
+                if is_logic_statement(lines[idx]):
+                    stubbed_logic.append(lines[idx].strip()[:200])
                 lines[idx] = _comment_line(lines[idx])
                 changed += 1
         if not changed:
@@ -394,4 +1156,10 @@ def make_compilable(
         headers=headers,
         placeholder_constants=sorted(constants),
         placeholder_variables=sorted(variables),
+        stubbed_logic=stubbed_logic,
+        never_assigned=unassigned_reads(current),
+        dropped_arguments=current.count("TODO(args)"),
+        fix_requests=fix_requests,
+        fixes_applied=fixes_applied,
+        removed_bsw_definitions=removed_bsw,
     )

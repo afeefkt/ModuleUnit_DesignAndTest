@@ -28,6 +28,7 @@ pages = {
         st.Page("views/0_Overview.py", url_path="overview", title="Overview", icon="🏠", default=True),
     ],
     "Design": [
+        st.Page("views/10_Harden_Requirements.py", url_path="harden", title="Harden requirements", icon="🧱"),
         st.Page("views/1_Design_MUD.py", url_path="design", title="Requirements & design", icon="📐"),
     ],
     "Verify": [
@@ -49,5 +50,6 @@ pages = {
 }
 
 page = st.navigation(pages)
-c.run_bar()
-page.run()
+# An error in the run bar or a page shows an error box; the menu and the other pages keep working.
+c.guarded(c.run_bar, "the run bar")
+c.guarded(page.run, f"the page “{page.title}”")

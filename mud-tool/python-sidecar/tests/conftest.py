@@ -214,3 +214,17 @@ def sample_generation_result(
         diagrams=[sample_sequence_diagram, sample_state_machine, sample_class_diagram],
         analyzed_requirements=["REQ-ARCH-0142", "REQ-ARCH-0143", "REQ-ARCH-0300", "REQ-ARCH-0301"],
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_stage_provider_overrides(monkeypatch):
+    """Keep tests independent of the developer's stage selection in python-sidecar/.env.
+
+    Selecting a cloud preset in the UI writes per-stage provider overrides (e.g.
+    MUD_PIPELINE_REVIEWER_PROVIDER=deepseek) into .env; environment variables win over the
+    file, so blank them here.
+    """
+    for name in ("PLANNER", "MUD_SPEC_SKELETON", "PIPELINE_GENERATOR", "PIPELINE_REVIEWER",
+                 "ACTIVITY_PIPELINE_SKELETON", "ACTIVITY_PIPELINE_REVIEWER", "VISUAL_QA"):
+        monkeypatch.setenv(f"MUD_{name}_PROVIDER", "")
+    monkeypatch.setenv("MUD_SPEC_SKELETON_PROVIDER", "")

@@ -102,7 +102,7 @@ def test_weights_cover_all_stages_and_percent_is_capped_until_complete():
 
 def test_fraction_inside_a_stage_moves_the_bar():
     t = progress.ProgressTracker(quick=True, timings={})
-    for s in ("import", "plan", "spec", "activity", "compilable"):
+    for s in ("import", "plan", "spec", "activity", "activity_qa", "compilable"):
         t.update({"stage": s, "message": "", "done": True})
     before = t.percent
     t.update({"stage": "generate_tests", "message": "", "fraction": 0.5})

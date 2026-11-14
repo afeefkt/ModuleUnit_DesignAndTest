@@ -302,7 +302,9 @@ def handle_make_compilable(args) -> dict:
     run_dir = make_run_dir(args.run, swc=args.swc)
     code = _find_c(run_dir, args.swc).read_text(encoding="utf-8")
     project_dir = _sec(run_dir, "code")
-    rep = compilable.make_compilable(code, args.swc, project_dir)
+    spec_file = _sec(run_dir, "mud") / "mud_spec.md"
+    spec_md = spec_file.read_text(encoding="utf-8") if spec_file.is_file() else None
+    rep = compilable.make_compilable(code, args.swc, project_dir, spec_md=spec_md)
     (project_dir / "compilability.json").write_text(_json.dumps({
         "swc": args.swc,
         "total_statements": rep.total_statements,
@@ -343,7 +345,7 @@ def handle_build_run(args) -> dict:
     out_dir = _sec(run_dir, "mut")
     if not any(out_dir.glob("Test_*.cpp")):
         raise ValueError(f"no tests in {out_dir}; run gen-tests first")
-    result = verify.fix_loop(out_dir, max_attempts=2)
+    result = verify.fix_loop(out_dir, max_attempts=verify.MAX_FIX_ATTEMPTS)
     (out_dir / "results.json").write_text(
         json.dumps(result, indent=2, default=str), encoding="utf-8"
     )

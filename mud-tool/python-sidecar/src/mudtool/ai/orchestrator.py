@@ -166,7 +166,7 @@ class AIOrchestrator:
 
     def _get_reviewer_backend(self) -> BaseAIBackend:
         """Backend for the reviewer/critic model (``pipeline_reviewer_*``)."""
-        model = _normalize_provider_model(self.settings, self.settings.pipeline_reviewer_model)
+        model = self._stage_model(self.settings.pipeline_reviewer_model, self.settings.pipeline_reviewer_provider)
         backend = self._make_backend_with_model(model, provider=self.settings.pipeline_reviewer_provider)
         logger.info("Reviewer backend: %s (provider=%s model=%s)",
                     backend.backend_name, self.settings.pipeline_reviewer_provider, model)
@@ -174,11 +174,23 @@ class AIOrchestrator:
 
     def _get_skeleton_backend(self) -> BaseAIBackend:
         """Backend for MUD-spec Stage 1 skeleton generation (``mud_spec_skeleton_*``)."""
-        model = _normalize_provider_model(self.settings, self.settings.mud_spec_skeleton_model)
+        model = self._stage_model(self.settings.mud_spec_skeleton_model, self.settings.mud_spec_skeleton_provider)
         backend = self._make_backend_with_model(model, provider=self.settings.mud_spec_skeleton_provider)
         logger.info("Skeleton backend: %s (provider=%s model=%s)",
                     backend.backend_name, self.settings.mud_spec_skeleton_provider, model)
         return backend
+
+    def _stage_model(self, model_name: str, provider: Optional[str]) -> str:
+        """The model id to use for a stage.
+
+        With an explicit per-stage provider (e.g. ``deepseek``) the configured id is that
+        provider's own model and is used as is. Only a stage that stays on the global backend gets
+        the local/hosted alias normalisation — applying it to a DeepSeek stage replaced
+        ``deepseek-reasoner`` with the local Ollama model and DeepSeek answered 400.
+        """
+        if (provider or "").strip():
+            return (model_name or "").strip()
+        return _normalize_provider_model(self.settings, model_name)
 
     def _make_backend_with_model(self, model_name: str, provider: Optional[str] = None) -> BaseAIBackend:
         """Build a CloudBackend variant with a per-stage provider + model override.
@@ -355,7 +367,13 @@ class AIOrchestrator:
             GenerationResult containing the generated diagram(s).
         """
         start_time = time.monotonic()
-        backend = self._get_backend()
+        # Activity diagrams belong to the "activity generator" stage: honour its provider/model.
+        # The global backend (local Ollama by default) ran this call even when every stage was
+        # set to DeepSeek.
+        if diagram_type == DiagramType.ACTIVITY:
+            backend = self._get_generator_backend()
+        else:
+            backend = self._get_backend()
 
         # Render prompts
         system_prompt = self.prompt_engine.render_system_prompt(
@@ -490,6 +508,10 @@ class AIOrchestrator:
         best_result: Optional[GenerationResult] = None
         best_score: float = -1.0
         for attempt in range(1, max_retries + 1):
+            # Stop between attempts when the host asked to cancel (raises GenerationCancelled,
+            # a BaseException, so the retry handler below does not swallow it).
+            from mudtool.ai import observer as _observer
+            _observer.check_cancel(f"before activity attempt {attempt}")
             try:
                 # Adaptive temperature: slightly lower for structural fix retries,
                 # slightly higher for later attempts to encourage different outputs
@@ -539,11 +561,24 @@ class AIOrchestrator:
                         f"Attempt {attempt} produced errors: {summarized}. Retrying..."
                     )
                     # Replace (not append) error context for next attempt
-                    user_prompt = (
-                        base_user_prompt
-                        + f"\n\nPREVIOUS ATTEMPT FAILED:\n{summarized}\n"
-                        "Fix these issues. Output ONLY valid JSON matching the schema."
-                    )
+                    if getattr(response, "finish_reason", None) == "length":
+                        # The JSON is broken because the answer hit the provider's output cap
+                        # (8192 for deepseek-chat): the same request is cut off again, so ask for
+                        # a shorter answer instead of "valid JSON".
+                        user_prompt = (
+                            base_user_prompt
+                            + "\n\nPREVIOUS ATTEMPT WAS CUT OFF at the model's output limit, so the JSON "
+                            "was incomplete. Write a shorter answer that fits: keep every runnable, "
+                            "node and edge the MUD requires, but use short node names, leave out "
+                            "\"description\" texts and optional fields, and do not indent the JSON. "
+                            "Output ONLY valid JSON matching the schema."
+                        )
+                    else:
+                        user_prompt = (
+                            base_user_prompt
+                            + f"\n\nPREVIOUS ATTEMPT FAILED:\n{summarized}\n"
+                            "Fix these issues. Output ONLY valid JSON matching the schema."
+                        )
                     continue
 
                 # Track best result across attempts (score by nodes + diagrams)

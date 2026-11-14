@@ -1,0 +1,139 @@
+{
+  "set": "aeb",
+  "description": "Curated hardening overrides for the AEB pilot. Fields not listed are derived by the Author agent.",
+  "requirements": {
+    "REQ-AEB-001": {
+      "statement": "The AEB feature shall be implemented as a distributed AUTOSAR application composed of seven application SWCs allocated to the AEB partition on ECU_AEB_Main: SWC_AEB_SensorFusion, SWC_AEB_RiskAssessor, SWC_AEB_Controller, SWC_AEB_BrakeActuator, SWC_AEB_SafetyMonitor, SWC_AEB_VehicleState, and SWC_AEB_HMI. The feature-level behaviour of detecting an imminent forward collision, warning the driver and requesting service braking is specified in REQ-AEB-009.",
+      "rationale": "Architecture allocation requirement derived from the AEB feature decomposition. The feature behaviour is separated into REQ-AEB-009 so that architecture and behaviour can be verified independently.",
+      "verification_method": "review",
+      "acceptance_criteria": {
+        "given": "The AEB software architecture is under review and the ECU_AEB_Main partition is defined.",
+        "when": "The architecture work product is inspected.",
+        "then": "Exactly the seven listed application SWCs are allocated to the AEB partition, and no additional AEB application SWC is allocated outside the partition.",
+        "inputs": [
+          "AUTOSAR SWC allocation model",
+          "ECU_AEB_Main partition definition"
+        ],
+        "expected_outputs": [
+          "Seven SWCs present and allocated as listed",
+          "Feature behaviour traced to REQ-AEB-009"
+        ],
+        "tolerance": "Exact match on SWC names and allocation.",
+        "boundary_values": []
+      },
+      "open_issues": [
+        "Feature-level behaviour was split into REQ-AEB-009; confirm the split with the architecture owner."
+      ]
+    },
+    "REQ-AEB-002": {
+      "statement": "The AEB function shall be active over the vehicle speed range 10 km/h to 60 km/h inclusive for car-to-car scenarios, per UNECE R152. Below 10 km/h and above 60 km/h, the automatic braking demand shall be deactivated while AEB monitoring and availability reporting continue. Pedestrian forward-collision warning below 10 km/h is governed by REQ-AEB-209.",
+      "rationale": "Interim pilot decision: automatic braking is active 10-60 km/h for car-to-car; pedestrian FCW remains active below 10 km/h per REQ-AEB-209. Hysteresis is a calibration item, not a new normative value.",
+      "open_issues": [
+        "Interim decision recorded: automatic braking is deactivated outside 10-60 km/h and pedestrian FCW remains active below 10 km/h; confirm transition/hysteresis with the feature owner."
+      ]
+    },
+    "REQ-AEB-003": {
+      "rationale": "UNECE R152 requires an emergency braking demand of at least 5.0 m/s2. The sample uses the normative minimum as the acceptance threshold."
+    },
+    "REQ-AEB-005": {
+      "statement": "A driver-initiated brake or accelerator action that exceeds the AEB braking demand shall override and cancel the AEB braking request. The override shall be detected within one 10 ms arbitration cycle (REQ-AEB-301).",
+      "open_issues": [
+        "Interim decision recorded: use the 10 ms arbitration cycle; confirm that no faster override path is required in every mode."
+      ]
+    },
+    "REQ-AEB-006": {
+      "rationale": "Gateway tell-tale feed requirement. The 10 ms update is the availability/status refresh; the state transition itself may occur on an event.",
+      "open_issues": [
+        "Confirm whether PP_AEBStatus is cyclic (10 ms) only or also event-driven on state change."
+      ]
+    },
+    "REQ-AEB-104": {
+      "rationale": "200 ms staleness drop is a calibration default from the fusion design; the value is not normative in UNECE R152."
+    },
+    "REQ-AEB-105": {
+      "rationale": "Association gates 0.5 m and 2.0 m/s are calibration defaults from the fusion design; confirm with the sensor-fusion owner."
+    },
+    "REQ-AEB-107": {
+      "rationale": "Plausibility gating protects the risk assessor from physically impossible objects; thresholds are calibration defaults."
+    },
+    "REQ-AEB-202": {
+      "rationale": "TTC = distance / relative speed is the standard definition for an approaching object. TTC_MAX must be a calibrated value; the source does not state it."
+    },
+    "REQ-AEB-203": {
+      "rationale": "Ego-path half-width 1.0 m is a calibration default; confirm with the vehicle geometry and path-estimation design."
+    },
+    "REQ-AEB-204": {
+      "rationale": "FCW at TTC 2.6 s with release at 2.9 s is an engineering calibration default consistent with published AEB practice; R152 is performance-based and does not mandate these values."
+    },
+    "REQ-AEB-205": {
+      "rationale": "Partial braking at TTC 1.6 s is an engineering calibration default; the 40 percent level is a design choice, not an R152 normative value."
+    },
+    "REQ-AEB-206": {
+      "rationale": "Full braking at TTC 0.6 s is an engineering calibration default; confirm with the vehicle dynamics and homologation plan."
+    },
+    "REQ-AEB-207": {
+      "implementation_constraint": true,
+      "constraint_rationale": "The piecewise-linear probability map is retained as a deterministic calibration/implementation constraint so the risk output is reproducible and testable. The map points are calibration values, not R152 normative values.",
+      "design_notes": "Piecewise-linear mapping is an implementation choice. If the design changes to a different continuous function, this requirement must be re-reviewed.",
+      "open_issues": [
+        "Confirm the probability map points (0.0 at 3.0 s, 0.5 at 1.6 s, 1.0 at 0.6 s) with the risk-assessment owner."
+      ]
+    },
+    "REQ-AEB-303": {
+      "rationale": "Interim pilot decision: retain 9.0 m/s2 as the FULL performance target; ABS arbitration may reduce it. The UNECE R152 minimum is 5.0 m/s2. Homologation/vehicle-dynamics confirmation remains open.",
+      "open_issues": [
+        "Interim decision recorded: keep 9.0 m/s2 as the FULL performance target; ABS may reduce it; confirm homologation/vehicle dynamics."
+      ]
+    },
+    "REQ-AEB-304": {
+      "rationale": "15 m/s3 deceleration rate limit is a calibration default to avoid wheel lock and occupant discomfort; confirm with vehicle dynamics."
+    },
+    "REQ-AEB-305": {
+      "rationale": "Driver override thresholds (10 bar, 80 percent) are calibration defaults; confirm with the brake system and HMI owners."
+    },
+    "REQ-AEB-308": {
+      "statement": "When SWC_AEB_SafetyMonitor reports a plausibility fault, RE_ArbitrateBrakeDemand shall enter FAILSAFE mode and command a controlled braking demand of 6.0 m/s2 at vehicle speeds of 10 km/h or above, or 0.0 m/s2 below 10 km/h while FCW remains active.",
+      "rationale": "Interim pilot decision: above 10 km/h use controlled failsafe braking of 6.0 m/s2; below 10 km/h command 0.0 m/s2 and keep FCW active. The source did not define the low-speed case.",
+      "open_issues": [
+        "Interim decision recorded for the pilot; confirm the low-speed failsafe behaviour with the safety manager."
+      ]
+    },
+    "REQ-AEB-310": {
+      "priority": "must",
+      "open_issues": [
+        "Interim decision recorded: promote to 'must' for the pilot; confirm with the safety analysis."
+      ],
+      "rationale": "Interim pilot decision: promote to 'must' because unintended braking is a safety-relevant hazard. Final priority awaits HARA/FSR confirmation."
+    },
+    "REQ-AEB-402": {
+      "implementation_constraint": true,
+      "constraint_rationale": "The deceleration-to-pressure mapping is retained as a deterministic calibration/implementation constraint. The formula defines the intended mapping; vehicle mass and brake gain are calibration parameters.",
+      "design_notes": "The formula is an implementation constraint. Confirm the units and the validity range of K_brake_gain.",
+      "open_issues": [
+        "Confirm K_veh_mass and K_brake_gain ranges and validity conditions with the brake actuator owner."
+      ]
+    },
+    "REQ-AEB-404": {
+      "rationale": "15 bar / 50 ms feedback deviation is a calibration/diagnostic default; confirm with the brake actuator and safety monitor owners."
+    },
+    "REQ-AEB-502": {
+      "rationale": "1.0 m / 3.0 m/s / 3-cycle plausibility thresholds are diagnostic calibration defaults; confirm with the sensor-fusion and safety monitor owners."
+    },
+    "REQ-AEB-503": {
+      "rationale": "E2E Profile 2 and 2 consecutive failures are derived from the AUTOSAR E2E design; confirm the failure count with the safety monitor owner."
+    },
+    "REQ-AEB-505": {
+      "rationale": "Degraded 4.0 m/s2 and failsafe 6.0 m/s2 are design choices; the source does not derive them from R152. Confirm with the safety analysis."
+    },
+    "REQ-AEB-309": {
+      "statement": "RE_ArbitrateBrakeDemand shall increment a 16-bit demand counter on every published PP_BrakeDemand, rolling over from 0xFFFF to 0x0000 for use by the E2E protect routine.",
+      "rationale": "The demand counter is part of the E2E protection of PP_BrakeDemand; rollover behaviour must be deterministic."
+    },
+    "REQ-AEB-209": {
+      "rationale": "Interim pilot decision: braking escalation is suppressed below 10 km/h, but pedestrian FCW remains active below 10 km/h. Confirm the warning/braking split and hysteresis.",
+      "open_issues": [
+        "Interim decision recorded for the pilot; confirm the pedestrian FCW/braking split and hysteresis with the feature owner."
+      ]
+    }
+  }
+}
