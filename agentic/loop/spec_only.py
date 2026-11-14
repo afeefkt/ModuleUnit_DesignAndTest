@@ -83,7 +83,7 @@ def main(argv: list[str]) -> None:
         line = (f"sample {i}: {len(spec)} chars, usable {len(sc['usable'])}/{sc['runnables']}, "
                 f"gaps {spec_check.gap_count(sc)}{repair_note}, multi-writer {len(mw)} {mw or ''}")
         if do_review and "--improve" in argv:     # the chain's review loop (review -> runnable repair -> review)
-            improved, rv = aio.run_sync(design.review_and_improve(module, text, spec, max_rounds=2))
+            improved, rv = aio.run_sync(design.review_and_improve(module, text, spec, max_rounds=4))
             spec = design.clean_spec_markdown(improved)
             errs = [x.message[:140] for x in rv.issues if x.severity == "error"]
             sc_i = spec_check.check_spec(spec, swc, module.runnables)

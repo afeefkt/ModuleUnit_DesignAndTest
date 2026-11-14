@@ -230,6 +230,8 @@ PSEUDO-CODE RULES:
     e.g. Rte_IWrite_PP_BrakePressure_DE_BrakePressure(l_p); never Rte_IWrite(<Port>, value) for such a port.
 16. WdgM_UpdateAliveCounter() takes this runnable's supervised-entity id WDGM_SE_<RUNNABLE_NAME_UPPER>,
     never 0 and never the runnable's function name.
+17. Never re-implement another runnable's logic: a coordinating runnable (e.g. RE_CommandBrake) reads the IRV
+    results of RE_MapDecelToPressure / RE_RampPressure / ... - it does not repeat their mapping, ramp or saturation.
 
 MANDATORY — every step.code MUST contain at least ONE of the following, or it will be REJECTED:
   · C assignment operator:                l_var = expr;
@@ -392,8 +394,8 @@ def _assemble_markdown(skeleton: dict, section7_map: dict[str, dict],
     lines.append("")
 
     lines.append("### 2.3 Calibration Ports (CalPrm)")
-    lines.append("| Port Name | Interface | Data Type | Default | Range | Description |")
-    lines.append("|-----------|-----------|-----------|---------|-------|-------------|")
+    lines.append("| Port Name | Interface | Data Type | Default | Range | Memory | Description |")
+    lines.append("|-----------|-----------|-----------|---------|-------|--------|-------------|")
     for cp in skeleton.get("calparms", []):
         range_str = cp.get("range", "")
         unit = cp.get("unit", "")
@@ -401,7 +403,8 @@ def _assemble_markdown(skeleton: dict, section7_map: dict[str, dict],
         lines.append(
             f"| {cp.get('port_name','')} | IF_Prm_{cp.get('name','')} "
             f"| {cp.get('data_type','')} | {cp.get('default_value','')} "
-            f"| {range_unit} | {cp.get('description','')} |"
+            f"| {range_unit} | {cp.get('memory_section') or 'ROM (const, read-only at runtime)'} "
+            f"| {cp.get('description','')} |"
         )
     if not skeleton.get("calparms"):
         lines.append("| — | — | — | — | — | No calibration parameters defined |")

@@ -349,7 +349,7 @@ async def _run_full_chain(
         for attempt in range(1, 3):          # retry once: the reviewer model sometimes answers empty
             reviewed_md, review = await design.review_and_improve(
                 chosen, text, best_md, progress=progress,
-                max_rounds=int(os.environ.get("MUDMUT_REVIEW_ROUNDS", "2") or 2))
+                max_rounds=int(os.environ.get("MUDMUT_REVIEW_ROUNDS", "4") or 4))
             reviewed_md = design.clean_spec_markdown(reviewed_md)
             review_empty = bool(getattr(review, "ai_review_empty", False))
             review_approved = bool(review.approved)
