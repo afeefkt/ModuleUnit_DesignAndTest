@@ -463,7 +463,7 @@ async def repair_spec_from_check(
         approved=False, coverage_pct=0,
         issues=[ReviewIssue(severity=s, section="7. Functional Description", message=m) for s, m in issues],
     )
-    return await gen.regenerate_spec(
+    whole = clean_spec_markdown(await gen.regenerate_spec(
         swc_name=module.swc_name,
         asil=module.asil,
         requirements_text=requirements_text_,
@@ -472,7 +472,17 @@ async def repair_spec_from_check(
         temperature=0.1,
         progress_callback=progress,
         repair_attempt=True,
-    )
+    ) or "")
+    # The whole-spec rewrite replaces the per-runnable result only when it is intact AND has fewer gaps;
+    # otherwise the per-runnable gains are kept (a cut-off rewrite threw them away: gaps 8 -> 0 / 15 -> 1
+    # were discarded in the spec-only loop).
+    if not fixed:
+        return whole
+    sc_whole = _sc.check_spec(whole, module.swc_name, getattr(module, "runnables", None)) if whole else None
+    if (sc_whole is not None and not _sc.rewrite_problem(mud_spec_markdown, whole)
+            and _sc.gap_count(sc_whole) < _sc.gap_count(sc_patched)):
+        return whole
+    return mud_spec_markdown
 
 
 # ── activity diagram ─────────────────────────────────────────────────────────

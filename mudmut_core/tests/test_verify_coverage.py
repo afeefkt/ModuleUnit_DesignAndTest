@@ -296,3 +296,33 @@ def test_review_loop_keeps_an_update_that_makes_the_review_better(monkeypatch):
     module = _ratchet_setup(monkeypatch, good_b, lambda md: 0 if "l_b = 3;" in md else 2)
     md, review = asyncio.run(design.review_and_improve(module, "", _SPEC2, max_rounds=3))
     assert "l_b = 3;" in md and review.approved and review.error_count == 0
+
+
+def test_spec_check_repair_keeps_per_runnable_gains_when_whole_rewrite_is_cut(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from mudmut_core import design, spec_check
+    import mudtool.ai.mud_spec_generator as gen_mod
+    spec = ("# SWC_X\n\n## 7. Functional Description\n\n### RE_A\n// IRVs produced: IRV_A\n**1. Compute**\n```c\n"
+            "l_a = 1;\n```\n\n### RE_B\n// IRVs produced: IRV_B\n**1. Compute**\n```c\nl_b = 2;\n```\n")
+    fixed_a = "### RE_A\n// IRVs produced: IRV_A\n**1. Compute**\n```c\nl_a = 1;\nRte_IrvWrite(IRV_A, l_a);\n```"
+    calls = {"n": 0}
+
+    def chat(prompt, **_k):           # RE_A repaired, RE_B answer unusable
+        calls["n"] += 1
+        return fixed_a if "### RE_A" in prompt.split("CURRENT SUBSECTION:")[-1] else "no"
+
+    class FakeGen:
+        def __init__(self, *_a, **_k):
+            pass
+
+        async def regenerate_spec(self, **_k):
+            return "# SWC_X\n\n## 7. Functional Description\n\n### RE_A\n"     # cut off
+
+    monkeypatch.setattr(design, "_spec_model_chat", chat)
+    monkeypatch.setattr(design, "_orchestrator", lambda: None)
+    monkeypatch.setattr(gen_mod, "MudSpecGenerator", FakeGen)
+    module = SimpleNamespace(swc_name="SWC_X", asil="QM", runnables=["RE_A", "RE_B"])
+    check = spec_check.check_spec(spec, "SWC_X", module.runnables)
+    out = asyncio.run(design.repair_spec_from_check(module, "", spec, check))
+    assert "Rte_IrvWrite(IRV_A, l_a);" in out and "### RE_B" in out

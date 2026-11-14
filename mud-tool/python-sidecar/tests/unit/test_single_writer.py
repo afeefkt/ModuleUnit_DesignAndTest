@@ -23,3 +23,11 @@ def test_skeleton_missing_planned_runnable_is_a_problem():
                 if "planned runnable" in p]
     assert problems and "RE_RampPressure" in problems[0]
     assert not [p for p in m._skeleton_problems(sk, "QM", ["RE_Init"]) if "planned runnable" in p]
+
+
+def test_runnable_below_module_asil_is_a_problem():
+    sk = {"runnables": [{"name": "RE_Init", "asil": "ASIL-B"}, {"name": "RE_X", "asil": "ASIL-D"}],
+          "dem_events": [{"event_id": "SWC_DEM_E_X"}]}
+    problems = [p for p in m._skeleton_problems(sk, "ASIL-D") if "every runnable must carry" in p]
+    assert problems and "RE_Init" in problems[0] and "RE_X" not in problems[0]
+    assert not [p for p in m._skeleton_problems(sk, "QM") if "every runnable must carry" in p]

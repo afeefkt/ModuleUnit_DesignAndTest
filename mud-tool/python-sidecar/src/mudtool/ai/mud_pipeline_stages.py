@@ -673,6 +673,19 @@ def _skeleton_problems(skeleton: dict, asil: str, planned: list[str] | None = No
             "consume it (irvs_consumed) instead of writing it."
         )
 
+    # Rule 8: runnables inherit the module ASIL (no decomposition is modelled): RE_Init / RE_Map... at ASIL-B in an
+    # ASIL-D module was a review error ("ASIL allocation is inconsistent"; spec-only round 10).
+    order = {"QM": 0, "ASIL-A": 1, "ASIL-B": 2, "ASIL-C": 3, "ASIL-D": 4}
+    mod_level = order.get(str(asil).upper(), None)
+    if mod_level:
+        low = [str(r.get("name", "")) for r in (skeleton.get("runnables") or [])
+               if order.get(str(r.get("asil", "")).upper(), mod_level) < mod_level]
+        if low:
+            problems.append(
+                f"The module is {asil.upper()}; every runnable must carry {asil.upper()} (no ASIL decomposition is "
+                f"modelled). Lower ASIL on: {', '.join(low[:10])}."
+            )
+
     # Rule 7: every planned runnable is a runnable of its own - the skeleton folded 5 of 7 planned runnables
     # into "sub-functions" of one runnable in 2 of 18 spec-only samples, and no repair could bring them back.
     have = {str(r.get("name", "")) for r in (skeleton.get("runnables") or [])}
