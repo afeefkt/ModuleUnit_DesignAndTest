@@ -368,3 +368,11 @@ def test_rte_name_used_as_value_becomes_a_settable_variable(tmp_path):
     header = (tmp_path / "Rte_SWC_X.h").read_text()
     assert rep.compile_ok and "extern float64 Rte_Mode_PP_Out;" in header
     assert "Rte_Mode_PP_Out(" not in header
+
+
+def test_typographic_characters_in_test_sources_become_ascii(tmp_path):
+    from mudmut_core import verify
+    (tmp_path / "Test_RE_A.cpp").write_text("LONGS_EQUAL(1, l_a — 0); // “note”\n", encoding="utf-8")
+    (tmp_path / "Test_RE_B.cpp").write_text("CHECK(true);\n", encoding="utf-8")
+    assert verify.ascii_test_sources(tmp_path) == ["Test_RE_A.cpp"]
+    assert (tmp_path / "Test_RE_A.cpp").read_text(encoding="utf-8") == 'LONGS_EQUAL(1, l_a - 0); // "note"\n'

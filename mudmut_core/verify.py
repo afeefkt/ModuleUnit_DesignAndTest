@@ -109,9 +109,29 @@ def write_makefile(test_dir: Path | str) -> toolchain.CppUTestInfo:
     return info
 
 
+# Typographic characters a model writes into code ("l_x \u2014 1", \u201cquotes\u201d) are not valid C++ outside a
+# comment or string: g++ "extended character is not valid in an identifier" failed a whole coverage round.
+_ASCII_MAP = {"\u2014": "-", "\u2013": "-", "\u2212": "-", "\u2018": "'", "\u2019": "'", "\u201c": '"',
+              "\u201d": '"', "\u00a0": " ", "\u2026": "...", "\u00d7": "*", "\u2264": "<=", "\u2265": ">=",
+              "\u2260": "!=", "\u2192": "->"}
+
+
+def ascii_test_sources(test_dir: Path | str) -> list[str]:
+    """Replace typographic characters in the AI-written ``Test_*.cpp`` files with ASCII; returns the files changed."""
+    changed = []
+    for f in sorted(Path(test_dir).glob("Test_*.cpp")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        fixed = "".join(_ASCII_MAP.get(ch, ch) for ch in text)
+        if fixed != text:
+            f.write_text(fixed, encoding="utf-8")
+            changed.append(f.name)
+    return changed
+
+
 def build_and_run(test_dir: Path | str) -> dict[str, Any]:
     """Build (``make clean all``) then run with coverage (``make coverage``)."""
     test_dir = Path(test_dir)
+    ascii_test_sources(test_dir)
 
     cpputest = write_makefile(test_dir)
     cpputest_info = {
