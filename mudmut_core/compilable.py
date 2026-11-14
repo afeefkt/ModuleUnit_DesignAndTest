@@ -1033,6 +1033,12 @@ def make_compilable(
     rte_funcs, _call_idents = collect_identifiers(current)
     signals = rte_signals(current)
     accessors = rte_accessors(current)
+    # An Rte_ name the code only uses as a VALUE (never called: "if (Rte_Mode_PP_X != RTE_MODE_..._INIT)") was
+    # declared as a function, so the comparison compared a function address (always true) and a test could not
+    # set it. It becomes a settable variable like the explicit accessors (declared, defined, reset).
+    for name in sorted(rte_funcs):
+        if name not in accessors and not re.search(rf"\b{re.escape(name)}\s*\(", current):
+            accessors[name] = f"/* {name}: a variable (used as a value, never called) */"
     irv = irv_macros(current)
     status_vars = read_status_vars(current, signals, accessors, irv)
     signal_apis = {f"Rte_{k}" for k, ports in signals.items() if ports}

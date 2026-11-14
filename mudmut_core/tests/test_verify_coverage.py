@@ -354,3 +354,17 @@ def test_read_failure_branch_compiles_through_make_compilable(tmp_path):
     rep = c.make_compilable(code, "SWC_X", tmp_path)
     assert rep.compile_ok and rep.stubbed_statements == 0
     assert "IRV_X_status" in (tmp_path / "Rte_SWC_X.h").read_text()
+
+
+def test_rte_name_used_as_value_becomes_a_settable_variable(tmp_path):
+    import shutil
+    import pytest
+    from mudmut_core import compilable as c
+    if not shutil.which("gcc"):
+        pytest.skip("gcc not available")
+    code = ("#include \"Rte_SWC_X.h\"\nvoid RE_A(void)\n{\n    if (Rte_Mode_PP_Out != RTE_MODE_PP_Out_INIT)\n    {\n"
+            "        Rte_IrvWrite(IRV_Y, 1);\n        return;\n    }\n    Rte_IrvWrite(IRV_Y, 2);\n}\n")
+    rep = c.make_compilable(code, "SWC_X", tmp_path)
+    header = (tmp_path / "Rte_SWC_X.h").read_text()
+    assert rep.compile_ok and "extern float64 Rte_Mode_PP_Out;" in header
+    assert "Rte_Mode_PP_Out(" not in header
