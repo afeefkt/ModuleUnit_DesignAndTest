@@ -167,7 +167,7 @@ def _signal_decls(signals: dict[str, list[str]], defaults: dict[str, tuple[str, 
 
 
 _SIGNAL_MACROS = {
-    "Read": "#define Rte_Read(port, dst)  ((*(dst) = Rte_Read_##port), E_OK)",
+    "Read": "#define Rte_Read(port, dst)  ((*(dst) = Rte_Read_##port), Rte_Read_##port##_status)",
     "Write": "#define Rte_Write(port, val) ((Rte_Write_##port = (val)), E_OK)",
     "Prm": "#define Rte_Prm(port)        (Rte_Prm_##port)",
     "IRead": "#define Rte_IRead(port)      (Rte_IRead_##port)",
@@ -200,7 +200,7 @@ def rte_accessors(c_code: str) -> dict[str, str]:
         shapes.setdefault(name, set()).add(shape)
     macros = {
         "get": "#define {n}() ({n})",
-        "read": "#define {n}(dst) ((*(dst) = {n}), E_OK)",
+        "read": "#define {n}(dst) ((*(dst) = {n}), {n}_status)",
         "write": "#define {n}(val) (({n} = (val)), E_OK)",
     }
     return {name: macros[next(iter(kinds))].format(n=name)
@@ -212,7 +212,7 @@ def rte_accessors(c_code: str) -> dict[str, str]:
 # variable — a test sets ``IRV_X = 5;`` before the runnable and checks it afterwards.
 _IRV_CALL_RE = re.compile(r"\b(Rte_Irv(?:I?Read|I?Write))\s*\(([^()]*)\)")
 _IRV_MACROS = {
-    "get": "#define {n}(var, dst) ((*(dst) = (var)), E_OK)",
+    "get": "#define {n}(var, dst) ((*(dst) = (var)), var##_status)",
     "put": "#define {n}(var, val) (((var) = (val)), E_OK)",
     # x = Rte_IrvRead(IRV_X);  — the value form, one argument
     "val": "#define {n}(var) (var)",
@@ -225,7 +225,7 @@ def _irv_both_forms(n: str) -> str:
     Generated code mixes both; with only one shape allowed the name stayed a stub function and *no* IRV
     read worked (the guards read nothing and every runnable saw zeros).
     """
-    return (f"#define {n}_2(var, dst) ((*(dst) = (var)), E_OK)\n"
+    return (f"#define {n}_2(var, dst) ((*(dst) = (var)), var##_status)\n"
             f"#define {n}_1(var) (var)\n"
             f"#define {n}_PICK(a, b, NAME, ...) NAME\n"
             f"#define {n}(...) {n}_PICK(__VA_ARGS__, {n}_2, {n}_1, 0)(__VA_ARGS__)")
@@ -234,6 +234,22 @@ def _irv_both_forms(n: str) -> str:
 def _irv_variable_names(c_code: str) -> set[str]:
     """Names used as the variable argument of ``Rte_Irv*(IRV_X, ..)``: variables even though upper case."""
     return set(re.findall(r"\bRte_Irv\w*\s*\(\s*([A-Za-z_]\w*)", _COMMENT_RE.sub(" ", c_code)))
+
+
+def read_status_vars(c_code: str, signals: dict[str, list[str]], accessors: dict[str, str],
+                     irv: dict[str, str]) -> list[str]:
+    """``<read>_status`` variables the status-returning read macros return (default RTE_E_OK = 0).
+
+    A test sets one to a non-zero status to drive the "read failed" path; before, every read returned E_OK, so
+    ``if (Rte_IrvRead(IRV_X, &x) != RTE_E_OK)`` branches were unreachable (AEB r41: coverage 66.9, all five
+    failing tests were "...ReadFails")."""
+    names = [f"Rte_Read_{port}_status" for port in signals.get("Read", [])]
+    names += [f"{name}_status" for name, macro in accessors.items() if "_status)" in macro]
+    code = _COMMENT_RE.sub(" ", c_code)
+    for api, var in re.findall(r"\b(Rte_Irv\w*Read)\s*\(\s*([A-Za-z_]\w*)\s*,\s*&", code):
+        if api in irv:
+            names.append(f"{var}_status")
+    return sorted(dict.fromkeys(names))
 
 
 def irv_macros(c_code: str) -> dict[str, str]:
@@ -544,6 +560,7 @@ def generate_rte_swc_header(
     accessors: dict[str, str] | None = None,
     irv: dict[str, str] | None = None,
     calls: dict[str, int] | None = None,
+    status_vars: list[str] | None = None,
 ) -> str:
     """Return ``Rte_<SWC>.h``: RTE/helper declarations plus design symbols the
     skeleton uses but the MUD never defined (placeholder constants/variables).
@@ -570,7 +587,10 @@ def generate_rte_swc_header(
             " *   call  Rte_Stubs_Reset()                 in setup() to restore the defaults\n"
             " * The same holds for explicit accessors: Rte_Read_<port>_<elem>, Rte_IRead_<port>_<elem>,\n"
             " * Rte_Write_<port>_<elem> … are variables too (the call form used by the code is a macro).\n"
-            " * Rte_Prm_<port> starts at the default from the MUD's calibration table. */\n"
+            " * Rte_Prm_<port> starts at the default from the MUD's calibration table.\n"
+            " * A status-returning read (Rte_Read(port, &x), Rte_IrvRead(IRV_X, &x), Rte_Read_<port>_<elem>(&x))\n"
+            " * returns <read>_status (Rte_Read_<port>_status, IRV_X_status, ...): 0 = RTE_E_OK by default;\n"
+            " * set it to a non-zero status (e.g. RTE_E_NO_DATA) to make that read fail. */\n"
             f"{macros}\n"
         )
     # In C, "f()" accepts any arguments; in C++ it means "no arguments", so the
@@ -593,6 +613,8 @@ def generate_rte_swc_header(
         decls.append(f"extern {ctype} {var};")
     for var in _call_hist_vars(calls):
         decls.append(f"extern float64 {var}[{CALL_HISTORY}];")
+    for var in status_vars or ():
+        decls.append(f"extern Std_ReturnType {var};")
     if sig_rows or irv or calls:
         decls.append("void Rte_Stubs_Reset(void);")
     guard = f"RTE_{swc.upper()}_H"
@@ -644,6 +666,7 @@ def generate_rte_stubs(
     accessors: dict[str, str] | None = None,
     irv: dict[str, str] | None = None,
     calls: dict[str, int] | None = None,
+    status_vars: list[str] | None = None,
 ) -> str:
     """Return ``Rte_Stubs.c`` with default definitions so the test binary links."""
     types = types or {}
@@ -653,6 +676,8 @@ def generate_rte_stubs(
     defs: list[str] = []
     if sig_rows:
         defs.append("\n".join(f"{ctype} {var} = {value};" for ctype, var, value in sig_rows))
+    if status_vars:
+        defs.append("\n".join(f"Std_ReturnType {var} = 0;" for var in status_vars))
     if calls:
         defs.append("\n".join([f"{ctype} {var} = {_call_var_default(var)};" for ctype, var in _call_vars(calls)]
                               + [f"float64 {var}[{CALL_HISTORY}] = {{0}};" for var in _call_hist_vars(calls)]))
@@ -680,6 +705,7 @@ def generate_rte_stubs(
         resets = "\n".join([f"    {var} = {value};" for _ctype, var, value in sig_rows]
                            + [f"    {name} = 0;" for name in sorted(variables or ())]
                            + [f"    {var} = {_call_var_default(var)};" for _ctype, var in _call_vars(calls)]
+                           + [f"    {var} = 0;" for var in status_vars or ()]
                            + [f"    for (unsigned k = 0; k < {CALL_HISTORY}; k++) {var}[k] = 0;"
                               for var in _call_hist_vars(calls)])
         defs.append(f"void Rte_Stubs_Reset(void)\n{{\n{resets}\n}}")
@@ -1008,6 +1034,7 @@ def make_compilable(
     signals = rte_signals(current)
     accessors = rte_accessors(current)
     irv = irv_macros(current)
+    status_vars = read_status_vars(current, signals, accessors, irv)
     signal_apis = {f"Rte_{k}" for k, ports in signals.items() if ports}
     defaults = calprm_defaults(spec_md)
     # start with only Rte_* (user funcs are defined in-place); signal APIs and IRV accessors are macros
@@ -1024,10 +1051,10 @@ def make_compilable(
             f"Rte_{swc}.h": generate_rte_swc_header(swc, declared, constants=constants,
                                                     variables=variables | forward, types=var_types,
                                                     signals=signals, defaults=defaults, accessors=accessors,
-                                                    irv=irv, calls=calls),
+                                                    irv=irv, calls=calls, status_vars=status_vars),
             "Rte_Stubs.c": generate_rte_stubs(swc, declared, variables=variables, types=var_types,
                                               signals=signals, defaults=defaults, accessors=accessors,
-                                              irv=irv, calls=calls),
+                                              irv=irv, calls=calls, status_vars=status_vars),
             f"{swc}.h": generate_swc_header(swc, current),
         }
         # The skeleton may include Rte_<owner_swc>.h under another SWC name.

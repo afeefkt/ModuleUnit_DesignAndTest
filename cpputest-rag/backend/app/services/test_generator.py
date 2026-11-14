@@ -89,6 +89,11 @@ def function_io(source_code: str, symbols: str = "") -> dict:
         "check": collect(_IO_OUT),
         "calls": [f for f in called if f"{f}_callCount" in (symbols or "")],
         "dem": dem_reports(source_code) if "Dem_ReportErrorStatus_callCount" in (symbols or "") else [],
+        # status variables of this function's status-returning reads (mudmut_core.compilable.read_status_vars)
+        "status": [n for n in dict.fromkeys(
+            [f"{m.group(1)}_status" for m in re.finditer(r"\bRte_Irv\w*Read\s*\(\s*([A-Za-z_]\w*)\s*,\s*&", code)]
+            + [f"Rte_Read_{m.group(1)}_status" for m in re.finditer(r"\bRte_Read\s*\(\s*([A-Za-z_]\w*)\s*,\s*&", code)])
+            if n in (symbols or "")],
     }
 
 
@@ -101,6 +106,9 @@ def function_io_block(io: dict) -> str:
         lines.append("  check after the call: " + ", ".join(io["check"]))
     if io["calls"]:
         lines.append("  calls recorded (<fn>_callCount, <fn>_arg0 ...): " + ", ".join(io["calls"]))
+    if io.get("status"):
+        lines.append("  make a read fail (default 0 = RTE_E_OK; set RTE_E_NO_DATA to take its failure branch): "
+                     + ", ".join(io["status"]))
     if io.get("dem"):
         lines.append("  Dem_ReportErrorStatus calls in its source (event, status): " + "; ".join(io["dem"]))
         lines.append("  Both FAILED and PASSED reports exist for an event: the healthy path still reports PASSED, so "
